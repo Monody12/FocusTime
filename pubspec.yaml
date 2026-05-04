@@ -1,0 +1,49 @@
+name: focus_timer
+description: "Focus Timer - 番茄工作法 + 单核工作法计时器"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # 状态管理
+  flutter_riverpod: ^2.6.1
+
+  # 数据库
+  sqflite: ^2.4.2
+  sqflite_common_ffi: ^2.3.4+4
+  path: ^1.9.1
+
+  # 导航
+  go_router: ^14.8.1
+
+  # 通知
+  flutter_local_notifications: ^18.0.1
+
+  # 音频
+  audioplayers: ^6.1.0
+
+  # 本地存储
+  shared_preferences: ^2.5.3
+
+  # 网络（云同步）
+  http: ^1.3.0
+
+  # UUID
+  uuid: ^4.5.1
+
+  # intl 日期格式化
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
