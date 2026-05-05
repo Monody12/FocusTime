@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/utils/time_utils.dart';
@@ -149,6 +150,28 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
   TimerNotifier(this._ref) : super(TimerState()) {
     _loadState();
+    _initNotificationListener();
+  }
+
+  /// 初始化通知中心按钮动作监听
+  void _initNotificationListener() {
+    TimerNotificationService.setActionListener((action) {
+      dev.log('[TimerNotifier] 接收到通知动作: $action');
+      switch (action) {
+        case 'action:start_break':
+          startBreak();
+          break;
+        case 'action:start_focus':
+          startFocus();
+          break;
+        case 'action:skip_break':
+          skipBreak();
+          break;
+        case 'action:stop_alarm':
+          TimerNotificationService.stopAlarm();
+          break;
+      }
+    });
   }
 
   Future<void> _loadState() async {
@@ -312,6 +335,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   void startFocus({String? taskTitle, String? taskId}) {
+    // 停止铃声提醒
+    TimerNotificationService.stopAlarm();
+
     final now = DateTime.now();
     int totalSeconds;
     DateTime? target;
@@ -341,6 +367,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   void startBreak() {
+    // 停止铃声提醒
+    TimerNotificationService.stopAlarm();
+
     if (state.timerMode != TimerMode.pomodoro) return;
 
     final isLongBreak = state.currentCycle >= state.pomodoroConfig.cyclesBeforeLongBreak;
@@ -364,6 +393,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   void skipBreak() {
+    // 停止铃声提醒
+    TimerNotificationService.stopAlarm();
+
     if (state.timerMode != TimerMode.pomodoro) return;
     if (state.timerPhase == 'idle' || state.timerPhase == 'focus') return;
 
@@ -387,6 +419,8 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
   void pauseFocus() {
     _stopTimer();
+    // 暂停时也停止铃声，防止极端情况下铃声一直响
+    TimerNotificationService.stopAlarm();
     state = state.copyWith(timerStatus: TimerStatus.paused);
     _saveState();
   }
@@ -405,6 +439,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   void resetFocus() {
+    // 停止铃声提醒
+    TimerNotificationService.stopAlarm();
+
     // 如果计时器在运行且有startedAt，保存未完成的专注记录（>60秒）
     if (state.startedAt > 0 && state.timerPhase == 'focus' && state.timerStatus != TimerStatus.completed) {
       final elapsed = (DateTime.now().millisecondsSinceEpoch - state.startedAt) ~/ 1000;
@@ -519,6 +556,8 @@ class TimerNotifier extends StateNotifier<TimerState> {
       title: title,
       body: body,
       soundEnabled: state.soundEnabled,
+      phase: state.timerPhase,
+      duration: state.notificationDuration,
     );
   }
 
