@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/recurrence_utils.dart';
-import '../../../../data/database/app_database.dart';
-import '../../../timer/providers/timer_provider.dart';
-import '../../providers/task_provider.dart';
+import 'package:focus_timer/data/database/app_database.dart';
+import 'package:focus_timer/features/timer/providers/timer_provider.dart';
+import 'package:focus_timer/features/tasks/providers/task_provider.dart';
 
 class TaskDetailPage extends ConsumerStatefulWidget {
   final String taskId;

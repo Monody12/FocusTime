@@ -237,6 +237,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
       builder: (context, candidateData, rejectedData) {
         return GestureDetector(
           onLongPress: onLongPress,
+          onSecondaryTapDown: (details) => _showContextMenu(context, details.globalPosition, list.id, list.name),
           child: Material(
             color: isHovering
                 ? (isDark ? const Color(0xFF3D3D5C) : const Color(0xFFE5E7EB))
@@ -297,6 +298,56 @@ class _SidebarState extends ConsumerState<Sidebar> {
         onSubmitted: (_) => _renameList(listId),
       ),
     );
+  }
+
+  /// 显示右键菜单（适用于桌面端）
+  void _showContextMenu(BuildContext context, Offset globalPosition, String listId, String listName) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // 获取 Overlay 的 RenderBox 以计算相对位置
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    
+    showMenu(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(40, 40), // 在点击位置周围创建一个小的矩形区域
+        Offset.zero & overlay.size,
+      ),
+      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      elevation: 8,
+      items: [
+        PopupMenuItem(
+          value: 'rename',
+          height: 36,
+          child: Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 16, color: isDark ? AppColors.darkText : AppColors.lightText),
+              const SizedBox(width: 12),
+              Text('重命名', style: TextStyle(fontSize: 13, color: isDark ? AppColors.darkText : AppColors.lightText)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          height: 36,
+          child: Row(
+            children: [
+              const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+              const SizedBox(width: 12),
+              const Text('删除', style: TextStyle(fontSize: 13, color: Colors.red)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (!mounted) return;
+      if (value == 'rename') {
+        _startEditing(listId, listName);
+      } else if (value == 'delete') {
+        _confirmDeleteList(context, listId, listName);
+      }
+    });
   }
 
   // 新建清单按钮
