@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/utils/time_utils.dart';
-import '../../../../data/database/app_database.dart';
+import 'package:focus_timer/data/database/app_database.dart';
+import 'package:focus_timer/data/sync/sync_service.dart';
 
 enum TimerMode { singleCore, pomodoro }
 enum TimerStatus { idle, running, paused, completed }
@@ -507,6 +508,11 @@ class TimerNotifier extends StateNotifier<TimerState> {
       completedAt: DateTime.now().millisecondsSinceEpoch,
     );
     _ref.read(sessionUpdateProvider.notifier).state++;
+    
+    // 触发同步
+    if (SyncService.isLoggedIn) {
+      SyncService.fullSync();
+    }
   }
 
   @override

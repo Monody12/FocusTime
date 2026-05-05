@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../data/database/app_database.dart';
+import 'package:focus_timer/data/database/app_database.dart';
+import 'package:focus_timer/data/sync/sync_service.dart';
 
 class TaskList {
   final String id;
@@ -153,7 +154,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
     final lists = dbLists.map((m) => TaskList(
       id: m['id'] as String,
       name: m['name'] as String,
-      isSystem: m['isSystem'] as bool,
+      // 使用 == true 进行健壮性判断，防止数据库返回 Null 或 0/1 时触发类型错误
+      isSystem: m['isSystem'] == true,
       sortOrder: m['sortOrder'] as int,
       createdAt: m['createdAt'] as int,
       updatedAt: m['updatedAt'] as int,
@@ -178,12 +180,13 @@ class TaskNotifier extends StateNotifier<TaskState> {
         listId: m['listId'] as String,
         title: m['title'] as String,
         notes: m['notes'] as String?,
-        completed: m['completed'] as bool,
+        // 将数据库返回的动态值安全地转换为布尔值
+        completed: m['completed'] == true,
         completedAt: m['completedAt'] as int?,
         dueDate: m['dueDate'] as String?,
         dueTime: m['dueTime'] as String?,
         sortOrder: m['sortOrder'] as int,
-        isMyDay: m['isMyDay'] as bool,
+        isMyDay: m['isMyDay'] == true,
         myDayAddedAt: m['myDayAddedAt'] as int?,
         recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
         expectedMinutes: m['expectedMinutes'] as int?,
@@ -211,12 +214,13 @@ class TaskNotifier extends StateNotifier<TaskState> {
     final list = TaskList(
       id: result['id'] as String,
       name: result['name'] as String,
-      isSystem: result['isSystem'] as bool,
+      isSystem: result['isSystem'] == true,
       sortOrder: result['sortOrder'] as int,
       createdAt: result['createdAt'] as int,
       updatedAt: result['updatedAt'] as int,
     );
     state = state.copyWith(lists: [...state.lists, list]);
+    _triggerSync();
     return list;
   }
 
@@ -224,12 +228,26 @@ class TaskNotifier extends StateNotifier<TaskState> {
     await AppDatabase.updateList(id, name);
     final lists = state.lists.map((l) => l.id == id ? l.copyWith(name: name) : l).toList();
     state = state.copyWith(lists: lists);
+    _triggerSync();
   }
 
   Future<void> deleteList(String id) async {
     await AppDatabase.deleteList(id);
     final lists = state.lists.where((l) => l.id != id).toList();
     state = state.copyWith(lists: lists);
+    _triggerSync();
+  }
+
+  void _triggerSync() {
+    if (SyncService.isLoggedIn) {
+      SyncService.fullSync().then((result) {
+        if (result.success) {
+          // 如果同步成功，可能需要重新加载数据以获取远程变更
+          loadLists();
+          loadTasks();
+        }
+      });
+    }
   }
 
   Future<void> createTask(String title, {bool isMyDay = false}) async {
@@ -242,12 +260,12 @@ class TaskNotifier extends StateNotifier<TaskState> {
       listId: result['listId'] as String,
       title: result['title'] as String,
       notes: result['notes'] as String?,
-      completed: result['completed'] as bool,
+      completed: result['completed'] == true,
       completedAt: result['completedAt'] as int?,
       dueDate: result['dueDate'] as String?,
       dueTime: result['dueTime'] as String?,
       sortOrder: result['sortOrder'] as int,
-      isMyDay: result['isMyDay'] as bool,
+      isMyDay: result['isMyDay'] == true,
       myDayAddedAt: result['myDayAddedAt'] as int?,
       recurrenceConfig: result['recurrenceConfig'] as Map<String, dynamic>?,
       expectedMinutes: result['expectedMinutes'] as int?,
@@ -255,37 +273,44 @@ class TaskNotifier extends StateNotifier<TaskState> {
       updatedAt: result['updatedAt'] as int,
     );
     state = state.copyWith(tasks: [...state.tasks, task]);
+    _triggerSync();
   }
 
   Future<void> updateTask(String id, Map<String, dynamic> updates) async {
     await AppDatabase.updateTask(id, updates);
     await loadTasks();
+    _triggerSync();
   }
 
   Future<void> deleteTask(String id) async {
     await AppDatabase.deleteTask(id);
     final tasks = state.tasks.where((t) => t.id != id).toList();
     state = state.copyWith(tasks: tasks, selectedTaskId: null);
+    _triggerSync();
   }
 
   Future<void> toggleTaskComplete(String id) async {
     await AppDatabase.toggleTaskComplete(id);
     await loadTasks();
+    _triggerSync();
   }
 
   Future<void> addToMyDay(String taskId) async {
     await AppDatabase.addToMyDay(taskId);
     await loadTasks();
+    _triggerSync();
   }
 
   Future<void> removeFromMyDay(String taskId) async {
     await AppDatabase.removeFromMyDay(taskId);
     await loadTasks();
+    _triggerSync();
   }
 
   Future<void> reorderTasks(List<String> taskIds) async {
     await AppDatabase.reorderTasks(taskIds);
     await loadTasks();
+    _triggerSync();
   }
 }
 

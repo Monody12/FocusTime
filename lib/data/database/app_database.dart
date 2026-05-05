@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'dart:convert';
 
 class AppDatabase {
   static Database? _database;
@@ -16,7 +17,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -30,7 +31,8 @@ class AppDatabase {
         is_system INTEGER NOT NULL DEFAULT 0,
         sort_order INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -50,7 +52,8 @@ class AppDatabase {
         recurrence_config TEXT,
         expected_minutes INTEGER,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -65,7 +68,8 @@ class AppDatabase {
         completed INTEGER NOT NULL DEFAULT 0,
         started_at INTEGER NOT NULL,
         completed_at INTEGER,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -77,6 +81,7 @@ class AppDatabase {
         completed_at INTEGER NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
         UNIQUE(task_id, completion_date)
       )
     ''');
@@ -84,7 +89,8 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE settings (
         key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -109,7 +115,22 @@ class AppDatabase {
   }
 
   static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // 未来迁移时使用
+    if (oldVersion < 2) {
+      // 增加删除标记位以支持同步
+      await db.execute('ALTER TABLE lists ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE sessions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE task_recurrence_completions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+    }
+    
+    if (oldVersion < 3) {
+      // 为设置表增加时间戳以支持同步
+      try {
+        await db.execute('ALTER TABLE settings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0');
+      } catch (e) {
+        // Ignore if column already exists
+      }
+    }
   }
 
   // ========== 设置 ==========
@@ -123,15 +144,33 @@ class AppDatabase {
 
   static Future<void> setSetting(String key, String value) async {
     final db = await database;
-    await db.insert('settings', {'key': key, 'value': value},
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('settings', {
+      'key': key, 
+      'value': value,
+      'updated_at': DateTime.now().millisecondsSinceEpoch
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   // ========== 清单 ==========
 
   static Future<List<Map<String, dynamic>>> getLists() async {
     final db = await database;
-    return await db.query('lists', orderBy: 'sort_order');
+    final result = await db.query('lists', where: 'deleted = 0', orderBy: 'sort_order');
+    return result.map(_mapList).toList();
+  }
+
+  /// 将数据库行映射为应用程序使用的 TaskList 对象，并处理命名格式转换（snake_case -> camelCase）
+  static Map<String, dynamic> _mapList(Map<String, dynamic> row) {
+    return {
+      'id': row['id'],
+      'name': row['name'],
+      // 数据库存储为 0/1，这里转换为布尔值
+      'isSystem': (row['is_system'] as int) == 1,
+      'sortOrder': row['sort_order'],
+      'createdAt': row['created_at'],
+      'updatedAt': row['updated_at'],
+      'deleted': (row['deleted'] as int) == 1,
+    };
   }
 
   static Future<Map<String, dynamic>> createList(String name) async {
@@ -166,10 +205,14 @@ class AppDatabase {
         where: 'id = ?', whereArgs: [id]);
   }
 
+  /// 软删除清单及其下的所有任务
   static Future<void> deleteList(String id) async {
     final db = await database;
-    await db.delete('tasks', where: 'list_id = ?', whereArgs: [id]);
-    await db.delete('lists', where: 'id = ?', whereArgs: [id]);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update('tasks', {'deleted': 1, 'updated_at': now}, 
+        where: 'list_id = ?', whereArgs: [id]);
+    await db.update('lists', {'deleted': 1, 'updated_at': now}, 
+        where: 'id = ?', whereArgs: [id]);
   }
 
   // ========== 任务 ==========
@@ -177,20 +220,20 @@ class AppDatabase {
   static Future<List<Map<String, dynamic>>> getTasksByList(String listId) async {
     final db = await database;
     final result = await db.query('tasks',
-        where: 'list_id = ?', whereArgs: [listId], orderBy: 'sort_order');
+        where: 'list_id = ? AND deleted = 0', whereArgs: [listId], orderBy: 'sort_order');
     return result.map(_mapTask).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getMyDayTasks() async {
     final db = await database;
     final result = await db.query('tasks',
-        where: 'is_my_day = 1', orderBy: 'sort_order');
+        where: 'is_my_day = 1 AND deleted = 0', orderBy: 'sort_order');
     return result.map(_mapTask).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getAllTasks() async {
     final db = await database;
-    final result = await db.query('tasks', orderBy: 'sort_order');
+    final result = await db.query('tasks', where: 'deleted = 0', orderBy: 'sort_order');
     return result.map(_mapTask).toList();
   }
 
@@ -277,10 +320,14 @@ class AppDatabase {
     await db.rawUpdate('UPDATE tasks SET $sets WHERE id = ?', [...values, id]);
   }
 
+  /// 软删除任务及其下的所有会话
   static Future<void> deleteTask(String id) async {
     final db = await database;
-    await db.delete('sessions', where: 'task_id = ?', whereArgs: [id]);
-    await db.delete('tasks', where: 'id = ?', whereArgs: [id]);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update('sessions', {'deleted': 1, 'updated_at': now}, 
+        where: 'task_id = ?', whereArgs: [id]);
+    await db.update('tasks', {'deleted': 1, 'updated_at': now}, 
+        where: 'id = ?', whereArgs: [id]);
   }
 
   static Future<void> toggleTaskComplete(String id) async {
@@ -376,7 +423,7 @@ class AppDatabase {
     final start = DateTime.parse('$date 00:00:00').millisecondsSinceEpoch;
     final end = DateTime.parse('$date 23:59:59').millisecondsSinceEpoch;
     final result = await db.query('sessions',
-        where: 'started_at BETWEEN ? AND ?', whereArgs: [start, end]);
+        where: 'started_at BETWEEN ? AND ? AND deleted = 0', whereArgs: [start, end]);
     return result.map(_mapSession).toList();
   }
 
@@ -386,7 +433,8 @@ class AppDatabase {
     final start = DateTime.parse('$startDate 00:00:00').millisecondsSinceEpoch;
     final end = DateTime.parse('$endDate 23:59:59').millisecondsSinceEpoch;
     final result = await db.query('sessions',
-        where: 'started_at BETWEEN ? AND ?', whereArgs: [start, end], orderBy: 'started_at');
+        where: 'started_at BETWEEN ? AND ? AND deleted = 0', 
+        whereArgs: [start, end], orderBy: 'started_at');
     return result.map(_mapSession).toList();
   }
 
@@ -405,7 +453,9 @@ class AppDatabase {
         where: 'task_id = ? AND completion_date = ?', whereArgs: [taskId, date]);
 
     if (existing.isNotEmpty) {
-      await db.delete('task_recurrence_completions',
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.update('task_recurrence_completions', 
+          {'deleted': 1, 'updated_at': now},
           where: 'id = ?', whereArgs: [existing.first['id']]);
       return false;
     } else {
@@ -426,7 +476,7 @@ class AppDatabase {
   static Future<List<Map<String, dynamic>>> getRecurrenceCompletions(String taskId) async {
     final db = await database;
     final result = await db.query('task_recurrence_completions',
-        where: 'task_id = ?', whereArgs: [taskId], orderBy: 'completion_date DESC');
+        where: 'task_id = ? AND deleted = 0', whereArgs: [taskId], orderBy: 'completion_date DESC');
     return result.map(_mapRecurrenceCompletion).toList();
   }
 
@@ -461,6 +511,7 @@ class AppDatabase {
       'expectedMinutes': row['expected_minutes'],
       'createdAt': row['created_at'],
       'updatedAt': row['updated_at'],
+      'deleted': (row['deleted'] as int) == 1,
     };
   }
 
@@ -476,6 +527,7 @@ class AppDatabase {
       'startedAt': row['started_at'],
       'completedAt': row['completed_at'],
       'updatedAt': row['updated_at'],
+      'deleted': (row['deleted'] as int) == 1,
     };
   }
 
@@ -487,6 +539,151 @@ class AppDatabase {
       'completedAt': row['completed_at'],
       'createdAt': row['created_at'],
       'updatedAt': row['updated_at'],
+      'deleted': (row['deleted'] as int) == 1,
+    };
+  }
+
+  // ========== 同步支持 ==========
+
+  /// 获取自上次同步以来发生变更的所有记录
+  static Future<Map<String, List<Map<String, dynamic>>>> getSyncPayload(int lastSyncTime) async {
+    final db = await database;
+    final payload = <String, List<Map<String, dynamic>>>{};
+
+    // 获取各表的变更记录
+    payload['lists'] = await _getSyncTableRecords(db, 'lists', lastSyncTime, _mapList);
+    payload['tasks'] = await _getSyncTableRecords(db, 'tasks', lastSyncTime, _mapTask);
+    payload['sessions'] = await _getSyncTableRecords(db, 'sessions', lastSyncTime, _mapSession);
+    payload['task_recurrence_completions'] = await _getSyncTableRecords(db, 'task_recurrence_completions', lastSyncTime, _mapRecurrenceCompletion);
+    
+    // settings 特殊处理：排除同步配置相关的 key
+    final SYNC_KEYS = ['syncServerUrl', 'syncToken', 'syncUserId', 'lastSyncTime', 'syncDir'];
+    final settingsRecords = await db.query('settings', 
+        where: 'updated_at > ? AND key NOT IN (${SYNC_KEYS.map((_) => '?').join(',')})',
+        whereArgs: [lastSyncTime, ...SYNC_KEYS]);
+    
+    payload['settings'] = settingsRecords.map((r) => {
+      'id': r['key'],
+      'updatedAt': r['updated_at'],
+      'data': {
+        'key': r['key'],
+        'value': r['value'],
+      }
+    }).toList();
+
+    return payload;
+  }
+
+  static Future<List<Map<String, dynamic>>> _getSyncTableRecords(
+      Database db, String table, int lastSyncTime, Map<String, dynamic> Function(Map<String, dynamic>) mapper) async {
+    final records = await db.query(table, where: 'updated_at > ?', whereArgs: [lastSyncTime]);
+    return records.map((r) {
+      final mapped = mapper(r);
+      return {
+        'id': r['id'],
+        'updatedAt': r['updated_at'],
+        'deleted': (r['deleted'] as int) == 1,
+        'data': mapped,
+      };
+    }).toList();
+  }
+
+  /// 应用从服务器下载的同步变更
+  static Future<void> applySyncChanges(Map<String, dynamic> tables) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      if (tables['lists'] != null) await _applyTableChanges(txn, 'lists', tables['lists'], _unmapList);
+      if (tables['tasks'] != null) await _applyTableChanges(txn, 'tasks', tables['tasks'], _unmapTask);
+      if (tables['sessions'] != null) await _applyTableChanges(txn, 'sessions', tables['sessions'], _unmapSession);
+      if (tables['task_recurrence_completions'] != null) {
+        await _applyTableChanges(txn, 'task_recurrence_completions', tables['task_recurrence_completions'], _unmapRecurrenceCompletion);
+      }
+      if (tables['settings'] != null) await _applySettingsChanges(txn, tables['settings']);
+    });
+  }
+
+  static Future<void> _applyTableChanges(Transaction txn, String table, dynamic records, Map<String, dynamic> Function(Map<String, dynamic>) unmapper) async {
+    if (records is! List) return;
+    for (final item in records) {
+      final id = item['id'] as String;
+      if (item['deleted'] == true) {
+        await txn.delete(table, where: 'id = ?', whereArgs: [id]);
+      } else {
+        final data = item['data'] as Map<String, dynamic>;
+        final row = unmapper(data);
+        row['updated_at'] = item['updatedAt'];
+        row['deleted'] = 0;
+        await txn.insert(table, row, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+  }
+
+  static Future<void> _applySettingsChanges(Transaction txn, dynamic records) async {
+    if (records is! List) return;
+    for (final item in records) {
+      final data = item['data'] as Map<String, dynamic>;
+      final key = data['key'] as String;
+      final value = data['value'] as String;
+      await txn.insert('settings', {
+        'key': key,
+        'value': value,
+        'updated_at': item['updatedAt'],
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  // ========== 逆映射方法 (用于同步写入) ==========
+
+  static Map<String, dynamic> _unmapList(Map<String, dynamic> data) {
+    return {
+      'id': data['id'],
+      'name': data['name'],
+      'is_system': (data['isSystem'] ?? false) ? 1 : 0,
+      'sort_order': data['sortOrder'] ?? 0,
+      'created_at': data['createdAt'],
+    };
+  }
+
+  static Map<String, dynamic> _unmapTask(Map<String, dynamic> data) {
+    return {
+      'id': data['id'],
+      'list_id': data['listId'],
+      'title': data['title'],
+      'notes': data['notes'],
+      'completed': (data['completed'] ?? false) ? 1 : 0,
+      'completed_at': data['completedAt'],
+      'due_date': data['dueDate'],
+      'due_time': data['dueTime'],
+      'sort_order': data['sortOrder'] ?? 0,
+      'is_my_day': (data['isMyDay'] ?? false) ? 1 : 0,
+      'my_day_added_at': data['myDayAddedAt'],
+      'recurrence_config': data['recurrenceConfig'] != null ? _encodeJson(data['recurrenceConfig']) : null,
+      'expected_minutes': data['expectedMinutes'],
+      'created_at': data['createdAt'],
+    };
+  }
+
+  static Map<String, dynamic> _unmapSession(Map<String, dynamic> data) {
+    return {
+      'id': data['id'],
+      'task_id': data['taskId'],
+      'task_title': data['taskTitle'],
+      'timer_mode': data['timerMode'],
+      'duration_seconds': data['durationSeconds'],
+      'planned_duration_seconds': data['plannedDurationSeconds'],
+      'completed': (data['completed'] ?? false) ? 1 : 0,
+      'started_at': data['startedAt'],
+      'completed_at': data['completedAt'],
+    };
+  }
+
+  static Map<String, dynamic> _unmapRecurrenceCompletion(Map<String, dynamic> data) {
+    return {
+      'id': data['id'],
+      'task_id': data['taskId'],
+      'completion_date': data['completionDate'],
+      'completed_at': data['completedAt'],
+      'created_at': data['createdAt'],
     };
   }
 
@@ -521,29 +718,14 @@ class AppDatabase {
   }
 
   static String _encodeJson(Map<String, dynamic> json) {
-    return json.entries.map((e) => '${e.key}:${e.value}').join(';');
+    return jsonEncode(json);
   }
 
   static Map<String, dynamic> _decodeJson(String encoded) {
-    final map = <String, dynamic>{};
-    for (final pair in encoded.split(';')) {
-      final parts = pair.split(':');
-      if (parts.length == 2) {
-        final key = parts[0];
-        final value = parts[1];
-        if (value == 'null') {
-          map[key] = null;
-        } else if (int.tryParse(value) != null) {
-          map[key] = int.parse(value);
-        } else if (value == 'true') {
-          map[key] = true;
-        } else if (value == 'false') {
-          map[key] = false;
-        } else {
-          map[key] = value;
-        }
-      }
+    try {
+      return jsonDecode(encoded) as Map<String, dynamic>;
+    } catch (e) {
+      return {};
     }
-    return map;
   }
 }

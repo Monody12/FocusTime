@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../database/app_database.dart';
+import 'package:focus_timer/data/database/app_database.dart';
 
 class SyncService {
   static const _defaultServerUrl = 'http://1.12.46.222:6677';
@@ -11,6 +11,7 @@ class SyncService {
   static int _lastSyncTime = 0;
 
   static Future<void> init() async {
+    // 从本地数据库加载同步配置
     final serverUrl = await AppDatabase.getSetting('syncServerUrl');
     if (serverUrl != null) _serverUrl = serverUrl;
 
@@ -130,6 +131,8 @@ class SyncService {
 
   static Future<({bool success, bool? tokenExpired, int? serverLastSync})> _syncToServer() async {
     try {
+      final payload = await AppDatabase.getSyncPayload(_lastSyncTime);
+      
       final response = await http.post(
         Uri.parse('$_serverUrl/api/sync'),
         headers: {
@@ -138,22 +141,20 @@ class SyncService {
         },
         body: jsonEncode({
           'lastSyncTime': _lastSyncTime,
-          'tables': {
-            'lists': [],
-            'tasks': [],
-            'sessions': [],
-            'task_recurrence_completions': [],
-          },
+          'tables': payload,
         }),
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 401) {
-        _token = '';
+        await logout();
         return (success: false, tokenExpired: true, serverLastSync: null);
       }
 
       final data = jsonDecode(response.body);
-      return (success: true, tokenExpired: false, serverLastSync: data['serverLastSync'] as int?);
+      if (data['success'] == true || data['serverLastSync'] != null) {
+        return (success: true, tokenExpired: false, serverLastSync: data['serverLastSync'] as int?);
+      }
+      return (success: false, tokenExpired: false, serverLastSync: null);
     } catch (e) {
       return (success: false, tokenExpired: null, serverLastSync: null);
     }
@@ -174,22 +175,29 @@ class SyncService {
             'tasks': [],
             'sessions': [],
             'task_recurrence_completions': [],
+            'settings': [],
           },
         }),
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 401) {
-        _token = '';
+        await logout();
         return (success: false, tokenExpired: true, serverLastSync: null);
       }
 
       final data = jsonDecode(response.body);
-      if (data['serverLastSync'] != null) {
-        _lastSyncTime = data['serverLastSync'];
+      if (data['tables'] != null) {
+        await AppDatabase.applySyncChanges(data['tables']);
       }
+      
       return (success: true, tokenExpired: false, serverLastSync: data['serverLastSync'] as int?);
     } catch (e) {
       return (success: false, tokenExpired: null, serverLastSync: null);
     }
+  }
+
+  /// 启动定时同步
+  static void startAutoSync() {
+    // 这里可以实现定时器逻辑，或者在生命周期回调中调用
   }
 }
