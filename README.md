@@ -93,4 +93,4 @@ flutter build windows
 
 ## 版本
 
-当前版本：v1.0.3 (Flutter Stable Ready)
+当前版本：v1.0.4 (Flutter Stable Ready)
