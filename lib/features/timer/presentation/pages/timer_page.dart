@@ -5,8 +5,6 @@ import '../../providers/timer_provider.dart';
 import '../widgets/timer_display.dart';
 import '../widgets/timer_controls.dart';
 import '../widgets/mode_selector.dart';
-import '../widgets/task_input.dart';
-import '../../../tasks/providers/task_provider.dart';
 
 class TimerPage extends ConsumerWidget {
   const TimerPage({super.key});
@@ -14,62 +12,84 @@ class TimerPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final timerState = ref.watch(timerProvider);
-    final timerNotifier = ref.read(timerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final isInBreakPhase = timerState.timerMode == TimerMode.pomodoro &&
         (timerState.timerPhase == 'break' || timerState.timerPhase == 'long-break');
-    final isBreakCompleted = timerState.timerStatus == TimerStatus.completed && isInBreakPhase;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Mode Selector
-          const ModeSelector(),
-          const SizedBox(height: 24),
+    // Bug 修复：两个完成面板条件之前几乎相同，导致同时显示。
+    // 现在分开判断：
+    //   - focusDone: 专注阶段结束，等待用户开始休息
+    //   - breakDone: 休息阶段结束，等待用户开始下一轮专注
+    final isCompleted = timerState.timerStatus == TimerStatus.completed;
+    final focusDone = isCompleted &&
+        timerState.timerMode == TimerMode.pomodoro &&
+        (timerState.timerPhase == 'break' || timerState.timerPhase == 'long-break') &&
+        !timerState.pomodoroConfig.autoStartBreak;
+    final breakDone = isCompleted &&
+        isInBreakPhase &&
+        !timerState.pomodoroConfig.autoStartNext;
 
-          // Timer Display
-          const TimerDisplay(),
-          const SizedBox(height: 16),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 使用 LayoutBuilder 获知实际可用宽度，防止内容溢出
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(12),
+          child: ConstrainedBox(
+            // 确保内容宽度不超过父容器宽度
+            constraints: BoxConstraints(minWidth: 0, maxWidth: constraints.maxWidth),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 模式选择器
+                const ModeSelector(),
+                const SizedBox(height: 20),
 
-          // Timer Info
-          if (timerState.timerMode == TimerMode.singleCore && timerState.targetTime != null)
-            _buildSingleCoreInfo(timerState, isDark)
-          else if (timerState.timerMode == TimerMode.pomodoro)
-            _buildPomodoroInfo(timerState, isDark),
+                // 计时器圆环
+                const Center(child: TimerDisplay()),
+                const SizedBox(height: 12),
 
-          const SizedBox(height: 24),
+                // 阶段/循环信息
+                if (timerState.timerMode == TimerMode.singleCore && timerState.targetTime != null)
+                  _buildSingleCoreInfo(timerState, isDark)
+                else if (timerState.timerMode == TimerMode.pomodoro)
+                  _buildPomodoroInfo(timerState, isDark),
 
-          // Break completion panel
-          if (isBreakCompleted)
-            _buildBreakCompletePanel(context, ref, timerState),
+                const SizedBox(height: 16),
 
-          // Focus completion panel (waiting for user to start break)
-          if (timerState.timerStatus == TimerStatus.completed &&
-              timerState.timerMode == TimerMode.pomodoro &&
-              (timerState.timerPhase == 'break' || timerState.timerPhase == 'long-break'))
-            _buildFocusCompletePanel(context, ref, timerState),
+                // 专注完成面板（等待用户点击开始休息）
+                if (focusDone) ...[
+                  _buildFocusCompletePanel(context, ref, timerState),
+                  const SizedBox(height: 8),
+                ],
 
-          const SizedBox(height: 16),
+                // 休息完成面板（等待用户点击开始专注）
+                if (breakDone) ...[
+                  _buildBreakCompletePanel(context, ref, timerState),
+                  const SizedBox(height: 8),
+                ],
 
-          // Timer Controls
-          const TimerControls(),
-        ],
-      ),
+                // 计时器控制按钮（开始/暂停/重置）
+                const TimerControls(),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildSingleCoreInfo(TimerState timerState, bool isDark) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(8),
       ),
+      // Wrap 自动换行，防止长文本溢出
       child: Wrap(
         spacing: 12,
-        runSpacing: 8,
+        runSpacing: 6,
         alignment: WrapAlignment.center,
         children: [
           Text(
@@ -103,16 +123,13 @@ class TimerPage extends ConsumerWidget {
 
     String cycleText = '';
     if (timerState.pomodoroConfig.enableCycle) {
-      cycleText = ' · 第 ${timerState.currentCycle + 1} 轮';
-      if (!timerState.pomodoroConfig.autoStartBreak) {
-        cycleText += ' · 手动模式';
-      }
+      cycleText = '第 ${timerState.currentCycle + 1} 轮';
+      if (!timerState.pomodoroConfig.autoStartBreak) cycleText += ' · 手动';
       cycleText += ' · ${timerState.pomodoroConfig.cyclesBeforeLongBreak}轮长休息';
     }
 
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(8),
@@ -124,108 +141,107 @@ class TimerPage extends ConsumerWidget {
         children: [
           Text(
             phaseText,
-            style: TextStyle(
-              fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
-            ),
+            style: TextStyle(fontSize: 13, color: isDark ? AppColors.darkText : AppColors.lightText),
           ),
           if (cycleText.isNotEmpty)
             Text(
               cycleText,
               style: TextStyle(
-                fontSize: 13,
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-              ),
+                  fontSize: 12,
+                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
             ),
         ],
       ),
     );
   }
 
+  /// 休息结束面板：点击"开始专注"或"跳过"
   Widget _buildBreakCompletePanel(BuildContext context, WidgetRef ref, TimerState timerState) {
     final timerNotifier = ref.read(timerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final phaseName = timerState.timerPhase == 'long-break' ? '长休息' : '短休息';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         children: [
           Text(
-            '${timerState.timerPhase == 'long-break' ? '长休息' : '短休息'}完成！'
-            '${timerState.pomodoroConfig.autoStartNext ? ' 自动开始下一轮...' : ' 点击开始专注'}',
+            '$phaseName完成！点击开始专注',
+            textAlign: TextAlign.center,
             style: TextStyle(
+              fontSize: 13,
               color: isDark ? AppColors.darkText : AppColors.lightText,
             ),
           ),
-          if (!timerState.pomodoroConfig.autoStartNext) ...[
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton(
+          const SizedBox(height: 10),
+          // 按钮横向排列，使用 Expanded 让按钮等分宽度而不溢出
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
                   onPressed: () => timerNotifier.startFocus(),
-                  child: const Text('开始专注'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: const Text('开始专注', style: TextStyle(fontSize: 13)),
                 ),
-                const SizedBox(width: 12),
-                OutlinedButton(
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
                   onPressed: () => timerNotifier.skipBreak(),
-                  child: const Text('跳过休息'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                  ),
+                  child: const Text('跳过', style: TextStyle(fontSize: 13)),
                 ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
+  /// 专注结束面板：点击"开始休息"
   Widget _buildFocusCompletePanel(BuildContext context, WidgetRef ref, TimerState timerState) {
     final timerNotifier = ref.read(timerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final breakName = timerState.timerPhase == 'long-break' ? '长' : '短';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         children: [
           Text(
-            '专注完成！开始${timerState.timerPhase == 'long-break' ? '长' : '短'}休息',
+            '专注完成！开始${breakName}休息',
+            textAlign: TextAlign.center,
             style: TextStyle(
+              fontSize: 13,
               color: isDark ? AppColors.darkText : AppColors.lightText,
             ),
           ),
-          if (timerState.pomodoroConfig.autoStartBreak)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                '（自动模式）',
-                style: TextStyle(
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                ),
-              ),
-            )
-          else ...[
-            const SizedBox(height: 12),
-            ElevatedButton(
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
               onPressed: () => timerNotifier.startBreak(),
-              child: const Text('开始休息'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              child: const Text('开始休息', style: TextStyle(fontSize: 13)),
             ),
-          ],
+          ),
         ],
       ),
     );

@@ -87,6 +87,17 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 ),
                 _buildListItem(
                   context,
+                  icon: '⭐',
+                  label: '重要',
+                  isSelected: taskState.currentListId == 'system-important',
+                  onTap: () {
+                    taskNotifier.setCurrentList('system-important', 'important');
+                    widget.onListChanged?.call();
+                  },
+                  isDark: isDark,
+                ),
+                _buildListItem(
+                  context,
                   icon: '📋',
                   label: '任务',
                   isSelected: taskState.currentListId == 'system-all-tasks',

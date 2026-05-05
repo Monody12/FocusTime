@@ -51,6 +51,7 @@ class TaskItem {
   final int? myDayAddedAt;
   final Map<String, dynamic>? recurrenceConfig;
   final int? expectedMinutes;
+  final bool isImportant;
   final int createdAt;
   final int updatedAt;
 
@@ -68,6 +69,7 @@ class TaskItem {
     this.myDayAddedAt,
     this.recurrenceConfig,
     this.expectedMinutes,
+    this.isImportant = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -86,6 +88,7 @@ class TaskItem {
     int? myDayAddedAt,
     Map<String, dynamic>? recurrenceConfig,
     int? expectedMinutes,
+    bool? isImportant,
     int? createdAt,
     int? updatedAt,
   }) =>
@@ -103,6 +106,7 @@ class TaskItem {
         myDayAddedAt: myDayAddedAt ?? this.myDayAddedAt,
         recurrenceConfig: recurrenceConfig ?? this.recurrenceConfig,
         expectedMinutes: expectedMinutes ?? this.expectedMinutes,
+        isImportant: isImportant ?? this.isImportant,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -169,6 +173,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
       List<Map<String, dynamic>> dbTasks;
       if (state.currentViewType == 'my-day') {
         dbTasks = await AppDatabase.getMyDayTasks();
+      } else if (state.currentViewType == 'important') {
+        dbTasks = await AppDatabase.getImportantTasks();
       } else if (state.currentViewType == 'all-tasks') {
         dbTasks = await AppDatabase.getAllTasks();
       } else {
@@ -190,6 +196,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
         myDayAddedAt: m['myDayAddedAt'] as int?,
         recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
         expectedMinutes: m['expectedMinutes'] as int?,
+        isImportant: m['isImportant'] == true,
         createdAt: m['createdAt'] as int,
         updatedAt: m['updatedAt'] as int,
       )).toList();
@@ -269,6 +276,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
       myDayAddedAt: result['myDayAddedAt'] as int?,
       recurrenceConfig: result['recurrenceConfig'] as Map<String, dynamic>?,
       expectedMinutes: result['expectedMinutes'] as int?,
+      isImportant: result['isImportant'] == true,
       createdAt: result['createdAt'] as int,
       updatedAt: result['updatedAt'] as int,
     );
@@ -303,6 +311,20 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
   Future<void> removeFromMyDay(String taskId) async {
     await AppDatabase.removeFromMyDay(taskId);
+    await loadTasks();
+    _triggerSync();
+  }
+
+  Future<void> toggleTaskImportant(String taskId) async {
+    final task = state.tasks.where((t) => t.id == taskId).firstOrNull;
+    if (task == null) return;
+    await AppDatabase.updateTask(taskId, {'isImportant': !task.isImportant});
+    await loadTasks();
+    _triggerSync();
+  }
+
+  Future<void> moveTaskToList(String taskId, String listId) async {
+    await AppDatabase.updateTask(taskId, {'listId': listId});
     await loadTasks();
     _triggerSync();
   }

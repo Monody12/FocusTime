@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/providers/theme_provider.dart';
@@ -60,8 +61,34 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
-      home: Scaffold(
-        body: Stack(
+      home: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyT, control: true): () {
+            if (_selectedTaskId != null) {
+              final taskNotifier = ref.read(taskProvider.notifier);
+              final task = ref.read(taskProvider).tasks.where((t) => t.id == _selectedTaskId).firstOrNull;
+              if (task != null) {
+                if (task.isMyDay) taskNotifier.removeFromMyDay(task.id);
+                else taskNotifier.addToMyDay(task.id);
+              }
+            }
+          },
+          const SingleActivator(LogicalKeyboardKey.keyD, control: true): () {
+            if (_selectedTaskId != null) {
+              ref.read(taskProvider.notifier).toggleTaskComplete(_selectedTaskId!);
+            }
+          },
+          const SingleActivator(LogicalKeyboardKey.delete): () {
+            if (_selectedTaskId != null) {
+              final task = ref.read(taskProvider).tasks.where((t) => t.id == _selectedTaskId).firstOrNull;
+              if (task != null) {
+                _confirmDeleteTask(context, task);
+              }
+            }
+          },
+        },
+        child: Scaffold(
+          body: Stack(
           children: [
             Row(
               children: [
@@ -104,16 +131,7 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
                               ),
                             ),
                             const Spacer(),
-                            // Settings button
-                            TextButton.icon(
-                              onPressed: () => setState(() => _showSettings = true),
-                              icon: const Icon(Icons.settings, size: 18),
-                              label: const Text('设置'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: isDark ? AppColors.darkText : AppColors.lightText,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
+                            // Theme toggle button
                             IconButton(
                               icon: Icon(
                                 isDark ? Icons.light_mode : Icons.dark_mode,
@@ -122,6 +140,16 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
                               onPressed: () => themeNotifier.toggleTheme(),
                               tooltip: '切换主题',
                               color: isDark ? AppColors.darkText : AppColors.lightText,
+                            ),
+                            const SizedBox(width: 8),
+                            // Settings button
+                            TextButton.icon(
+                              onPressed: () => setState(() => _showSettings = true),
+                              icon: const Icon(Icons.settings, size: 18),
+                              label: const Text('设置'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: isDark ? AppColors.darkText : AppColors.lightText,
+                              ),
                             ),
                           ],
                         ),
@@ -235,6 +263,34 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
           ],
         ),
       ),
+    ),
+  );
+}
+
+  void _confirmDeleteTask(BuildContext context, TaskItem task) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除任务', style: TextStyle(fontSize: 16)),
+        content: Text('确定要删除任务 "${task.title}" 吗？'),
+        backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              ref.read(taskProvider.notifier).deleteTask(task.id);
+              setState(() => _selectedTaskId = null);
+              Navigator.pop(context);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -259,18 +315,10 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
             width: 1,
             color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
           ),
-          // Timer section (right, 280px)
-          Container(
+          // 计时器面板（右侧，固定 280px 宽）
+          SizedBox(
             width: 280,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Timer page content
-                const Expanded(
-                  child: TimerPage(),
-                ),
-              ],
-            ),
+            child: const TimerPage(),
           ),
         ],
       );

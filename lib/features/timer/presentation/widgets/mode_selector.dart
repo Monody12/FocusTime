@@ -15,26 +15,30 @@ class ModeSelector extends ConsumerWidget {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
         ),
       ),
       padding: const EdgeInsets.all(4),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          _ModeButton(
-            label: '单核工作法',
-            isSelected: timerState.timerMode == TimerMode.singleCore,
-            onTap: () => timerNotifier.setTimerMode(TimerMode.singleCore),
-            isDark: isDark,
+          Expanded(
+            child: _ModeButton(
+              label: '单核工作法',
+              isSelected: timerState.timerMode == TimerMode.singleCore,
+              onTap: () => timerNotifier.setTimerMode(TimerMode.singleCore),
+              isDark: isDark,
+            ),
           ),
-          _ModeButton(
-            label: '番茄工作法',
-            isSelected: timerState.timerMode == TimerMode.pomodoro,
-            onTap: () => timerNotifier.setTimerMode(TimerMode.pomodoro),
-            isDark: isDark,
+          const SizedBox(width: 4),
+          Expanded(
+            child: _ModeButton(
+              label: '番茄工作法',
+              isSelected: timerState.timerMode == TimerMode.pomodoro,
+              onTap: () => timerNotifier.setTimerMode(TimerMode.pomodoro),
+              isDark: isDark,
+            ),
           ),
         ],
       ),
@@ -61,7 +65,8 @@ class _ModeButton extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF7C3AED) : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
@@ -69,7 +74,7 @@ class _ModeButton extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 13,
+            fontSize: 12,
             color: isSelected
                 ? Colors.white
                 : (isDark ? AppColors.darkText : AppColors.lightText),

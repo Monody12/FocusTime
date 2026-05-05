@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
   // 深色主题
@@ -21,12 +22,14 @@ class AppColors {
 }
 
 class AppTheme {
-  static const _defaultFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  // 使用 Noto Sans SC (思源黑体) 作为全局字体，确保中英文粗细一致且美观
+  // 该字体由 Google 提供，完美支持中文各种字重。
 
   static ThemeData darkTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
-    fontFamily: _defaultFontFamily,
+    // 使用 Noto Sans SC 覆盖所有文本样式
+    textTheme: GoogleFonts.notoSansScTextTheme(ThemeData.dark().textTheme),
     scaffoldBackgroundColor: AppColors.darkBackground,
     colorScheme: const ColorScheme.dark(
       surface: AppColors.darkSurface,
@@ -96,29 +99,13 @@ class AppTheme {
       color: AppColors.darkBorder,
       thickness: 1,
     ),
-    textTheme: const TextTheme(
-      displayLarge: TextStyle(color: AppColors.darkText),
-      displayMedium: TextStyle(color: AppColors.darkText),
-      displaySmall: TextStyle(color: AppColors.darkText),
-      headlineLarge: TextStyle(color: AppColors.darkText),
-      headlineMedium: TextStyle(color: AppColors.darkText),
-      headlineSmall: TextStyle(color: AppColors.darkText),
-      titleLarge: TextStyle(color: AppColors.darkText),
-      titleMedium: TextStyle(color: AppColors.darkText),
-      titleSmall: TextStyle(color: AppColors.darkText),
-      bodyLarge: TextStyle(color: AppColors.darkText),
-      bodyMedium: TextStyle(color: AppColors.darkText),
-      bodySmall: TextStyle(color: AppColors.darkText),
-      labelLarge: TextStyle(color: AppColors.darkText),
-      labelMedium: TextStyle(color: AppColors.darkText),
-      labelSmall: TextStyle(color: AppColors.darkText),
-    ),
   );
 
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
-    fontFamily: _defaultFontFamily,
+    // 使用 Noto Sans SC 覆盖所有文本样式
+    textTheme: GoogleFonts.notoSansScTextTheme(ThemeData.light().textTheme),
     scaffoldBackgroundColor: AppColors.lightBackground,
     colorScheme: const ColorScheme.light(
       surface: AppColors.lightSurface,
@@ -187,23 +174,6 @@ class AppTheme {
     dividerTheme: DividerThemeData(
       color: AppColors.lightBorder,
       thickness: 1,
-    ),
-    textTheme: const TextTheme(
-      displayLarge: TextStyle(color: AppColors.lightText),
-      displayMedium: TextStyle(color: AppColors.lightText),
-      displaySmall: TextStyle(color: AppColors.lightText),
-      headlineLarge: TextStyle(color: AppColors.lightText),
-      headlineMedium: TextStyle(color: AppColors.lightText),
-      headlineSmall: TextStyle(color: AppColors.lightText),
-      titleLarge: TextStyle(color: AppColors.lightText),
-      titleMedium: TextStyle(color: AppColors.lightText),
-      titleSmall: TextStyle(color: AppColors.lightText),
-      bodyLarge: TextStyle(color: AppColors.lightText),
-      bodyMedium: TextStyle(color: AppColors.lightText),
-      bodySmall: TextStyle(color: AppColors.lightText),
-      labelLarge: TextStyle(color: AppColors.lightText),
-      labelMedium: TextStyle(color: AppColors.lightText),
-      labelSmall: TextStyle(color: AppColors.lightText),
     ),
   );
 }

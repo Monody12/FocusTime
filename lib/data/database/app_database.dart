@@ -17,7 +17,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -51,6 +51,7 @@ class AppDatabase {
         my_day_added_at INTEGER,
         recurrence_config TEXT,
         expected_minutes INTEGER,
+        is_important INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         deleted INTEGER NOT NULL DEFAULT 0
@@ -105,10 +106,18 @@ class AppDatabase {
       'updated_at': now,
     });
     await db.insert('lists', {
+      'id': 'system-important',
+      'name': '重要',
+      'is_system': 1,
+      'sort_order': 1,
+      'created_at': now,
+      'updated_at': now,
+    });
+    await db.insert('lists', {
       'id': 'system-all-tasks',
       'name': '任务',
       'is_system': 1,
-      'sort_order': 1,
+      'sort_order': 2,
       'created_at': now,
       'updated_at': now,
     });
@@ -130,6 +139,27 @@ class AppDatabase {
       } catch (e) {
         // Ignore if column already exists
       }
+    }
+
+    if (oldVersion < 4) {
+      try {
+        await db.execute('ALTER TABLE tasks ADD COLUMN is_important INTEGER NOT NULL DEFAULT 0');
+      } catch (e) {
+        // Ignore if column already exists
+      }
+    }
+
+    if (oldVersion < 5) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.insert('lists', {
+        'id': 'system-important',
+        'name': '重要',
+        'is_system': 1,
+        'sort_order': 1,
+        'created_at': now,
+        'updated_at': now,
+      });
+      await db.execute("UPDATE lists SET sort_order = sort_order + 1 WHERE id = 'system-all-tasks'");
     }
   }
 
@@ -231,6 +261,13 @@ class AppDatabase {
     return result.map(_mapTask).toList();
   }
 
+  static Future<List<Map<String, dynamic>>> getImportantTasks() async {
+    final db = await database;
+    final result = await db.query('tasks',
+        where: 'is_important = 1 AND deleted = 0', orderBy: 'sort_order');
+    return result.map(_mapTask).toList();
+  }
+
   static Future<List<Map<String, dynamic>>> getAllTasks() async {
     final db = await database;
     final result = await db.query('tasks', where: 'deleted = 0', orderBy: 'sort_order');
@@ -266,6 +303,7 @@ class AppDatabase {
       'my_day_added_at': isMyDay ? now : null,
       'recurrence_config': null,
       'expected_minutes': expectedMinutes,
+      'is_important': 0,
       'created_at': now,
       'updated_at': now,
     });
@@ -284,6 +322,7 @@ class AppDatabase {
       'myDayAddedAt': isMyDay ? now : null,
       'recurrenceConfig': null,
       'expectedMinutes': expectedMinutes,
+      'isImportant': false,
       'createdAt': now,
       'updatedAt': now,
     };
@@ -309,6 +348,9 @@ class AppDatabase {
     }
     if (updates.containsKey('expectedMinutes')) {
       mapped['expected_minutes'] = updates['expectedMinutes'];
+    }
+    if (updates.containsKey('isImportant')) {
+      mapped['is_important'] = updates['isImportant'] ? 1 : 0;
     }
 
     mapped['updated_at'] = DateTime.now().millisecondsSinceEpoch;
@@ -509,6 +551,7 @@ class AppDatabase {
           ? _decodeJson(row['recurrence_config'] as String)
           : null,
       'expectedMinutes': row['expected_minutes'],
+      'isImportant': (row['is_important'] as int) == 1,
       'createdAt': row['created_at'],
       'updatedAt': row['updated_at'],
       'deleted': (row['deleted'] as int) == 1,
@@ -659,6 +702,7 @@ class AppDatabase {
       'my_day_added_at': data['myDayAddedAt'],
       'recurrence_config': data['recurrenceConfig'] != null ? _encodeJson(data['recurrenceConfig']) : null,
       'expected_minutes': data['expectedMinutes'],
+      'is_important': (data['isImportant'] ?? false) ? 1 : 0,
       'created_at': data['createdAt'],
     };
   }
