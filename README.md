@@ -8,6 +8,7 @@
 - **单核工作法**：自动计算到最近整点或半点，保证最少专注时长
 - **番茄工作法**：专注 25min → 短休息 5min → 循环 → 长休息 15min（每 4 轮）
 - 支持循环模式、自动开始下一轮
+- **全方位通知系统**：专注或休息结束时触发铃声提醒、Windows 通知中心 Toast 以及应用内弹窗提醒
 
 ### 任务管理
 - 多清单支持，自定义清单创建、编辑、删除
@@ -29,8 +30,21 @@
 | 框架 | Flutter |
 | 状态管理 | Riverpod |
 | 数据库 | sqflite (v3) |
-| 主题 | Material 3 (支持 Glassmorphism & 深色模式) |
+| 主题 | Material 3 (Google Fonts / Outfit) |
+| 通知 | windows_notification & flutter_local_notifications |
+| 音频 | audioplayers |
 | 同步服务 | http 增量同步协议 |
+
+## 最近更新 (v1.0.3)
+
+### 🚀 新特性
+- **计时提醒系统**：集成系统级通知与音频反馈，确保在后台运行也能及时收到提醒。
+- **UI 视觉升级**：引入 `Google Fonts` (Outfit) 字体，提升整体排版美感。
+
+### 🛠️ 优化与修复
+- **布局溢出修复**：彻底解决计时结束面板在小窗口下的像素溢出问题。
+- **响应式控制栏**：重构 `ModeSelector` 和控制按钮，在各种分辨率下保持完美对齐。
+- **性能优化**：优化计时器刷新逻辑，降低后台资源占用。
 
 ## 项目结构
 
@@ -40,6 +54,7 @@ lib/
 ├── app.dart                     # 主框架
 ├── core/                        # 核心配置
 │   ├── theme/                   # 主题配置
+│   ├── services/                # 业务服务 (通知、音频等)
 │   ├── utils/                  # 工具函数
 │   └── providers/              # 全局 Provider
 ├── data/                        # 数据层
@@ -75,4 +90,4 @@ flutter build windows
 
 ## 版本
 
-当前版本：v1.0.2 (Flutter Beta)
+当前版本：v1.0.3 (Flutter Stable Ready)
