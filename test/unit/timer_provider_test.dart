@@ -68,6 +68,8 @@ void main() {
       expect(state.elapsedSeconds, 0);
       expect(state.timerPhase, 'focus');
       expect(state.currentCycle, 0);
+      expect(state.notificationDuration, 'long');
+      expect(state.soundEnabled, true);
     });
 
     test('remainingSeconds calculates correctly', () {
@@ -112,6 +114,7 @@ void main() {
         elapsedSeconds: 0,
         timerPhase: 'focus',
         currentCycle: 1,
+        notificationDuration: 'persistent',
       );
 
       expect(updated.timerMode, TimerMode.pomodoro);
@@ -123,6 +126,7 @@ void main() {
       expect(updated.elapsedSeconds, 0);
       expect(updated.timerPhase, 'focus');
       expect(updated.currentCycle, 1);
+      expect(updated.notificationDuration, 'persistent');
     });
 
     test('copyWith preserves unchanged fields', () {
