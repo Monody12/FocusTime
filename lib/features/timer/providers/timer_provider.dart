@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/utils/time_utils.dart';
+import 'package:focus_timer/core/services/timer_notification_service.dart';
 import 'package:focus_timer/data/database/app_database.dart';
 import 'package:focus_timer/data/sync/sync_service.dart';
 
@@ -489,7 +490,36 @@ class TimerNotifier extends StateNotifier<TimerState> {
       state = state.copyWith(timerStatus: TimerStatus.completed);
     }
 
+    // 所有阶段结束后保存状态并触发铃声/系统通知
     _saveState();
+    _triggerCompletionNotification();
+  }
+
+  /// 计时结束时触发铃声 + Windows 通知中心 Toast + 应用内弹窗
+  void _triggerCompletionNotification() {
+    final task = state.currentTask.isNotEmpty ? state.currentTask : null;
+    final template = state.notificationTemplate;
+    // 将模板中的 {task} 占位符替换为实际任务名
+    final body = task != null
+        ? template.replaceAll('{task}', task)
+        : template.replaceAll('！{task}', '！').replaceAll('{task}', '');
+
+    // 根据当前阶段决定通知标题
+    String title;
+    if (state.timerPhase == 'focus') {
+      title = '🎉 专注完成！';
+    } else if (state.timerPhase == 'long-break') {
+      title = '☕ 长休息结束';
+    } else {
+      title = '⏰ 休息结束';
+    }
+
+    // 异步触发，不阻塞计时器状态更新
+    TimerNotificationService.triggerAlarm(
+      title: title,
+      body: body,
+      soundEnabled: state.soundEnabled,
+    );
   }
 
   void _saveFocusSession(bool completed) async {
