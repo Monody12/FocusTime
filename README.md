@@ -16,9 +16,11 @@
 - 截止日期提醒，逾期任务红色高亮
 - "我的一天"特殊视图
 
-### 数据同步
-- SQLite 本地存储
-- 云端同步支持，多设备数据自动合并
+### 数据同步 (Cloud Sync)
+- **多端同步协议**：基于 LWW (Last-Write-Wins) 的增量同步算法
+- **软删除支持**：确保删除操作在所有设备间正确传播
+- **自动触发**：任务变动及专注会话结束后自动同步至云端
+- **反馈机制**：UI 实时显示同步状态及错误提示
 
 ## 技术架构
 
@@ -26,8 +28,9 @@
 |------|----------|
 | 框架 | Flutter |
 | 状态管理 | Riverpod |
-| 数据库 | sqflite |
-| 主题 | Material 3 |
+| 数据库 | sqflite (v3) |
+| 主题 | Material 3 (支持 Glassmorphism & 深色模式) |
+| 同步服务 | http 增量同步协议 |
 
 ## 项目结构
 
@@ -40,14 +43,14 @@ lib/
 │   ├── utils/                  # 工具函数
 │   └── providers/              # 全局 Provider
 ├── data/                        # 数据层
-│   ├── database/               # SQLite 数据库
-│   └── sync/                   # 同步服务
+│   ├── database/               # SQLite 数据库 (支持迁移与软删除)
+│   └── sync/                   # 同步服务 (协议实现)
 └── features/                   # 功能模块
-    ├── timer/                  # 计时器
-    ├── tasks/                  # 任务管理
-    ├── sidebar/               # 侧边栏
-    ├── calendar/               # 日历视图
-    └── settings/               # 设置页面
+    ├── timer/                  # 计时器 (支持单核/番茄钟)
+    ├── tasks/                  # 任务管理 (清单/重复/拖拽)
+    ├── sidebar/               # 侧边栏 (右键菜单/清单编辑)
+    ├── calendar/               # 日历视图 (专注记录概览)
+    └── settings/               # 设置页面 (同步配置/调试信息)
 ```
 
 详细文件索引请查看 [docs/project-index.md](docs/project-index.md)。
@@ -63,16 +66,13 @@ flutter run
 
 # 构建 Windows 版本
 flutter build windows
-
-# 构建 Release 版本
-flutter build windows --release
 ```
 
-## 文档
+## 文档与学习
 
-- [Flutter 开发经验总结](docs/flutter-lessons.md) — Bug 解决方案、踩坑记录
+- [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) — **开发者知识库**：记录了从 Electron 到 Flutter 的迁移经验、同步算法细节及解决方案。
 - [功能模块索引](docs/project-index.md) — 代码文件快速定位
 
 ## 版本
 
-当前版本：v1.0.1
+当前版本：v1.0.2 (Flutter Beta)
