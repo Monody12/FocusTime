@@ -125,11 +125,12 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     final offset = firstDayOfWeek == 7 ? 0 : firstDayOfWeek;
     final daysInMonth = DateTime(year, month + 1, 0).day;
 
-    return Column(
+    return SingleChildScrollView(
+      child: Column(
       children: [
         // Calendar header
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -192,7 +193,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 7,
-            childAspectRatio: 1,
+            childAspectRatio: 1.3,
           ),
           itemCount: offset + daysInMonth,
           itemBuilder: (context, index) {
@@ -265,11 +266,10 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
           },
         ),
 
-        const Divider(height: 32),
+        const Divider(height: 16),
 
         // Selected date detail
-        Expanded(
-          child: SingleChildScrollView(
+        Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -377,8 +377,8 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

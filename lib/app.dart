@@ -36,9 +36,11 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
     final isDark = themeMode == ThemeMode.dark ||
         (themeMode == ThemeMode.system && MediaQuery.platformBrightnessOf(context) == Brightness.dark);
 
-    // Auto-open timer panel when running
+    // Auto-open timer panel when transition to running
     ref.listen(timerProvider, (previous, next) {
-      if (next.timerStatus == TimerStatus.running && _showTimerPanel == false) {
+      final wasRunning = previous?.timerStatus == TimerStatus.running;
+      final isRunning = next.timerStatus == TimerStatus.running;
+      if (isRunning && !wasRunning && _showTimerPanel == false) {
         setState(() => _showTimerPanel = true);
       }
     });
@@ -337,30 +339,53 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
         timerState.timerStatus == TimerStatus.paused ||
         timerState.timerStatus == TimerStatus.completed) {
       if (timerState.timerStatus == TimerStatus.completed) {
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF7C3AED).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: const Text(
-            '✅ 已完成',
-            style: TextStyle(fontSize: 14, color: Color(0xFF7C3AED)),
-          ),
+        final isPomodoro = timerState.timerMode == TimerMode.pomodoro;
+        final nextIsBreak = isPomodoro && (timerState.timerPhase == 'break' || timerState.timerPhase == 'long-break');
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (nextIsBreak)
+              _buildFooterActionButton(
+                label: '☕ 开始休息',
+                onTap: () => timerNotifier.startBreak(),
+                color: const Color(0xFF7C3AED),
+                isPrimary: true,
+              )
+            else
+              _buildFooterActionButton(
+                label: '🎯 开始专注',
+                onTap: () => timerNotifier.resetFocus(),
+                color: const Color(0xFF4FC3F7),
+                isPrimary: true,
+              ),
+            const SizedBox(width: 8),
+            _buildFooterActionButton(
+              label: '🎯 继续专注',
+              onTap: () => timerNotifier.startFocus(),
+              color: const Color(0xFF7C3AED),
+              isPrimary: false,
+              isDark: isDark,
+            ),
+          ],
         );
       }
       final remaining = timerState.totalSeconds - timerState.elapsedSeconds;
       final minutes = remaining ~/ 60;
       final seconds = remaining % 60;
-      return Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF4FC3F7),
+      return Material(
+        color: const Color(0xFF4FC3F7),
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          onTap: () => _handleFooterButton(timerState, timerNotifier),
           borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          '⏱ ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
-          style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w500),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            child: Text(
+              '⏱ ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
+              style: const TextStyle(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w500),
+            ),
+          ),
         ),
       );
     }
@@ -425,5 +450,39 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
       return '⏱ ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
     return '🎯 开始专注';
+  }
+
+  Widget _buildFooterActionButton({
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+    required bool isPrimary,
+    bool isDark = false,
+  }) {
+    return Material(
+      color: isPrimary ? color : Colors.transparent,
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: !isPrimary
+              ? BoxDecoration(
+                  border: Border.all(color: color),
+                  borderRadius: BorderRadius.circular(6),
+                )
+              : null,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isPrimary ? Colors.white : color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
