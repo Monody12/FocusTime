@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import 'package:focus_timer/data/database/app_database.dart';
@@ -38,6 +39,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   int? _lastSyncTime;
   String _dbPath = '';
 
+  // 同步服务器登录表单的 FocusNode，用于精确控制 Tab 跳转顺序
+  late FocusNode _syncUrlFocusNode;
+  late FocusNode _syncUsernameFocusNode;
+  late FocusNode _syncPasswordFocusNode;
+  late FocusNode _syncRegisterFocusNode;
+  late FocusNode _syncLoginFocusNode;
+  late FocusNode _syncLogoutFocusNode;
+
   @override
   void initState() {
     super.initState();
@@ -60,7 +69,34 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _isLoggedIn = SyncService.isLoggedIn;
     _lastSyncTime = SyncService.lastSyncTime > 0 ? SyncService.lastSyncTime : null;
 
+    _syncUrlFocusNode = FocusNode();
+    _syncUsernameFocusNode = FocusNode();
+    _syncPasswordFocusNode = FocusNode();
+    _syncRegisterFocusNode = FocusNode();
+    _syncLoginFocusNode = FocusNode();
+    _syncLogoutFocusNode = FocusNode();
+
+    // 为 FocusNode 添加按键监听，拦截硬件 Tab 键，构建完整焦点链
+    _setupFocusNode(_syncUrlFocusNode, _syncUsernameFocusNode);
+    _setupFocusNode(_syncUsernameFocusNode, _syncPasswordFocusNode);
+    _setupFocusNode(_syncPasswordFocusNode, _syncRegisterFocusNode);
+    _setupFocusNode(_syncRegisterFocusNode, _syncLoginFocusNode);
+    _setupFocusNode(_syncLoginFocusNode, _syncLogoutFocusNode);
+
     _loadDbPath();
+  }
+
+  void _setupFocusNode(FocusNode node, FocusNode nextNode) {
+    node.onKeyEvent = (node, event) {
+      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.tab) {
+        // 如果按下了 Tab 键且没有按住 Shift（即向前跳转）
+        if (!HardwareKeyboard.instance.isShiftPressed) {
+          nextNode.requestFocus();
+          return KeyEventResult.handled; // 关键：告诉系统我们已经处理了，不要执行默认跳转
+        }
+      }
+      return KeyEventResult.ignored;
+    };
   }
 
   Future<void> _loadDbPath() async {
@@ -79,6 +115,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _syncServerUrlController.dispose();
     _syncUsernameController.dispose();
     _syncPasswordController.dispose();
+    // 释放登录表单 FocusNode
+    _syncUrlFocusNode.dispose();
+    _syncUsernameFocusNode.dispose();
+    _syncPasswordFocusNode.dispose();
+    _syncRegisterFocusNode.dispose();
+    _syncLoginFocusNode.dispose();
+    _syncLogoutFocusNode.dispose();
     super.dispose();
   }
 
@@ -346,57 +389,77 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         // Cloud Sync Section
                         _buildSectionTitle('☁ 同步服务器', isDark),
                         const SizedBox(height: 12),
-                        _buildTextSetting(
-                          label: '服务器地址',
-                          controller: _syncServerUrlController,
-                          onChanged: (value) {},
-                          hint: 'http://1.12.46.222:6677',
-                          isDark: isDark,
-                          enabled: !_isLoggedIn,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildTextSetting(
-                          label: '用户名',
-                          controller: _syncUsernameController,
-                          onChanged: (value) {},
-                          hint: '用户名',
-                          isDark: isDark,
-                          enabled: !_isLoggedIn,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildTextSetting(
-                          label: '密码',
-                          controller: _syncPasswordController,
-                          onChanged: (value) {},
-                          hint: '密码',
-                          isDark: isDark,
-                          enabled: !_isLoggedIn,
-                          obscureText: true,
-                        ),
-                        const SizedBox(height: 12),
-                        _buildButtonRow([
-                          _SettingButton(
-                            label: '注册',
-                            onPressed: _isLoggedIn ? null : _handleRegister,
-                            isPrimary: false,
-                            isDark: isDark,
+                        // 使用 FocusTraversalGroup 隔离整个同步区域的焦点
+                        FocusTraversalGroup(
+                          child: Column(
+                            children: [
+                              // 服务器地址
+                              _buildTextSetting(
+                                label: '服务器地址',
+                                controller: _syncServerUrlController,
+                                onChanged: (value) {},
+                                hint: 'http://1.12.46.222:6677',
+                                isDark: isDark,
+                                enabled: !_isLoggedIn,
+                                focusNode: _syncUrlFocusNode,
+                                nextFocusNode: _syncUsernameFocusNode,
+                              ),
+                              const SizedBox(height: 12),
+                              // 用户名
+                              _buildTextSetting(
+                                label: '用户名',
+                                controller: _syncUsernameController,
+                                onChanged: (value) {},
+                                hint: '用户名',
+                                isDark: isDark,
+                                enabled: !_isLoggedIn,
+                                focusNode: _syncUsernameFocusNode,
+                                nextFocusNode: _syncPasswordFocusNode,
+                              ),
+                              const SizedBox(height: 12),
+                              // 密码
+                              _buildTextSetting(
+                                label: '密码',
+                                controller: _syncPasswordController,
+                                onChanged: (value) {},
+                                hint: '密码',
+                                isDark: isDark,
+                                enabled: !_isLoggedIn,
+                                obscureText: true,
+                                focusNode: _syncPasswordFocusNode,
+                                nextFocusNode: _syncRegisterFocusNode,
+                                onSubmitted: (_) => _isLoggedIn ? null : _handleLogin(),
+                              ),
+                              const SizedBox(height: 12),
+                              _buildButtonRow([
+                                _SettingButton(
+                                  label: '注册',
+                                  onPressed: _isLoggedIn ? null : _handleRegister,
+                                  isPrimary: false,
+                                  isDark: isDark,
+                                  focusNode: _syncRegisterFocusNode,
+                                ),
+                                const SizedBox(width: 8),
+                                _SettingButton(
+                                  label: '登录',
+                                  onPressed: _isLoggedIn ? null : _handleLogin,
+                                  isPrimary: true,
+                                  isDark: isDark,
+                                  focusNode: _syncLoginFocusNode,
+                                ),
+                                const SizedBox(width: 8),
+                                _SettingButton(
+                                  label: '登出',
+                                  onPressed: _isLoggedIn ? _handleLogout : null,
+                                  isPrimary: false,
+                                  isDanger: true,
+                                  isDark: isDark,
+                                  focusNode: _syncLogoutFocusNode,
+                                ),
+                              ]),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          _SettingButton(
-                            label: '登录',
-                            onPressed: _isLoggedIn ? null : _handleLogin,
-                            isPrimary: true,
-                            isDark: isDark,
-                          ),
-                          const SizedBox(width: 8),
-                          _SettingButton(
-                            label: '登出',
-                            onPressed: _isLoggedIn ? _handleLogout : null,
-                            isPrimary: false,
-                            isDanger: true,
-                            isDark: isDark,
-                          ),
-                        ]),
+                        ),
                         if (_isLoggedIn && _lastSyncTime != null) ...[
                           const SizedBox(height: 12),
                           Text(
@@ -667,6 +730,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     required bool isDark,
     bool enabled = true,
     bool obscureText = false,
+    // 可选的 FocusNode，用于精确控制焦点顺序
+    FocusNode? focusNode,
+    // Tab / Next 时跳转到的目标 FocusNode
+    FocusNode? nextFocusNode,
+    // Enter 键提交回调（密码框登录用）
+    ValueChanged<String>? onSubmitted,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -683,6 +752,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           controller: controller,
           enabled: enabled,
           obscureText: obscureText,
+          focusNode: focusNode,
+          // 有 nextFocusNode 时显示 next 动作键，否则显示 done
+          textInputAction: nextFocusNode != null
+              ? TextInputAction.next
+              : (onSubmitted != null ? TextInputAction.go : TextInputAction.done),
           style: TextStyle(fontSize: 13),
           decoration: InputDecoration(
             hintText: hint,
@@ -693,6 +767,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           onChanged: onChanged,
+          onSubmitted: onSubmitted,
+          // Tab / Next 时精确跳转到指定输入框，避免焦点飘到侧边栏任务清单
+          onEditingComplete: () {
+            if (nextFocusNode != null) {
+              nextFocusNode.requestFocus();
+            } else {
+              focusNode?.unfocus();
+            }
+          },
         ),
       ],
     );
@@ -969,6 +1052,7 @@ class _SettingButton extends StatelessWidget {
   final bool isAccent;
   final bool isDanger;
   final bool isDark;
+  final FocusNode? focusNode;
 
   const _SettingButton({
     required this.label,
@@ -977,6 +1061,7 @@ class _SettingButton extends StatelessWidget {
     this.isAccent = false,
     this.isDanger = false,
     required this.isDark,
+    this.focusNode,
   });
 
   @override
@@ -1005,6 +1090,7 @@ class _SettingButton extends StatelessWidget {
       child: InkWell(
         onTap: onPressed,
         borderRadius: BorderRadius.circular(6),
+        focusNode: focusNode,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
