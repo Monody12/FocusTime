@@ -125,21 +125,37 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
               ? const Center(child: CircularProgressIndicator())
               : taskState.tasks.isEmpty
                   ? _buildEmptyState(isDark)
-                  : ListView(
-                      children: [
-                        // Incomplete tasks
-                        for (int i = 0; i < incompleteTasks.length; i++)
-                          TaskItemWidget(
-                            key: ValueKey(incompleteTasks[i].id),
-                            task: incompleteTasks[i],
-                            isSelected: taskState.selectedTaskId == incompleteTasks[i].id,
-                            onTap: () {
-                              taskNotifier.setSelectedTask(incompleteTasks[i].id);
-                              widget.onTaskSelected?.call(incompleteTasks[i].id);
+                    : ListView(
+                        children: [
+                          // Incomplete tasks
+                          ReorderableListView(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            // 由 TaskItemWidget 内的 ReorderableDragStartListener 接管拖拽
+                            buildDefaultDragHandles: false,
+                            onReorder: (oldIndex, newIndex) {
+                              if (newIndex > oldIndex) newIndex -= 1;
+                              final taskIds = incompleteTasks.map((t) => t.id).toList();
+                              final item = taskIds.removeAt(oldIndex);
+                              taskIds.insert(newIndex, item);
+                              taskNotifier.reorderTasks(taskIds);
                             },
+                            children: [
+                              for (int i = 0; i < incompleteTasks.length; i++)
+                                TaskItemWidget(
+                                  key: ValueKey(incompleteTasks[i].id),
+                                  task: incompleteTasks[i],
+                                  index: i,
+                                  isSelected: taskState.selectedTaskId == incompleteTasks[i].id,
+                                  onTap: () {
+                                    taskNotifier.setSelectedTask(incompleteTasks[i].id);
+                                    widget.onTaskSelected?.call(incompleteTasks[i].id);
+                                  },
+                                ),
+                            ],
                           ),
 
-                        // Completed tasks
+                          // Completed tasks
                         if (completedTasks.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Padding(

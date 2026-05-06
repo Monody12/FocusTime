@@ -6,6 +6,8 @@ import '../../providers/task_provider.dart';
 class TaskItemWidget extends ConsumerStatefulWidget {
   final TaskItem task;
   final bool isSelected;
+  // 当在 ReorderableListView 中时提供此 index，用于鼠标拖动排序
+  final int? index;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
@@ -13,6 +15,7 @@ class TaskItemWidget extends ConsumerStatefulWidget {
     super.key,
     required this.task,
     required this.isSelected,
+    this.index,
     required this.onTap,
     this.onLongPress,
   });
@@ -140,9 +143,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     );
 
     // 长按拖拽：用于将任务移动到其他清单
-    return LongPressDraggable<String>(
+    final draggable = LongPressDraggable<String>(
       data: widget.task.id,
-      delay: const Duration(milliseconds: 200),
+      delay: const Duration(milliseconds: 300),
       feedback: Material(
         elevation: 4,
         borderRadius: BorderRadius.circular(8),
@@ -209,6 +212,17 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       },
       child: content,
     );
+
+    // 当在 ReorderableListView 中时，用 ReorderableDragStartListener 包裹整个 item
+    // 鼠标按住即可拖动排序（无需专门手柄），长按依然触发跨清单拖拽
+    if (widget.index != null) {
+      return ReorderableDragStartListener(
+        index: widget.index!,
+        child: draggable,
+      );
+    }
+
+    return draggable;
   }
 
   bool _isOverdue(String? dueDate) {

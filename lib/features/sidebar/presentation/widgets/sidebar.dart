@@ -120,33 +120,55 @@ class _SidebarState extends ConsumerState<Sidebar> {
                   ),
                 ),
 
-                // Custom lists (as drop targets for task drag-and-drop)
-                ...customLists.map((list) {
-                  if (_editingListId == list.id) {
-                    return _buildEditingItem(list.id, list.name, isDark);
-                  }
-                  return _buildDraggableListItem(
-                    context,
-                    list: list,
-                    isSelected: taskState.currentListId == list.id,
-                    isHovering: _dragHoverListId == list.id,
-                    onTap: () {
-                      taskNotifier.setCurrentList(list.id, 'custom');
-                      widget.onListChanged?.call();
-                    },
-                    onHover: (hovering) {
-                      setState(() {
-                        _dragHoverListId = hovering ? list.id : null;
-                      });
-                    },
-                    onAccept: (taskId) async {
-                      await taskNotifier.updateTask(taskId, {'listId': list.id});
-                      widget.onListChanged?.call();
-                    },
-                    onLongPress: () => _showListMenu(context, list.id, list.name),
-                    isDark: isDark,
-                  );
-                }),
+                // Custom lists (as drop targets for task drag-and-drop, and reorderable)
+                ReorderableListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onReorder: (oldIndex, newIndex) {
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final listIds = customLists.map((l) => l.id).toList();
+                    final item = listIds.removeAt(oldIndex);
+                    listIds.insert(newIndex, item);
+                    taskNotifier.reorderLists(listIds, offset: systemLists.length);
+                  },
+                  // buildDefaultDragHandles: false，由 ReorderableDragStartListener 接管
+                  buildDefaultDragHandles: false,
+                  children: customLists.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final list = entry.value;
+                    if (_editingListId == list.id) {
+                      return SizedBox(
+                        key: ValueKey('edit-${list.id}'),
+                        child: _buildEditingItem(list.id, list.name, isDark),
+                      );
+                    }
+                    // 用 ReorderableDragStartListener 包裹整个项目，鼠标按住即可拖动排序
+                    return ReorderableDragStartListener(
+                      key: ValueKey(list.id),
+                      index: index,
+                      child: _buildDraggableListItem(
+                        context,
+                        list: list,
+                        isSelected: taskState.currentListId == list.id,
+                        isHovering: _dragHoverListId == list.id,
+                        onTap: () {
+                          taskNotifier.setCurrentList(list.id, 'custom');
+                          widget.onListChanged?.call();
+                        },
+                        onHover: (hovering) {
+                          setState(() {
+                            _dragHoverListId = hovering ? list.id : null;
+                          });
+                        },
+                        onAccept: (taskId) async {
+                          await taskNotifier.updateTask(taskId, {'listId': list.id});
+                          widget.onListChanged?.call();
+                        },
+                        isDark: isDark,
+                      ),
+                    );
+                  }).toList(),
+                ),
 
                 // New list input
                 if (_showNewList)
@@ -230,7 +252,6 @@ class _SidebarState extends ConsumerState<Sidebar> {
     required VoidCallback onTap,
     required Function(bool) onHover,
     required Function(String) onAccept,
-    VoidCallback? onLongPress,
     required bool isDark,
   }) {
     return DragTarget<String>(
@@ -247,7 +268,6 @@ class _SidebarState extends ConsumerState<Sidebar> {
       },
       builder: (context, candidateData, rejectedData) {
         return GestureDetector(
-          onLongPress: onLongPress,
           onSecondaryTapDown: (details) => _showContextMenu(context, details.globalPosition, list.id, list.name),
           child: Material(
             color: isHovering
@@ -277,10 +297,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       ),
                     ),
                     if (isHovering)
-                      Icon(
+                      const Icon(
                         Icons.add_circle,
                         size: 18,
-                        color: const Color(0xFF7C3AED),
+                        color: Color(0xFF7C3AED),
                       ),
                   ],
                 ),
