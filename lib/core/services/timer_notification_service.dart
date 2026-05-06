@@ -23,6 +23,7 @@ class TimerNotificationService {
   static Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
+    dev.log('[TimerNotificationService] 正在初始化通知服务...');
 
     // 1. 设置音频播放器为循环模式，直到用户手动停止
     await _audioPlayer.setReleaseMode(ReleaseMode.loop);
@@ -38,11 +39,14 @@ class TimerNotificationService {
 
         // 注册通知点击/动作回调
         _winNotifier!.initNotificationCallBack((details) {
-          // 注意：windows_notification 插件在这里有一个拼写错误，属性名是 argrument 而非 argument
           final String? arguments = details.argrument;
           dev.log('[TimerNotificationService] 通知被激活, 动作: $arguments');
-          if (arguments != null && _onAction != null) {
-            _onAction!(arguments);
+          if (arguments != null) {
+            if (_onAction != null) {
+              _onAction!(arguments);
+            } else {
+              dev.log('[TimerNotificationService] 警告: _onAction 为空，无法处理动作: $arguments');
+            }
           }
         });
       } catch (e) {
@@ -124,7 +128,7 @@ class TimerNotificationService {
       if (phase == 'focus') {
         actionsXml = '''
           <action content="开始休息" arguments="action:start_break" />
-          <action content="忽略" arguments="action:stop_alarm" />
+          <action content="继续专注" arguments="action:start_focus" />
         ''';
       } else {
         actionsXml = '''

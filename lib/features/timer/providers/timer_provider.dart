@@ -6,6 +6,7 @@ import '../../../../core/utils/time_utils.dart';
 import 'package:focus_timer/core/services/timer_notification_service.dart';
 import 'package:focus_timer/data/database/app_database.dart';
 import 'package:focus_timer/data/sync/sync_service.dart';
+import 'package:focus_timer/features/tasks/providers/task_provider.dart';
 
 enum TimerMode { singleCore, pomodoro }
 enum TimerStatus { idle, running, paused, completed }
@@ -226,9 +227,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
           ? TimerStatus.running
           : timerStatusStr == 'paused'
               ? TimerStatus.paused
-              : timerStatusStr == 'completed'
-                  ? TimerStatus.completed
-                  : TimerStatus.idle,
+              : TimerStatus.idle, // Reset completed to idle on app restart as requested
       timerPhase: timerPhase,
       currentCycle: currentCycle,
       currentTask: currentTask,
@@ -483,6 +482,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
   void _onComplete() {
     _stopTimer();
 
+    // 记录刚刚结束的阶段，用于通知显示
+    final finishedPhase = state.timerPhase;
+
     // 番茄工作法逻辑
     if (state.timerMode == TimerMode.pomodoro) {
       if (state.timerPhase == 'focus') {
@@ -529,11 +531,11 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
     // 所有阶段结束后保存状态并触发铃声/系统通知
     _saveState();
-    _triggerCompletionNotification();
+    _triggerCompletionNotification(finishedPhase);
   }
 
   /// 计时结束时触发铃声 + Windows 通知中心 Toast + 应用内弹窗
-  void _triggerCompletionNotification() {
+  void _triggerCompletionNotification(String finishedPhase) {
     final task = state.currentTask.isNotEmpty ? state.currentTask : null;
     final template = state.notificationTemplate;
     // 将模板中的 {task} 占位符替换为实际任务名
@@ -541,11 +543,11 @@ class TimerNotifier extends StateNotifier<TimerState> {
         ? template.replaceAll('{task}', task)
         : template.replaceAll('！{task}', '！').replaceAll('{task}', '');
 
-    // 根据当前阶段决定通知标题
+    // 根据刚刚结束的阶段决定通知标题
     String title;
-    if (state.timerPhase == 'focus') {
+    if (finishedPhase == 'focus') {
       title = '🎉 专注完成！';
-    } else if (state.timerPhase == 'long-break') {
+    } else if (finishedPhase == 'long-break') {
       title = '☕ 长休息结束';
     } else {
       title = '⏰ 休息结束';
@@ -556,7 +558,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
       title: title,
       body: body,
       soundEnabled: state.soundEnabled,
-      phase: state.timerPhase,
+      phase: finishedPhase,
       duration: state.notificationDuration,
     );
   }
@@ -580,7 +582,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
     
     // 触发同步
     if (SyncService.isLoggedIn) {
-      SyncService.fullSync();
+      _ref.read(taskProvider.notifier).sync();
     }
   }
 
