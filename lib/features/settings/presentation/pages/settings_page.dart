@@ -907,9 +907,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (result.success) {
         setState(() {
           _isLoggedIn = true;
-          _syncStatus = '注册成功';
+          _syncStatus = '注册成功，正在同步...';
         });
         _showSnackBar('注册成功');
+        _handleSyncNow();
       } else {
         setState(() => _syncStatus = result.error ?? '注册失败');
         _showSnackBar(result.error ?? '注册失败', isError: true);
@@ -939,9 +940,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (result.success) {
         setState(() {
           _isLoggedIn = true;
-          _syncStatus = '登录成功';
+          _syncStatus = '登录成功，正在同步...';
         });
         _showSnackBar('登录成功');
+        _handleSyncNow();
       } else {
         setState(() => _syncStatus = result.error ?? '登录失败');
         _showSnackBar(result.error ?? '登录失败', isError: true);
@@ -979,7 +981,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     });
 
     try {
-      final result = await SyncService.fullSync();
+      final taskNotifier = ref.read(taskProvider.notifier);
+      final result = await taskNotifier.sync();
 
       if (result.tokenExpired) {
         setState(() {
@@ -993,8 +996,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _lastSyncTime = lastSync > 0 ? lastSync : null;
           _syncStatus = '同步完成';
         });
-        // Refresh tasks after sync
-        ref.read(taskProvider.notifier).loadTasks();
       } else {
         setState(() => _syncStatus = '同步失败或未配置');
       }

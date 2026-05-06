@@ -245,16 +245,28 @@ class TaskNotifier extends StateNotifier<TaskState> {
     _triggerSync();
   }
 
-  void _triggerSync() {
-    if (SyncService.isLoggedIn) {
-      SyncService.fullSync().then((result) {
-        if (result.success) {
-          // 如果同步成功，可能需要重新加载数据以获取远程变更
-          loadLists();
-          loadTasks();
-        }
-      });
+  Future<({bool success, bool tokenExpired})> sync() async {
+    if (!SyncService.isLoggedIn) {
+      return (success: false, tokenExpired: false);
     }
+
+    state = state.copyWith(isLoading: true);
+    try {
+      final result = await SyncService.fullSync();
+      if (result.success) {
+        await loadLists();
+        await loadTasks();
+      }
+      state = state.copyWith(isLoading: false);
+      return result;
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+      return (success: false, tokenExpired: false);
+    }
+  }
+
+  void _triggerSync() {
+    sync();
   }
 
   Future<void> createTask(String title, {bool isMyDay = false}) async {
