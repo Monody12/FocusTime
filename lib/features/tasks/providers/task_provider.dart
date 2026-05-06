@@ -167,8 +167,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
     state = state.copyWith(lists: lists);
   }
 
-  Future<void> loadTasks() async {
-    state = state.copyWith(isLoading: true);
+  Future<void> loadTasks({bool showLoading = true}) async {
+    if (showLoading) state = state.copyWith(isLoading: true);
     try {
       List<Map<String, dynamic>> dbTasks;
       if (state.currentViewType == 'my-day') {
@@ -342,8 +342,49 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> reorderTasks(List<String> taskIds) async {
+    // 1. 乐观更新：立即在内存中更新任务顺序，避免 UI 抖动
+    final tasks = [...state.tasks];
+    final idToIndex = {for (int i = 0; i < taskIds.length; i++) taskIds[i]: i};
+    
+    // 只重新对传入的任务进行排序，保持其他任务（如已完成）的相对位置
+    tasks.sort((a, b) {
+      final indexA = idToIndex[a.id];
+      final indexB = idToIndex[b.id];
+      if (indexA != null && indexB != null) return indexA.compareTo(indexB);
+      if (indexA != null) return -1; // 排序中的任务靠前
+      if (indexB != null) return 1;
+      return a.sortOrder.compareTo(b.sortOrder); // 保持原有顺序
+    });
+
+    state = state.copyWith(tasks: tasks);
+
+    // 2. 异步更新数据库
     await AppDatabase.reorderTasks(taskIds);
-    await loadTasks();
+    // 3. 静默加载最新状态（不触发 loading 状态）
+    await loadTasks(showLoading: false);
+    _triggerSync();
+  }
+
+  Future<void> reorderLists(List<String> listIds, {int offset = 0}) async {
+    // 1. 乐观更新
+    final lists = [...state.lists];
+    final idToIndex = {for (int i = 0; i < listIds.length; i++) listIds[i]: i};
+    
+    lists.sort((a, b) {
+      final indexA = idToIndex[a.id];
+      final indexB = idToIndex[b.id];
+      if (indexA != null && indexB != null) return indexA.compareTo(indexB);
+      if (indexA != null) return -1;
+      if (indexB != null) return 1;
+      return a.sortOrder.compareTo(b.sortOrder);
+    });
+
+    state = state.copyWith(lists: lists);
+
+    // 2. 异步更新数据库
+    await AppDatabase.reorderLists(listIds, offset: offset);
+    // 3. 静默加载最新状态
+    await loadLists();
     _triggerSync();
   }
 }

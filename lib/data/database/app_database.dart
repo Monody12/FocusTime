@@ -411,10 +411,23 @@ class AppDatabase {
   static Future<void> reorderTasks(List<String> taskIds) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
+    final batch = db.batch();
     for (var i = 0; i < taskIds.length; i++) {
-      await db.update('tasks', {'sort_order': i, 'updated_at': now},
+      batch.update('tasks', {'sort_order': i, 'updated_at': now},
           where: 'id = ?', whereArgs: [taskIds[i]]);
     }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<void> reorderLists(List<String> listIds, {int offset = 0}) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final batch = db.batch();
+    for (var i = 0; i < listIds.length; i++) {
+      batch.update('lists', {'sort_order': i + offset, 'updated_at': now},
+          where: 'id = ?', whereArgs: [listIds[i]]);
+    }
+    await batch.commit(noResult: true);
   }
 
   // ========== 专注会话 ==========
