@@ -3,16 +3,21 @@ import 'dart:developer' as dev;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:windows_notification/windows_notification.dart';
 import 'package:windows_notification/notification_message.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 /// 计时器铃声与系统通知服务
 /// 职责：
 ///   1. 播放 assets/audio/alarm.wav 铃声（audioplayers, 支持循环模式）
-///   2. 发送 Windows 操作中心 Toast 通知（windows_notification, 支持自定义按钮交互）
+///   2. 发送 Windows 操作中心 Toast 通知（windows_notification）
+///   3. 发送 Android 本地通知（flutter_local_notifications）
 class TimerNotificationService {
   static final AudioPlayer _audioPlayer = AudioPlayer();
 
   // Windows 通知客户端（仅 Windows 平台初始化）
   static WindowsNotification? _winNotifier;
+
+  // Android 通知插件
+  static final FlutterLocalNotificationsPlugin _androidNotifier = FlutterLocalNotificationsPlugin();
 
   static bool _initialized = false;
 
@@ -25,46 +30,81 @@ class TimerNotificationService {
     _initialized = true;
     dev.log('[TimerNotificationService] 正在初始化通知服务...');
 
-    // 1. 设置音频播放器为循环模式，直到用户手动停止
+    // 1. 设置音频播放器为循环模式
     await _audioPlayer.setReleaseMode(ReleaseMode.loop);
 
     // 2. 仅在 Windows 下创建通知客户端
     if (Platform.isWindows) {
-      try {
-        _winNotifier = WindowsNotification(
-          // applicationId 建议为 null 以匹配 Flutter 编译后的 AUMID，
-          // 或者指定具体的 ID。PowerShell ID 是开发阶段的临时兼容方案。
-          applicationId: r'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe',
-        );
+      _initWindowsNotifier();
+    }
 
-        // 注册通知点击/动作回调
-        _winNotifier!.initNotificationCallBack((details) {
-          final String? arguments = details.argrument;
-          dev.log('[TimerNotificationService] 通知被激活, 动作: $arguments');
-          if (arguments != null) {
-            if (_onAction != null) {
-              _onAction!(arguments);
-            } else {
-              dev.log('[TimerNotificationService] 警告: _onAction 为空，无法处理动作: $arguments');
-            }
-          }
-        });
-      } catch (e) {
-        dev.log('[TimerNotificationService] Windows 通知初始化失败: $e');
-        _winNotifier = null;
-      }
+    // 3. 在 Android 下初始化通知插件
+    if (Platform.isAndroid) {
+      await _initAndroidNotifier();
     }
   }
 
-  /// 注册通知动作监听器（由 TimerNotifier 调用）
+  static void _initWindowsNotifier() {
+    try {
+      _winNotifier = WindowsNotification(
+        applicationId: r'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe',
+      );
+
+      _winNotifier!.initNotificationCallBack((details) {
+        final String? arguments = details.argrument;
+        dev.log('[TimerNotificationService] 通知被激活, 动作: $arguments');
+        if (arguments != null && _onAction != null) {
+          _onAction!(arguments);
+        }
+      });
+    } catch (e) {
+      dev.log('[TimerNotificationService] Windows 通知初始化失败: $e');
+    }
+  }
+
+  static Future<void> _initAndroidNotifier() async {
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    
+    const InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+    );
+
+    await _androidNotifier.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        final payload = response.actionId ?? response.payload;
+        dev.log('[TimerNotificationService] Android 通知动作: $payload');
+        if (payload != null && _onAction != null) {
+          // payload 可能是 'action:start_break' 这种格式，
+          // 但 flutter_local_notifications 的 actionId 是直接的 ID
+          final String normalizedPayload = payload.startsWith('action:') ? payload : 'action:$payload';
+          _onAction!(normalizedPayload);
+        }
+      },
+    );
+
+    // 创建通知渠道（Android 8.0+）
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'focus_timer_channel',
+      '专注计时器',
+      description: '用于发送计时结束的提醒',
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    await _androidNotifier
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+  }
+
+  /// 注册通知动作监听器
   static void setActionListener(Function(String) listener) {
     _onAction = listener;
   }
 
-  /// 触发计时完成：播放铃声 + 发送 Windows 通知
-  /// [title] 通知标题  [body] 通知正文  [soundEnabled] 是否播放铃声
-  /// [phase] 当前阶段，用于决定通知按钮
-  /// [duration] 持续模式：short, long, persistent
+  /// 触发计时完成
   static Future<void> triggerAlarm({
     required String title,
     required String body,
@@ -72,29 +112,65 @@ class TimerNotificationService {
     String phase = 'focus',
     String duration = 'long',
   }) async {
-    // 确保已初始化
     if (!_initialized) await initialize();
 
     // 1. 响铃处理
-    // 复刻老架构：Windows 平台优先使用 Toast 自带的系统音（声音更好听且支持系统级循环）
-    // 如果不是 Windows 平台，或者 soundEnabled 为 false，则使用 audioplayers 作为兜底
     if (!Platform.isWindows && soundEnabled) {
       final bool loop = duration == 'persistent';
       await _playAlarmSound(loop: loop);
     }
 
-    // 2. Windows 操作中心 Toast 通知（包含交互按钮）
+    // 2. 发送通知
     if (Platform.isWindows && _winNotifier != null) {
       await _sendActionableToast(title: title, body: body, phase: phase, duration: duration);
+    } else if (Platform.isAndroid) {
+      await _sendAndroidNotification(title: title, body: body, phase: phase);
     }
+  }
+
+  static Future<void> _sendAndroidNotification({
+    required String title,
+    required String body,
+    required String phase,
+  }) async {
+    final List<AndroidNotificationAction> actions = [];
+    if (phase == 'focus') {
+      actions.add(const AndroidNotificationAction('start_break', '开始休息', showsUserInterface: true));
+      actions.add(const AndroidNotificationAction('start_focus', '继续专注', showsUserInterface: true));
+    } else {
+      actions.add(const AndroidNotificationAction('start_focus', '开始专注', showsUserInterface: true));
+      actions.add(const AndroidNotificationAction('skip_break', '跳过休息', showsUserInterface: true));
+    }
+
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+      'focus_timer_channel',
+      '专注计时器',
+      channelDescription: '用于发送计时结束的提醒',
+      importance: Importance.max,
+      priority: Priority.high,
+      ticker: 'ticker',
+      actions: actions,
+      fullScreenIntent: true,
+      category: AndroidNotificationCategory.alarm,
+    );
+
+    final NotificationDetails platformChannelSpecifics =
+        NotificationDetails(android: androidPlatformChannelSpecifics);
+
+    await _androidNotifier.show(
+      0,
+      title,
+      body,
+      platformChannelSpecifics,
+      payload: 'action:none',
+    );
   }
 
   /// 播放内置铃声文件
   static Future<void> _playAlarmSound({bool loop = true}) async {
     try {
-      // 停止可能正在播放的上一次铃声
       await _audioPlayer.stop();
-      // 根据参数决定是否循环播放
       await _audioPlayer.setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release);
       await _audioPlayer.play(AssetSource('audio/alarm.wav'));
     } catch (e) {
@@ -110,20 +186,13 @@ class TimerNotificationService {
     required String duration,
   }) async {
     try {
-      // 1. 映射持续时间到 Windows Toast Scenario 和系统提示音
-      // 复刻老架构逻辑，但确保所有模式下都使用"闹钟"声音，而非默认的消息提示音
-      // persistent -> scenario="alarm", audio="Notification.Looping.Alarm", loop="true"
-      // long -> scenario="reminder", audio="Notification.Looping.Alarm", loop="false"
-      // short -> scenario="default", audio="Notification.Looping.Alarm", loop="false"
       final String scenario = duration == 'persistent'
           ? 'alarm'
           : (duration == 'long' ? 'reminder' : 'default');
       
-      final String audioSrc = 'ms-winsoundevent:Notification.Looping.Alarm';
-      
+      const String audioSrc = 'ms-winsoundevent:Notification.Looping.Alarm';
       final String loopingAttr = duration != 'short' ? ' loop="true"' : ' loop="false"';
 
-      // 2. 根据阶段构建按钮
       String actionsXml = '';
       if (phase == 'focus') {
         actionsXml = '''
@@ -137,8 +206,6 @@ class TimerNotificationService {
         ''';
       }
 
-      // 3. 构造 Toast XML
-      // 完整复刻老架构的 XML 结构和音频配置
       final String toastXml = '''
         <toast scenario="$scenario">
           <visual>
@@ -165,22 +232,19 @@ class TimerNotificationService {
     }
   }
 
-  /// 手动停止铃声（如用户点击按钮后调用）
+  /// 手动停止铃声
   static Future<void> stopAlarm() async {
     dev.log('[TimerNotificationService] 停止铃声并尝试清除系统通知');
-    // 停止本地音频播放器
     await _audioPlayer.stop();
     
-    // 隐藏的 Bug 修复：
-    // 在 Windows 系统中，如果 Toast 配置了 loop="true"，声音是由操作系统接管的。
-    // 仅仅停止 _audioPlayer 无法停止系统级的 Toast 声音。
-    // 必须通过移除该通知来让系统自动停止发声。
     if (Platform.isWindows && _winNotifier != null) {
       try {
         _winNotifier!.removeNotificationId('timer_completion', 'focus_my_time');
       } catch (e) {
         dev.log('[TimerNotificationService] 清除 Windows 通知失败: $e');
       }
+    } else if (Platform.isAndroid) {
+      await _androidNotifier.cancel(0);
     }
   }
 

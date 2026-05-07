@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
@@ -9,8 +10,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 初始化桌面端 SQLite FFI（Android/iOS 不需要此步骤）
-  sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
+  if (Platform.isWindows || Platform.isLinux) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
 
   // 初始化同步服务，从本地数据库加载登录状态
   await SyncService.init();
