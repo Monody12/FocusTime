@@ -588,7 +588,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         // Version info
                         Center(
                           child: Text(
-                            'v1.0.1',
+                            'v1.0.8',
                             style: TextStyle(
                               fontSize: 12,
                               color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
