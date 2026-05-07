@@ -365,13 +365,17 @@ class TimerNotifier extends StateNotifier<TimerState> {
     _saveState();
   }
 
+  /// 开始休息阶段
   void startBreak() {
     // 停止铃声提醒
     TimerNotificationService.stopAlarm();
 
     if (state.timerMode != TimerMode.pomodoro) return;
 
-    final isLongBreak = state.currentCycle >= state.pomodoroConfig.cyclesBeforeLongBreak;
+    // 逻辑修复：优先检查 timerPhase，因为在手动模式下，currentCycle 可能在专注结束时已被重置
+    final isLongBreak = state.timerPhase == 'long-break' || 
+                        state.currentCycle >= state.pomodoroConfig.cyclesBeforeLongBreak;
+    
     final breakSeconds = (isLongBreak
             ? state.pomodoroConfig.longBreakDuration
             : state.pomodoroConfig.breakDuration) *
@@ -467,8 +471,10 @@ class TimerNotifier extends StateNotifier<TimerState> {
     _stopTimer();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (state.elapsedSeconds >= state.totalSeconds) {
+        // 计时到达目标时间
         _onComplete();
       } else {
+        // 每秒更新已流逝时间，触发 UI 局部刷新
         state = state.copyWith(elapsedSeconds: state.elapsedSeconds + 1);
       }
     });
@@ -496,14 +502,15 @@ class TimerNotifier extends StateNotifier<TimerState> {
             newCycle >= state.pomodoroConfig.cyclesBeforeLongBreak;
 
         if (state.pomodoroConfig.autoStartBreak) {
-          // 自动模式：直接开始休息
+          // 自动模式：专注结束直接开始休息
           startBreak();
-          // 长休息后重置 cycle 计数
+          // 长休息后重置 cycle 计数（此处 reset 不会影响 startBreak 因为 startBreak 是同步执行的）
           if (isLongBreak) {
             state = state.copyWith(currentCycle: 0);
           }
         } else {
-          // 手动模式：进入 completed 状态，等待用户点击开始休息
+          // 手动模式：进入 completed 状态，等待用户在 UI 上点击“开始休息”
+          // 这里提前设置好 timerPhase，确保用户点击时能正确识别是长休息还是短休息
           state = state.copyWith(
             timerStatus: TimerStatus.completed,
             timerPhase: isLongBreak ? 'long-break' : 'break',

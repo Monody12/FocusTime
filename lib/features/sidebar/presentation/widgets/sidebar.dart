@@ -143,10 +143,11 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       );
                     }
                     // 用 ReorderableDragStartListener 包裹整个项目，鼠标按住即可拖动排序
-                    return ReorderableDragStartListener(
-                      key: ValueKey(list.id),
-                      index: index,
-                      child: _buildDraggableListItem(
+                    // 根据平台选择拖拽监听器：移动端使用长按触发，防止干扰滑动翻页；桌面端使用立即触发。
+                    final isMobile = Theme.of(context).platform == TargetPlatform.android || 
+                                     Theme.of(context).platform == TargetPlatform.iOS;
+                    
+                    final Widget listItem = _buildDraggableListItem(
                         context,
                         list: list,
                         isSelected: taskState.currentListId == list.id,
@@ -165,7 +166,20 @@ class _SidebarState extends ConsumerState<Sidebar> {
                           widget.onListChanged?.call();
                         },
                         isDark: isDark,
-                      ),
+                      );
+
+                    if (isMobile) {
+                      return ReorderableDelayedDragStartListener(
+                        key: ValueKey(list.id),
+                        index: index,
+                        child: listItem,
+                      );
+                    }
+
+                    return ReorderableDragStartListener(
+                      key: ValueKey(list.id),
+                      index: index,
+                      child: listItem,
                     );
                   }).toList(),
                 ),

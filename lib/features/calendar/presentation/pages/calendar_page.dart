@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/recurrence_utils.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 class CalendarPage extends ConsumerStatefulWidget {
   const CalendarPage({super.key});
@@ -27,11 +28,6 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     _loadMonthData();
   }
 
-  @override
-  void didUpdateWidget(CalendarPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _loadMonthData();
-  }
 
   Future<void> _loadMonthData() async {
     final startDate = DateTime(_currentMonth.year, _currentMonth.month, 1);
@@ -116,6 +112,13 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Listen for session updates to refresh calendar data
+    ref.listen(sessionUpdateProvider, (previous, next) {
+      if (previous != next) {
+        _loadMonthData();
+      }
+    });
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final today = DateTime.now().toIso8601String().split('T')[0];
     final year = _currentMonth.year;
@@ -238,25 +241,32 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                     ),
                     if (stat != null) ...[
                       const SizedBox(height: 2),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if ((stat['focusMinutes'] as int) > 0)
-                            Text(
-                              '${stat['focusMinutes']}m',
-                              style: TextStyle(
-                                fontSize: 8,
-                                color: isSelected
-                                    ? Colors.white70
-                                    : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
-                              ),
-                            ),
-                          if ((stat['recurringCount'] as int) > 0)
-                            Text(
-                              '🔄',
-                              style: const TextStyle(fontSize: 8),
-                            ),
-                        ],
+                      // 使用 FittedBox 防止统计数字在小屏幕上溢出
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if ((stat['focusMinutes'] as int) > 0)
+                                Text(
+                                  '${stat['focusMinutes']}m',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    color: isSelected
+                                        ? Colors.white70
+                                        : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                                  ),
+                                ),
+                              if ((stat['recurringCount'] as int) > 0)
+                                const Text(
+                                  '🔄',
+                                  style: TextStyle(fontSize: 8),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ],
@@ -285,17 +295,18 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                 const SizedBox(height: 12),
 
                 if (_selectedDateSessions.isNotEmpty || _selectedDateTasks.isNotEmpty || _recurringTasks.isNotEmpty) ...[
-                  Row(
+                  // 将统计信息改为 Wrap，防止在小屏幕上由于文字过长导致像素溢出
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 8,
                     children: [
-                      if (_selectedDateSessions.isNotEmpty) ...[
+                      if (_selectedDateSessions.isNotEmpty)
                         Text(
                           '专注 ${_selectedDateSessions.fold<int>(0, (sum, s) => sum + ((s['durationSeconds'] as int) / 60).floor())} 分钟',
                           style: TextStyle(
                             color: isDark ? AppColors.darkText : AppColors.lightText,
                           ),
                         ),
-                        const SizedBox(width: 16),
-                      ],
                       if (_selectedDateTasks.isNotEmpty)
                         Text(
                           '完成 ${_selectedDateTasks.where((t) => t['completed'] == true).length} 项任务',

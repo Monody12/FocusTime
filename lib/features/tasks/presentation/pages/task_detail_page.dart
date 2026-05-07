@@ -589,6 +589,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
+      // 使用 Row + Flexible/Expanded 确保内容在窄屏下也能正确排列而不溢出
       child: Row(
         children: [
           Text(
@@ -598,12 +599,15 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            '${mins}分钟',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+          const SizedBox(width: 12),
+          // 使用 Expanded 包裹分钟数，确保其在中间占满空间
+          Expanded(
+            child: Text(
+              '${mins}分钟',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? AppColors.darkText : AppColors.lightText,
+              ),
             ),
           ),
           const SizedBox(width: 8),

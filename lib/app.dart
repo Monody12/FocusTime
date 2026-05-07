@@ -29,7 +29,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
 
   @override
   Widget build(BuildContext context) {
-    final timerState = ref.watch(timerProvider);
+    // final timerState = ref.watch(timerProvider); // Removed to prevent global rebuilds
     final timerNotifier = ref.read(timerProvider.notifier);
     final themeMode = ref.watch(themeProvider);
     final themeNotifier = ref.read(themeProvider.notifier);
@@ -118,12 +118,16 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                 color: isDark ? AppColors.darkText : AppColors.lightText,
                               ),
                             ),
-                          Text(
-                            'Focus Tasks',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                          // 应用标题，使用 Flexible 防止在极窄屏幕下挤压右侧按钮
+                          Flexible(
+                            child: Text(
+                              'Focus Tasks',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const Spacer(),
@@ -134,7 +138,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                             tooltip: '切换主题',
                             color: isDark ? AppColors.darkText : AppColors.lightText,
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 4),
                           // Settings button
                           TextButton.icon(
                             onPressed: () => setState(() => _showSettings = true),
@@ -142,6 +146,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                             label: isMobile ? const Text('') : const Text('设置'),
                             style: TextButton.styleFrom(
                               foregroundColor: isDark ? AppColors.darkText : AppColors.lightText,
+                              minimumSize: Size.zero,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
                             ),
                           ),
                         ],
@@ -169,18 +175,29 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                       child: Row(
                         children: [
                           if (_showNoTaskToast)
-                            Expanded(
+                            // 使用 Flexible 防止长提示溢出
+                            Flexible(
                               child: Text(
                                 '⚠ 请先选择一个任务',
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                                 ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             )
                           else
-                            _buildFocusButton(timerState, timerNotifier, isDark, isMobile),
-                          const SizedBox(width: 12),
+                            // 计时按钮使用 Flexible，确保其在极窄屏幕下不会挤压日历按钮
+                            Flexible(
+                              child: Consumer(
+                                builder: (context, ref, child) {
+                                  final timerState = ref.watch(timerProvider);
+                                  return _buildFocusButton(timerState, timerNotifier, isDark, isMobile);
+                                },
+                              ),
+                            ),
+                          const SizedBox(width: 8),
+                          // 日历切换按钮
                           OutlinedButton(
                             onPressed: () {
                               setState(() => _showCalendar = !_showCalendar);
@@ -402,8 +419,12 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
         final isPomodoro = timerState.timerMode == TimerMode.pomodoro;
         final nextIsBreak = isPomodoro && (timerState.timerPhase == 'break' || timerState.timerPhase == 'long-break');
 
-        return Row(
-          mainAxisSize: MainAxisSize.min,
+        // 当有多个操作按钮时，使用 Wrap 防止在窄屏手机上溢出
+        return Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             if (nextIsBreak)
               _buildFooterActionButton(
@@ -419,7 +440,6 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                 color: const Color(0xFF4FC3F7),
                 isPrimary: true,
               ),
-            const SizedBox(width: 8),
             _buildFooterActionButton(
               label: isMobile ? '🎯 继续' : '🎯 继续专注',
               onTap: () => timerNotifier.startFocus(),

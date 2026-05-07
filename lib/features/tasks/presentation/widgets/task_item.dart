@@ -213,9 +213,19 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       child: content,
     );
 
-    // 当在 ReorderableListView 中时，用 ReorderableDragStartListener 包裹整个 item
-    // 鼠标按住即可拖动排序（无需专门手柄），长按依然触发跨清单拖拽
+    // 当在 ReorderableListView 中时，根据平台选择拖拽监听器。
+    // 移动端 (Android/iOS) 使用长按触发 (Delayed)，防止与滑动翻页冲突；桌面端使用立即触发。
     if (widget.index != null) {
+      final isMobile = Theme.of(context).platform == TargetPlatform.android || 
+                       Theme.of(context).platform == TargetPlatform.iOS;
+      
+      if (isMobile) {
+        return ReorderableDelayedDragStartListener(
+          index: widget.index!,
+          child: draggable,
+        );
+      }
+
       return ReorderableDragStartListener(
         index: widget.index!,
         child: draggable,
