@@ -27,49 +27,44 @@
 
 | 组件 | 技术选型 |
 |------|----------|
-| 框架 | Flutter |
+| 框架 | Flutter (Client) / Node.js (Server) |
+| 语言 | Dart / TypeScript |
 | 状态管理 | Riverpod |
-| 数据库 | sqflite (v3) |
-| 主题 | Material 3 (Google Fonts / Outfit) |
-| 通知 | windows_notification & flutter_local_notifications |
+| 数据库 | SQLite (sqflite v3) |
+| 服务端 | Express + Better-SQLite3 |
+| 主题 | Material 3 (Outfit Font) |
+| 通知 | windows_notification & local_notifications |
 | 音频 | audioplayers |
-| 同步服务 | http 增量同步协议 |
+| 同步服务 | LWW 增量同步协议 |
 
-## 最近更新 (v1.0.6)
+### 🚀 最近更新 (v1.0.7)
+- **前后端源码合体**：将同步服务器 (Node.js/TypeScript) 源码集成到主仓库 `server/` 目录下，实现协议同步开发。
+- **Android 端 UI 深度优化**：
+    - 修复了移动端“任务列表”与“侧边栏”拖拽排序过于灵敏的问题，现统一使用**长按触发**。
+    - 彻底解决 Android 端计时过程中的**全局刷新**与**像素溢出**警告，大幅提升流畅度。
+- **核心逻辑修复**：修正了番茄钟循环模式下手动切换阶段导致的长休息判定错误。
 
-### 🚀 新特性
+### 🚀 早期更新 (v1.0.6)
 - **自由拖拽排序 (Microsoft To Do 风格)**：
-    - **任务手动排序**：支持在清单内自由拖拽任务调整优先级。采用“全域拖拽”设计，在任务项任意位置点击并移动即可直接排序，交互简洁直观。
-    - **清单手动排序**：侧边栏自定义清单支持拖拽排序，方便根据使用频率整理清单位置。
-- **极致流畅体验**：
-    - **乐观更新算法 (Optimistic UI)**：排序操作在释放瞬间 UI 立即完成响应，无需等待数据库 IO，彻底消除操作滞后感。
-    - **静默后台同步**：排序变动采用静默加载机制，不再触发加载圈闪烁，保证操作流程的丝滑连贯。
-    - **确定性排序逻辑**：引入多级排序键（sort_order + created_at），确保在序号冲突时列表顺序依然绝对稳定。
-
-### 🚀 早期更新 (v1.0.5)
+    - **任务手动排序**：支持在清单内自由拖拽任务调整优先级。
+    - **清单手动排序**：侧边栏自定义清单支持拖拽排序。
 - **增强型专注交互**：计时结束支持“继续专注”，底部状态栏按钮优化。
 - **自动化云同步**：登录后自动同步，专注后自动触发后台数据刷新。
 
 ## 项目结构
 
 ```
-lib/
-├── main.dart                     # 应用入口
-├── app.dart                     # 主框架
-├── core/                        # 核心配置
-│   ├── theme/                   # 主题配置
-│   ├── services/                # 业务服务 (通知、音频等)
-│   ├── utils/                  # 工具函数
-│   └── providers/              # 全局 Provider
-├── data/                        # 数据层
-│   ├── database/               # SQLite 数据库 (支持迁移与软删除)
-│   └── sync/                   # 同步服务 (协议实现)
-└── features/                   # 功能模块
-    ├── timer/                  # 计时器 (支持单核/番茄钟)
-    ├── tasks/                  # 任务管理 (清单/重复/拖拽)
-    ├── sidebar/               # 侧边栏 (右键菜单/清单编辑)
-    ├── calendar/               # 日历视图 (专注记录概览)
-    └── settings/               # 设置页面 (同步配置/调试信息)
+FocusTimer (根目录)
+├── lib/                        # Flutter 客户端源码
+│   ├── main.dart               # 应用入口
+│   ├── app.dart                # 主框架
+│   └── features/               # 功能模块 (timer, tasks, calendar, etc.)
+├── server/                     # 同步服务器源码 (Node.js/TypeScript)
+│   ├── src/                    # 服务端核心逻辑 (auth, sync, db)
+│   ├── package.json            # 服务端依赖配置
+│   └── ecosystem.config.js     # PM2 部署配置
+├── data/                       # 数据层相关
+└── docs/                       # 项目文档与索引
 ```
 
 详细文件索引请查看 [docs/project-index.md](docs/project-index.md)。
@@ -94,4 +89,4 @@ flutter build windows
 
 ## 版本
 
-当前版本：v1.0.6 (Flutter Stable Ready)
+当前版本：v1.0.7 (Monorepo Enabled)
