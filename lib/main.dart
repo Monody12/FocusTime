@@ -5,6 +5,7 @@ import 'app.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'core/services/timer_notification_service.dart';
 import 'data/sync/sync_service.dart';
+import 'features/tasks/services/reminder_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,9 @@ void main() async {
 
   // 初始化计时器通知服务（铃声 + Windows Toast + 本地弹窗）
   await TimerNotificationService.initialize();
+
+  // 初始化任务提醒服务
+  await ReminderService.initialize();
 
   runApp(
     const ProviderScope(
