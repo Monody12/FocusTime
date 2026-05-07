@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/recurrence_utils.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
@@ -33,6 +34,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   Map<String, dynamic>? _recurrenceConfig;
   bool _todayCompleted = false;
   List<Map<String, dynamic>> _focusSessions = [];
+  TaskItem? _cachedTask;
 
   // FocusNode 用于监听焦点变化，实现鼠标离开自动保存
   late FocusNode _titleFocusNode;
@@ -111,43 +113,81 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   void _loadTaskData() async {
     final taskState = ref.read(taskProvider);
-    final task = taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
-    if (task != null) {
-      _titleController.text = task.title;
-      _notesController.text = task.notes ?? '';
-      _expectedMinutesController.text = task.expectedMinutes?.toString() ?? '';
-      _dueDate = task.dueDate;
-      _dueTime = task.dueTime;
-      _dueDateController.text = task.dueDate ?? '';
-      _dueTimeController.text = task.dueTime ?? '';
-      _recurrenceConfig = task.recurrenceConfig;
+    TaskItem? task = taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    
+    // 如果在当前视图状态中找不到任务（可能是切换了列表），则从数据库加载
+    if (task == null) {
+      final dbTask = await AppDatabase.getTaskById(widget.taskId);
+      if (dbTask != null) {
+        task = TaskItem(
+          id: dbTask['id'] as String,
+          listId: dbTask['listId'] as String,
+          title: dbTask['title'] as String,
+          notes: dbTask['notes'] as String?,
+          completed: dbTask['completed'] == true,
+          completedAt: dbTask['completedAt'] as int?,
+          dueDate: dbTask['dueDate'] as String?,
+          dueTime: dbTask['dueTime'] as String?,
+          sortOrder: dbTask['sortOrder'] as int,
+          isMyDay: dbTask['isMyDay'] == true,
+          myDayAddedAt: dbTask['myDayAddedAt'] as int?,
+          recurrenceConfig: dbTask['recurrenceConfig'] as Map<String, dynamic>?,
+          expectedMinutes: dbTask['expectedMinutes'] as int?,
+          isImportant: dbTask['isImportant'] == true,
+          reminderAt: dbTask['reminderAt'] as int?,
+          createdAt: dbTask['createdAt'] as int,
+          updatedAt: dbTask['updatedAt'] as int,
+        );
+      }
+    }
+
+    if (task != null && mounted) {
+      setState(() {
+        _cachedTask = task;
+        _titleController.text = task!.title;
+        _notesController.text = task!.notes ?? '';
+        _expectedMinutesController.text = task!.expectedMinutes?.toString() ?? '';
+        _dueDate = task!.dueDate;
+        _dueTime = task!.dueTime;
+        _dueDateController.text = task!.dueDate ?? '';
+        _dueTimeController.text = task!.dueTime ?? '';
+        _recurrenceConfig = task!.recurrenceConfig;
+      });
 
       // Load recurrence completion
       if (_recurrenceConfig != null) {
         final today = DateTime.now().toIso8601String().split('T')[0];
         final completions = await AppDatabase.getRecurrenceCompletions(widget.taskId);
-        setState(() {
-          _todayCompleted = completions.any((c) => c['completionDate'] == today);
-        });
+        if (mounted) {
+          setState(() {
+            _todayCompleted = completions.any((c) => c['completionDate'] == today);
+          });
+        }
       }
 
       // Load focus sessions
       final sessions = await AppDatabase.getSessionsByTaskId(widget.taskId);
-      setState(() {
-        _focusSessions = sessions;
-      });
+      if (mounted) {
+        setState(() {
+          _focusSessions = sessions;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final taskState = ref.watch(taskProvider);
-    final task = taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    // 优先从当前 state.tasks 中获取最新数据，如果没有则使用缓存的数据
+    final task = taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull ?? _cachedTask;
     final taskNotifier = ref.read(taskProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (task == null) {
-      return const SizedBox.shrink();
+      return Container(
+        color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        child: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     final sessionUpdateTick = ref.watch(sessionUpdateProvider);
@@ -339,6 +379,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
                   const SizedBox(height: 16),
 
+                  // Reminder
+                  _buildSectionLabel('提醒我', isDark),
+                  _buildReminderRow(task, isDark),
+
+                  const SizedBox(height: 16),
+
                   // Expected minutes
                   _buildSectionLabel('预期时间（分钟）', isDark),
                   TextField(
@@ -473,6 +519,167 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildReminderRow(TaskItem task, bool isDark) {
+    final hasReminder = task.reminderAt != null;
+    final isPast = hasReminder && task.reminderAt! < DateTime.now().millisecondsSinceEpoch;
+    final reminderText = hasReminder
+        ? DateFormat('yyyy/MM/dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(task.reminderAt!))
+        : '设置提醒时间';
+    
+    // 如果过期且未完成，显示为红色；如果已设置但未过期，显示为紫色(Accent)以提供视觉反馈
+    final textColor = (isPast && !task.completed)
+        ? Colors.red
+        : (hasReminder ? (isDark ? AppColors.darkAccent : AppColors.lightAccent) : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary));
+
+    return InkWell(
+      onTap: () => _showReminderPresets(task),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasReminder ? Icons.notifications_active : Icons.notifications_none,
+              size: 18,
+              color: hasReminder ? const Color(0xFF7C3AED) : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                reminderText,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: textColor,
+                ),
+              ),
+            ),
+            if (hasReminder)
+              IconButton(
+                icon: const Icon(Icons.close, size: 16),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                onPressed: () => ref.read(taskProvider.notifier).setReminder(task.id, null),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showReminderPresets(TaskItem task) {
+    final now = DateTime.now();
+    // 捕获页面级的 context 和 Navigator，避免在异步操作或弹窗关闭后 context 失效
+    final pageContext = context;
+    final taskNotifier = ref.read(taskProvider.notifier);
+    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    
+    showModalBottomSheet(
+      context: pageContext,
+      backgroundColor: isDarkTheme ? AppColors.darkBackground : AppColors.lightBackground,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Text('设置提醒', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            _buildPresetItem(
+              sheetContext,
+              icon: Icons.access_time,
+              label: '今天晚些时候',
+              time: '18:00',
+              onTap: () {
+                final target = DateTime(now.year, now.month, now.day, 18);
+                if (target.isAfter(now)) {
+                  taskNotifier.setReminder(task.id, target);
+                } else {
+                  taskNotifier.setReminder(task.id, now.add(const Duration(hours: 1)));
+                }
+                Navigator.pop(sheetContext);
+              },
+            ),
+            _buildPresetItem(
+              sheetContext,
+              icon: Icons.wb_sunny_outlined,
+              label: '明天上午',
+              time: '09:00',
+              onTap: () {
+                final target = DateTime(now.year, now.month, now.day + 1, 9);
+                taskNotifier.setReminder(task.id, target);
+                Navigator.pop(sheetContext);
+              },
+            ),
+            _buildPresetItem(
+              sheetContext,
+              icon: Icons.next_week_outlined,
+              label: '下周一',
+              time: '09:00',
+              onTap: () {
+                int daysUntilMonday = (DateTime.monday - now.weekday + 7) % 7;
+                if (daysUntilMonday == 0) daysUntilMonday = 7;
+                final target = DateTime(now.year, now.month, now.day + daysUntilMonday, 9);
+                taskNotifier.setReminder(task.id, target);
+                Navigator.pop(sheetContext);
+              },
+            ),
+            const Divider(),
+            _buildPresetItem(
+              sheetContext,
+              icon: Icons.calendar_today,
+              label: '选择日期和时间',
+              onTap: () async {
+                // 先关闭底部菜单
+                Navigator.pop(sheetContext);
+                
+                // 使用页面级的 context 弹出日期选择器
+                final date = await showDatePicker(
+                  context: pageContext,
+                  initialDate: now,
+                  firstDate: now,
+                  lastDate: now.add(const Duration(days: 365)),
+                );
+                
+                if (date != null && mounted) {
+                  // 使用页面级的 context 弹出时间选择器
+                  final time = await showTimePicker(
+                    context: pageContext,
+                    initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+                  );
+                  
+                  if (time != null) {
+                    final target = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                    taskNotifier.setReminder(task.id, target);
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPresetItem(BuildContext context, {required IconData icon, required String label, String? time, required VoidCallback onTap}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return ListTile(
+      leading: Icon(icon, color: const Color(0xFF7C3AED)),
+      title: Text(label),
+      trailing: time != null ? Text(time, style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)) : null,
+      onTap: onTap,
     );
   }
 

@@ -137,6 +137,18 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   ],
                 ),
               ),
+            // 提醒图标
+            if (widget.task.reminderAt != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(
+                  Icons.notifications_active,
+                  size: 14,
+                  color: (widget.task.reminderAt! < DateTime.now().millisecondsSinceEpoch && !widget.task.completed)
+                      ? Colors.red
+                      : const Color(0xFF7C3AED),
+                ),
+              ),
           ],
         ),
       ),

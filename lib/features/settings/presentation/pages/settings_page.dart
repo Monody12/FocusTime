@@ -23,6 +23,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late TextEditingController _cyclesController;
   late TextEditingController _minDurationController;
   late TextEditingController _notificationTemplateController;
+  late TextEditingController _snoozeDurationController;
   bool _enableCycle = false;
   bool _autoStartNext = false;
   bool _autoStartBreak = false;
@@ -57,6 +58,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _cyclesController = TextEditingController(text: timerState.pomodoroConfig.cyclesBeforeLongBreak.toString());
     _minDurationController = TextEditingController(text: timerState.singleCoreConfig.minDuration.toString());
     _notificationTemplateController = TextEditingController(text: timerState.notificationTemplate);
+    _snoozeDurationController = TextEditingController(text: timerState.snoozeDurationMinutes.toString());
     _enableCycle = timerState.pomodoroConfig.enableCycle;
     _autoStartNext = timerState.pomodoroConfig.autoStartNext;
     _autoStartBreak = timerState.pomodoroConfig.autoStartBreak;
@@ -112,6 +114,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _cyclesController.dispose();
     _minDurationController.dispose();
     _notificationTemplateController.dispose();
+    _snoozeDurationController.dispose();
     _syncServerUrlController.dispose();
     _syncUsernameController.dispose();
     _syncPasswordController.dispose();
@@ -304,6 +307,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             {'key': '{mode}', 'desc': '计时模式'},
                             {'key': '{duration}', 'desc': '计时时长'},
                           ],
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildNumberSetting(
+                          label: '稍后提醒时长（分钟）',
+                          controller: _snoozeDurationController,
+                          onChanged: (value) {
+                            final mins = int.tryParse(value) ?? 10;
+                            timerNotifier.setSnoozeDuration(mins);
+                          },
                           isDark: isDark,
                         ),
 

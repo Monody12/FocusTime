@@ -7,6 +7,7 @@ import 'package:focus_my_time/core/services/timer_notification_service.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 
 enum TimerMode { singleCore, pomodoro }
 enum TimerStatus { idle, running, paused, completed }
@@ -79,6 +80,7 @@ class TimerState {
   final bool soundEnabled;
   final String notificationDuration; // 'short', 'long', 'persistent'
   final String notificationTemplate;
+  final int snoozeDurationMinutes;
 
   TimerState({
     this.timerMode = TimerMode.singleCore,
@@ -98,6 +100,7 @@ class TimerState {
     this.soundEnabled = true,
     this.notificationDuration = 'long',
     this.notificationTemplate = '计时完成！{task}',
+    this.snoozeDurationMinutes = 10,
   });
 
   TimerState copyWith({
@@ -118,6 +121,7 @@ class TimerState {
     bool? soundEnabled,
     String? notificationDuration,
     String? notificationTemplate,
+    int? snoozeDurationMinutes,
   }) =>
       TimerState(
         timerMode: timerMode ?? this.timerMode,
@@ -137,6 +141,7 @@ class TimerState {
         soundEnabled: soundEnabled ?? this.soundEnabled,
         notificationDuration: notificationDuration ?? this.notificationDuration,
         notificationTemplate: notificationTemplate ?? this.notificationTemplate,
+        snoozeDurationMinutes: snoozeDurationMinutes ?? this.snoozeDurationMinutes,
       );
 
   int get remainingSeconds => (totalSeconds - elapsedSeconds).clamp(0, totalSeconds);
@@ -151,28 +156,51 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
   TimerNotifier(this._ref) : super(TimerState()) {
     _loadState();
-    _initNotificationListener();
+    _initNotificationListeners();
   }
 
   /// 初始化通知中心按钮动作监听
-  void _initNotificationListener() {
-    TimerNotificationService.setActionListener((action) {
-      dev.log('[TimerNotifier] 接收到通知动作: $action');
-      switch (action) {
-        case 'action:start_break':
-          startBreak();
-          break;
-        case 'action:start_focus':
-          startFocus();
-          break;
-        case 'action:skip_break':
-          skipBreak();
-          break;
-        case 'action:stop_alarm':
-          TimerNotificationService.stopAlarm();
-          break;
+  void _initNotificationListeners() {
+    // 1. 计时完成通知监听
+    TimerNotificationService.setActionListener(_handleNotificationAction);
+    
+    // 2. 任务提醒通知监听
+    ReminderService.setActionListener(_handleNotificationAction);
+  }
+
+  void _handleNotificationAction(String action) {
+    dev.log('[TimerNotifier] 接收到通知动作: $action');
+    
+    if (action.startsWith('action:start_focus_task:')) {
+      final taskId = action.replaceFirst('action:start_focus_task:', '');
+      final task = _ref.read(taskProvider).tasks.where((t) => t.id == taskId).firstOrNull;
+      if (task != null) {
+        startFocus(taskTitle: task.title, taskId: task.id);
       }
-    });
+      return;
+    }
+
+    if (action.startsWith('action:snooze_reminder:')) {
+      final taskId = action.replaceFirst('action:snooze_reminder:', '');
+      final nextReminder = DateTime.now().add(Duration(minutes: state.snoozeDurationMinutes));
+      _ref.read(taskProvider.notifier).setReminder(taskId, nextReminder);
+      return;
+    }
+
+    switch (action) {
+      case 'action:start_break':
+        startBreak();
+        break;
+      case 'action:start_focus':
+        startFocus();
+        break;
+      case 'action:skip_break':
+        skipBreak();
+        break;
+      case 'action:stop_alarm':
+        TimerNotificationService.stopAlarm();
+        break;
+    }
   }
 
   Future<void> _loadState() async {
@@ -193,6 +221,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
     final soundEnabled = prefs.getBool('soundEnabled') ?? true;
     final notificationDuration = prefs.getString('notificationDuration') ?? 'long';
     final notificationTemplate = prefs.getString('notificationTemplate') ?? '计时完成！{task}';
+    final snoozeDurationMinutes = prefs.getInt('snoozeDurationMinutes') ?? 10;
     final taskHistoryStr = prefs.getString('taskHistory') ?? '';
     final taskHistory = taskHistoryStr.isEmpty
         ? <String>[]
@@ -250,6 +279,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
       soundEnabled: soundEnabled,
       notificationDuration: notificationDuration,
       notificationTemplate: notificationTemplate,
+      snoozeDurationMinutes: snoozeDurationMinutes,
       taskHistory: taskHistory,
     );
 
@@ -287,6 +317,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
     await prefs.setBool('soundEnabled', state.soundEnabled);
     await prefs.setString('notificationDuration', state.notificationDuration);
     await prefs.setString('notificationTemplate', state.notificationTemplate);
+    await prefs.setInt('snoozeDurationMinutes', state.snoozeDurationMinutes);
     await prefs.setString('taskHistory', state.taskHistory.join(','));
   }
 
@@ -317,6 +348,11 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
   void setNotificationTemplate(String template) {
     state = state.copyWith(notificationTemplate: template);
+    _saveState();
+  }
+
+  void setSnoozeDuration(int minutes) {
+    state = state.copyWith(snoozeDurationMinutes: minutes);
     _saveState();
   }
 
