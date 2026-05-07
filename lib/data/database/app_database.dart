@@ -17,7 +17,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -52,6 +52,7 @@ class AppDatabase {
         recurrence_config TEXT,
         expected_minutes INTEGER,
         is_important INTEGER NOT NULL DEFAULT 0,
+        reminder_at INTEGER,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         deleted INTEGER NOT NULL DEFAULT 0
@@ -161,6 +162,14 @@ class AppDatabase {
       });
       await db.execute("UPDATE lists SET sort_order = sort_order + 1 WHERE id = 'system-all-tasks'");
     }
+
+    if (oldVersion < 6) {
+      try {
+        await db.execute('ALTER TABLE tasks ADD COLUMN reminder_at INTEGER');
+      } catch (e) {
+        // Ignore if column already exists
+      }
+    }
   }
 
   // ========== 设置 ==========
@@ -247,6 +256,13 @@ class AppDatabase {
 
   // ========== 任务 ==========
 
+  static Future<Map<String, dynamic>?> getTaskById(String id) async {
+    final db = await database;
+    final result = await db.query('tasks', where: 'id = ?', whereArgs: [id]);
+    if (result.isEmpty) return null;
+    return _mapTask(result.first);
+  }
+
   static Future<List<Map<String, dynamic>>> getTasksByList(String listId) async {
     final db = await database;
     final result = await db.query('tasks',
@@ -282,6 +298,7 @@ class AppDatabase {
     String? dueTime,
     bool isMyDay = false,
     int? expectedMinutes,
+    int? reminderAt,
   }) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -304,6 +321,7 @@ class AppDatabase {
       'recurrence_config': null,
       'expected_minutes': expectedMinutes,
       'is_important': 0,
+      'reminder_at': reminderAt,
       'created_at': now,
       'updated_at': now,
     });
@@ -323,6 +341,7 @@ class AppDatabase {
       'recurrenceConfig': null,
       'expectedMinutes': expectedMinutes,
       'isImportant': false,
+      'reminderAt': reminderAt,
       'createdAt': now,
       'updatedAt': now,
     };
@@ -351,6 +370,9 @@ class AppDatabase {
     }
     if (updates.containsKey('isImportant')) {
       mapped['is_important'] = updates['isImportant'] ? 1 : 0;
+    }
+    if (updates.containsKey('reminderAt')) {
+      mapped['reminder_at'] = updates['reminderAt'];
     }
 
     mapped['updated_at'] = DateTime.now().millisecondsSinceEpoch;
@@ -565,6 +587,7 @@ class AppDatabase {
           : null,
       'expectedMinutes': row['expected_minutes'],
       'isImportant': (row['is_important'] as int) == 1,
+      'reminderAt': row['reminder_at'],
       'createdAt': row['created_at'],
       'updatedAt': row['updated_at'],
       'deleted': (row['deleted'] as int) == 1,
@@ -716,6 +739,7 @@ class AppDatabase {
       'recurrence_config': data['recurrenceConfig'] != null ? _encodeJson(data['recurrenceConfig']) : null,
       'expected_minutes': data['expectedMinutes'],
       'is_important': (data['isImportant'] ?? false) ? 1 : 0,
+      'reminder_at': data['reminderAt'],
       'created_at': data['createdAt'],
     };
   }

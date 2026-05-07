@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
+import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 
 class TaskList {
   final String id;
@@ -52,6 +53,7 @@ class TaskItem {
   final Map<String, dynamic>? recurrenceConfig;
   final int? expectedMinutes;
   final bool isImportant;
+  final int? reminderAt;
   final int createdAt;
   final int updatedAt;
 
@@ -70,6 +72,7 @@ class TaskItem {
     this.recurrenceConfig,
     this.expectedMinutes,
     this.isImportant = false,
+    this.reminderAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -89,24 +92,30 @@ class TaskItem {
     Map<String, dynamic>? recurrenceConfig,
     int? expectedMinutes,
     bool? isImportant,
+    int? reminderAt,
     int? createdAt,
     int? updatedAt,
+    bool clearNotes = false,
+    bool clearDueDate = false,
+    bool clearDueTime = false,
+    bool clearReminder = false,
   }) =>
       TaskItem(
         id: id ?? this.id,
         listId: listId ?? this.listId,
         title: title ?? this.title,
-        notes: notes ?? this.notes,
+        notes: clearNotes ? null : (notes ?? this.notes),
         completed: completed ?? this.completed,
         completedAt: completedAt ?? this.completedAt,
-        dueDate: dueDate ?? this.dueDate,
-        dueTime: dueTime ?? this.dueTime,
+        dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
+        dueTime: clearDueTime ? null : (dueTime ?? this.dueTime),
         sortOrder: sortOrder ?? this.sortOrder,
         isMyDay: isMyDay ?? this.isMyDay,
         myDayAddedAt: myDayAddedAt ?? this.myDayAddedAt,
         recurrenceConfig: recurrenceConfig ?? this.recurrenceConfig,
         expectedMinutes: expectedMinutes ?? this.expectedMinutes,
         isImportant: isImportant ?? this.isImportant,
+        reminderAt: clearReminder ? null : (reminderAt ?? this.reminderAt),
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -136,13 +145,14 @@ class TaskState {
     String? currentViewType,
     String? selectedTaskId,
     bool? isLoading,
+    bool clearSelectedTask = false,
   }) =>
       TaskState(
         lists: lists ?? this.lists,
         tasks: tasks ?? this.tasks,
         currentListId: currentListId ?? this.currentListId,
         currentViewType: currentViewType ?? this.currentViewType,
-        selectedTaskId: selectedTaskId,
+        selectedTaskId: clearSelectedTask ? null : (selectedTaskId ?? this.selectedTaskId),
         isLoading: isLoading ?? this.isLoading,
       );
 }
@@ -150,7 +160,10 @@ class TaskState {
 class TaskNotifier extends StateNotifier<TaskState> {
   TaskNotifier() : super(TaskState()) {
     loadLists();
-    loadTasks();
+    loadTasks().then((_) {
+      // 首次加载完任务后，刷新所有提醒
+      ReminderService.refreshAll(state.tasks);
+    });
   }
 
   Future<void> loadLists() async {
@@ -197,6 +210,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
         recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
         expectedMinutes: m['expectedMinutes'] as int?,
         isImportant: m['isImportant'] == true,
+        reminderAt: m['reminderAt'] as int?,
         createdAt: m['createdAt'] as int,
         updatedAt: m['updatedAt'] as int,
       )).toList();
@@ -213,7 +227,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   void setSelectedTask(String? taskId) {
-    state = state.copyWith(selectedTaskId: taskId);
+    state = state.copyWith(selectedTaskId: taskId, clearSelectedTask: taskId == null);
   }
 
   Future<TaskList> createList(String name) async {
@@ -245,35 +259,46 @@ class TaskNotifier extends StateNotifier<TaskState> {
     _triggerSync();
   }
 
-  Future<({bool success, bool tokenExpired})> sync() async {
+  Future<({bool success, bool tokenExpired})> sync({bool background = false}) async {
     if (!SyncService.isLoggedIn) {
       return (success: false, tokenExpired: false);
     }
 
-    state = state.copyWith(isLoading: true);
+    if (!background) {
+      state = state.copyWith(isLoading: true);
+    }
     try {
       final result = await SyncService.fullSync();
       if (result.success) {
         await loadLists();
         await loadTasks();
+        // 同步完成后刷新所有提醒
+        ReminderService.refreshAll(state.tasks);
       }
-      state = state.copyWith(isLoading: false);
+      if (!background) state = state.copyWith(isLoading: false);
       return result;
     } catch (e) {
-      state = state.copyWith(isLoading: false);
+      if (!background) state = state.copyWith(isLoading: false);
       return (success: false, tokenExpired: false);
     }
   }
 
   void _triggerSync() {
-    sync();
+    sync(background: true);
   }
 
-  Future<void> createTask(String title, {bool isMyDay = false}) async {
+  Future<void> createTask(String title, {bool isMyDay = false, DateTime? reminderAt}) async {
     final listId = state.currentListId == 'system-my-day' || state.currentListId == 'system-all-tasks'
         ? 'system-all-tasks'
         : state.currentListId;
-    final result = await AppDatabase.createTask(listId: listId, title: title, isMyDay: isMyDay);
+    
+    final result = await AppDatabase.createTask(
+      listId: listId, 
+      title: title, 
+      isMyDay: isMyDay,
+      reminderAt: reminderAt?.millisecondsSinceEpoch,
+    );
+    
     final task = TaskItem(
       id: result['id'] as String,
       listId: result['listId'] as String,
@@ -289,41 +314,102 @@ class TaskNotifier extends StateNotifier<TaskState> {
       recurrenceConfig: result['recurrenceConfig'] as Map<String, dynamic>?,
       expectedMinutes: result['expectedMinutes'] as int?,
       isImportant: result['isImportant'] == true,
+      reminderAt: result['reminderAt'] as int?,
       createdAt: result['createdAt'] as int,
       updatedAt: result['updatedAt'] as int,
     );
+    
     state = state.copyWith(tasks: [...state.tasks, task]);
+    
+    // 如果创建时带了提醒（虽然目前 UI 尚未直接支持），进行调度
+    if (task.reminderAt != null) {
+      ReminderService.scheduleReminder(task);
+    }
+    
     _triggerSync();
   }
 
   Future<void> updateTask(String id, Map<String, dynamic> updates) async {
     await AppDatabase.updateTask(id, updates);
-    await loadTasks();
+    await loadTasks(showLoading: false);
+    
+    // 检查并调度提醒。即使任务不在当前视图列表中（state.tasks），也需要从数据库重新获取并调度。
+    TaskItem? updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
+    if (updatedTask == null) {
+      final dbTask = await AppDatabase.getTaskById(id);
+      if (dbTask != null) {
+        updatedTask = TaskItem(
+          id: dbTask['id'] as String,
+          listId: dbTask['listId'] as String,
+          title: dbTask['title'] as String,
+          notes: dbTask['notes'] as String?,
+          completed: dbTask['completed'] == true,
+          completedAt: dbTask['completedAt'] as int?,
+          dueDate: dbTask['dueDate'] as String?,
+          dueTime: dbTask['dueTime'] as String?,
+          sortOrder: dbTask['sortOrder'] as int,
+          isMyDay: dbTask['isMyDay'] == true,
+          myDayAddedAt: dbTask['myDayAddedAt'] as int?,
+          recurrenceConfig: dbTask['recurrenceConfig'] as Map<String, dynamic>?,
+          expectedMinutes: dbTask['expectedMinutes'] as int?,
+          isImportant: dbTask['isImportant'] == true,
+          reminderAt: dbTask['reminderAt'] as int?,
+          createdAt: dbTask['createdAt'] as int,
+          updatedAt: dbTask['updatedAt'] as int,
+        );
+      }
+    }
+
+    if (updatedTask != null) {
+      if (updatedTask.completed) {
+        ReminderService.cancelReminder(id);
+      } else {
+        ReminderService.scheduleReminder(updatedTask);
+      }
+    }
+    
     _triggerSync();
+  }
+
+  Future<void> setReminder(String taskId, DateTime? reminderAt) async {
+    final updates = {'reminderAt': reminderAt?.millisecondsSinceEpoch};
+    await updateTask(taskId, updates);
   }
 
   Future<void> deleteTask(String id) async {
     await AppDatabase.deleteTask(id);
+    await ReminderService.cancelReminder(id);
     final tasks = state.tasks.where((t) => t.id != id).toList();
-    state = state.copyWith(tasks: tasks, selectedTaskId: null);
+    state = state.copyWith(tasks: tasks, clearSelectedTask: state.selectedTaskId == id);
     _triggerSync();
   }
 
   Future<void> toggleTaskComplete(String id) async {
     await AppDatabase.toggleTaskComplete(id);
-    await loadTasks();
+    await loadTasks(showLoading: false);
+    
+    // 处理提醒取消/重新调度
+    final updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
+    if (updatedTask != null) {
+      if (updatedTask.completed) {
+        ReminderService.cancelReminder(id);
+      } else if (updatedTask.reminderAt != null) {
+        ReminderService.scheduleReminder(updatedTask);
+      }
+    }
+    
     _triggerSync();
   }
 
   Future<void> addToMyDay(String taskId) async {
     await AppDatabase.addToMyDay(taskId);
-    await loadTasks();
+    await loadTasks(showLoading: false);
     _triggerSync();
   }
 
   Future<void> removeFromMyDay(String taskId) async {
     await AppDatabase.removeFromMyDay(taskId);
-    await loadTasks();
+    await loadTasks(showLoading: false);
     _triggerSync();
   }
 
@@ -331,13 +417,13 @@ class TaskNotifier extends StateNotifier<TaskState> {
     final task = state.tasks.where((t) => t.id == taskId).firstOrNull;
     if (task == null) return;
     await AppDatabase.updateTask(taskId, {'isImportant': !task.isImportant});
-    await loadTasks();
+    await loadTasks(showLoading: false);
     _triggerSync();
   }
 
   Future<void> moveTaskToList(String taskId, String listId) async {
     await AppDatabase.updateTask(taskId, {'listId': listId});
-    await loadTasks();
+    await loadTasks(showLoading: false);
     _triggerSync();
   }
 

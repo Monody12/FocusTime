@@ -168,6 +168,50 @@ void main() {
       final updated = task.copyWith(title: 'Updated');
       expect(updated.recurrenceConfig, recurrence);
     });
+
+    test('reminderAt can be set and preserved', () {
+      final reminderTime = 1715072400000;
+      final task = TaskItem(
+        id: 'task-1',
+        listId: 'list-1',
+        title: 'Task with Reminder',
+        completed: false,
+        sortOrder: 0,
+        isMyDay: false,
+        reminderAt: reminderTime,
+        createdAt: 1000,
+        updatedAt: 1000,
+      );
+
+      expect(task.reminderAt, reminderTime);
+      final updated = task.copyWith(title: 'Updated');
+      expect(updated.reminderAt, reminderTime);
+    });
+
+    test('copyWith can clear nullable fields using flags', () {
+      final task = TaskItem(
+        id: 'task-1',
+        listId: 'list-1',
+        title: 'Test',
+        notes: 'Some notes',
+        completed: false,
+        dueDate: '2024-01-15',
+        reminderAt: 12345,
+        sortOrder: 0,
+        isMyDay: false,
+        createdAt: 1000,
+        updatedAt: 1000,
+      );
+
+      final cleared = task.copyWith(
+        clearNotes: true,
+        clearDueDate: true,
+        clearReminder: true,
+      );
+      expect(cleared.notes, isNull);
+      expect(cleared.dueDate, isNull);
+      expect(cleared.reminderAt, isNull);
+    });
   });
 
   group('TaskState', () {
