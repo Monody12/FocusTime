@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:focus_timer/core/utils/time_utils.dart';
+import 'package:focus_my_time/core/utils/time_utils.dart';
 
 void main() {
   group('formatTime', () {

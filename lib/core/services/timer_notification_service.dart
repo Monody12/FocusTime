@@ -156,7 +156,7 @@ class TimerNotificationService {
 
       final message = NotificationMessage.fromCustomTemplate(
         'timer_completion',
-        group: 'focus_timer',
+        group: 'focus_my_time',
       );
 
       await _winNotifier!.showNotificationCustomTemplate(message, toastXml);
@@ -177,7 +177,7 @@ class TimerNotificationService {
     // 必须通过移除该通知来让系统自动停止发声。
     if (Platform.isWindows && _winNotifier != null) {
       try {
-        _winNotifier!.removeNotificationId('timer_completion', 'focus_timer');
+        _winNotifier!.removeNotificationId('timer_completion', 'focus_my_time');
       } catch (e) {
         dev.log('[TimerNotificationService] 清除 Windows 通知失败: $e');
       }

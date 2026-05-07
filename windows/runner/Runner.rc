@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.focustimer" "\0"
-            VALUE "FileDescription", "focus_timer" "\0"
+            VALUE "CompanyName", "com.focusmytime" "\0"
+            VALUE "FileDescription", "FocusMyTime" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "focus_timer" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.focustimer. All rights reserved." "\0"
-            VALUE "OriginalFilename", "focus_timer.exe" "\0"
-            VALUE "ProductName", "focus_timer" "\0"
+            VALUE "InternalName", "focus_my_time" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.focusmytime. All rights reserved." "\0"
+            VALUE "OriginalFilename", "focus_my_time.exe" "\0"
+            VALUE "ProductName", "FocusMyTime" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

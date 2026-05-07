@@ -12,14 +12,14 @@ import 'features/calendar/presentation/pages/calendar_page.dart';
 import 'features/timer/providers/timer_provider.dart';
 import 'features/tasks/providers/task_provider.dart';
 
-class FocusTimerApp extends ConsumerStatefulWidget {
-  const FocusTimerApp({super.key});
+class FocusMyTimeApp extends ConsumerStatefulWidget {
+  const FocusMyTimeApp({super.key});
 
   @override
-  ConsumerState<FocusTimerApp> createState() => _FocusTimerAppState();
+  ConsumerState<FocusMyTimeApp> createState() => _FocusMyTimeAppState();
 }
 
-class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
+class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
   bool _showTimerPanel = false;  // 默认不显示计时器，开始专注后才显示
   bool _showSettings = false;
   bool _showCalendar = false;
@@ -58,7 +58,7 @@ class _FocusTimerAppState extends ConsumerState<FocusTimerApp> {
     });
 
     return MaterialApp(
-      title: 'Focus Timer',
+      title: 'FocusMyTime',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,

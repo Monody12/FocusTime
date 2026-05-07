@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_theme.dart';
-import 'package:focus_timer/data/database/app_database.dart';
-import 'package:focus_timer/data/sync/sync_service.dart';
-import 'package:focus_timer/features/timer/providers/timer_provider.dart';
-import 'package:focus_timer/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -64,8 +64,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _notificationDuration = timerState.notificationDuration;
 
     _syncServerUrlController = TextEditingController(text: SyncService.serverUrl);
-    _syncUsernameController = TextEditingController();
-    _syncPasswordController = TextEditingController();
+    _syncUsernameController = TextEditingController(text: SyncService.username);
+    _syncPasswordController = TextEditingController(text: SyncService.fakePassword);
     _isLoggedIn = SyncService.isLoggedIn;
     _lastSyncTime = SyncService.lastSyncTime > 0 ? SyncService.lastSyncTime : null;
 
@@ -908,6 +908,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         setState(() {
           _isLoggedIn = true;
           _syncStatus = '注册成功，正在同步...';
+          // 登录成功后，将输入框内容替换为持久化的内容（特别是将真实密码替换为掩码）
+          _syncUsernameController.text = SyncService.username;
+          _syncPasswordController.text = SyncService.fakePassword;
         });
         _showSnackBar('注册成功');
         _handleSyncNow();
@@ -941,6 +944,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         setState(() {
           _isLoggedIn = true;
           _syncStatus = '登录成功，正在同步...';
+          // 登录成功后，将输入框内容替换为持久化的内容（特别是将真实密码替换为掩码）
+          _syncUsernameController.text = SyncService.username;
+          _syncPasswordController.text = SyncService.fakePassword;
         });
         _showSnackBar('登录成功');
         _handleSyncNow();
@@ -961,6 +967,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       setState(() {
         _isLoggedIn = false;
         _syncStatus = '已登出';
+        _syncUsernameController.clear();
+        _syncPasswordController.clear();
       });
       _showSnackBar('已登出');
     } catch (e) {

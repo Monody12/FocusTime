@@ -1,4 +1,4 @@
-# FocusTimer 开发者知识库 & 复盘记录
+# FocusMyTime 开发者知识库 & 复盘记录
 
 本文档记录了项目从 Electron 迁移至 Flutter 过程中的核心技术决策、踩坑记录及解决方案，用于后续开发参考。
 
@@ -23,7 +23,7 @@
 
 ### 2.1 导入管理 (Import Standardization)
 *   **问题**：混合使用相对路径 (`import '../../...'`) 和包路径 (`import 'package:project/...'`) 会导致编译器认为同一个类（如 `AppDatabase`）属于两个不同的库，触发 "Ambiguous import" 错误。
-*   **规范**：本项目统一使用 **`package:focus_timer/...`** 格式进行导入。
+*   **规范**：本项目统一使用 **`package:focus_my_time/...`** 格式进行导入。
 
 ### 2.2 异步操作与 UI 反馈 (Error Handling)
 *   **问题**：异步操作（网络请求、数据库读写）如果不加 `try-catch` 保护，报错只会出现在控制台，用户在 UI 上看不到任何反馈，表现为“点击无效”或“程序卡死”。

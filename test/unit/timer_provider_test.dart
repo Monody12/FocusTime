@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:focus_timer/features/timer/providers/timer_provider.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 void main() {
   group('SingleCoreConfig', () {

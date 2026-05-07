@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:focus_timer/data/database/app_database.dart';
-import 'package:focus_timer/data/sync/sync_service.dart';
+import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
 
 class TaskList {
   final String id;

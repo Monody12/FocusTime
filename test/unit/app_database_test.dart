@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:focus_timer/data/database/app_database.dart';
+import 'package:focus_my_time/data/database/app_database.dart';
 
 void main() {
   group('AppDatabase JSON encoding/decoding', () {

@@ -3,10 +3,10 @@ import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/utils/time_utils.dart';
-import 'package:focus_timer/core/services/timer_notification_service.dart';
-import 'package:focus_timer/data/database/app_database.dart';
-import 'package:focus_timer/data/sync/sync_service.dart';
-import 'package:focus_timer/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/core/services/timer_notification_service.dart';
+import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 
 enum TimerMode { singleCore, pomodoro }
 enum TimerStatus { idle, running, paused, completed }

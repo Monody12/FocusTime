@@ -13,7 +13,7 @@ class AppDatabase {
 
   static Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'focus_timer.db');
+    final path = join(dbPath, 'focus_my_time.db');
 
     return await openDatabase(
       path,
@@ -755,13 +755,13 @@ class AppDatabase {
       'lists': listsCount,
       'tasks': tasksCount,
       'sessions': sessionsCount,
-      'dbPath': '$dbPath/focus_timer.db',
+      'dbPath': '$dbPath/focus_my_time.db',
     };
   }
 
   static Future<String> getDbPath() async {
     final dbPath = await getDatabasesPath();
-    return '$dbPath/focus_timer.db';
+    return '$dbPath/focus_my_time.db';
   }
 
   static Future<Map<String, dynamic>> runDownloadTest() async {

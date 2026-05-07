@@ -1,4 +1,4 @@
-# Focus Timer
+# FocusMyTime
 
 跨平台计时专注应用，支持 Windows、macOS、Linux、Android。采用 Flutter 开发，原生性能，多端体验一致。
 

@@ -1,13 +1,17 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:focus_timer/data/database/app_database.dart';
+import 'package:focus_my_time/data/database/app_database.dart';
 
 class SyncService {
+  // 默认服务器地址
   static const _defaultServerUrl = 'http://1.12.46.222:6677';
 
+  // 内存中缓存的同步配置和凭证
   static String _serverUrl = _defaultServerUrl;
   static String _token = '';
   static String _userId = '';
+  static String _username = '';
+  static String _fakePassword = ''; // 用于在 UI 中显示的虚拟密码
   static int _lastSyncTime = 0;
 
   static Future<void> init() async {
@@ -21,6 +25,13 @@ class SyncService {
     final userId = await AppDatabase.getSetting('syncUserId');
     if (userId != null) _userId = userId;
 
+    // 加载保存的用户名和虚拟密码，用于在重启后保持 UI 状态
+    final username = await AppDatabase.getSetting('syncUsername');
+    if (username != null) _username = username;
+
+    final fakePassword = await AppDatabase.getSetting('syncFakePassword');
+    if (fakePassword != null) _fakePassword = fakePassword;
+
     final lastSync = await AppDatabase.getSetting('lastSyncTime');
     if (lastSync != null) _lastSyncTime = int.tryParse(lastSync) ?? 0;
   }
@@ -28,6 +39,8 @@ class SyncService {
   static String get serverUrl => _serverUrl;
   static String get token => _token;
   static String get userId => _userId;
+  static String get username => _username;
+  static String get fakePassword => _fakePassword;
   static int get lastSyncTime => _lastSyncTime;
 
   static Future<void> setServerUrl(String url) async {
@@ -35,18 +48,30 @@ class SyncService {
     await AppDatabase.setSetting('syncServerUrl', url);
   }
 
-  static Future<void> _saveToken(String token, String userId) async {
+  static Future<void> _saveToken(String token, String userId, {String? username}) async {
     _token = token;
     _userId = userId;
     await AppDatabase.setSetting('syncToken', token);
     await AppDatabase.setSetting('syncUserId', userId);
+
+    // 如果提供了用户名，说明是登录或注册成功，保存用户名和虚拟密码
+    if (username != null) {
+      _username = username;
+      _fakePassword = '••••••••'; // 使用固定掩码字符
+      await AppDatabase.setSetting('syncUsername', _username);
+      await AppDatabase.setSetting('syncFakePassword', _fakePassword);
+    }
   }
 
   static Future<void> _clearToken() async {
     _token = '';
     _userId = '';
+    _username = '';
+    _fakePassword = '';
     await AppDatabase.setSetting('syncToken', '');
     await AppDatabase.setSetting('syncUserId', '');
+    await AppDatabase.setSetting('syncUsername', '');
+    await AppDatabase.setSetting('syncFakePassword', '');
   }
 
   static Future<({bool success, bool tokenExpired, String? error, String? userId})> register({
@@ -64,7 +89,8 @@ class SyncService {
       if (data['success'] == true) {
         final token = data['token'] as String;
         final userId = data['userId'] as String;
-        await _saveToken(token, userId);
+        // 注册成功，保存登录凭证和用户信息
+        await _saveToken(token, userId, username: username);
         return (success: true, tokenExpired: false, error: null, userId: userId);
       }
       return (success: false, tokenExpired: false, error: (data['error'] as String?) ?? '注册失败', userId: null);
@@ -88,7 +114,8 @@ class SyncService {
       if (data['success'] == true) {
         final token = data['token'] as String;
         final userId = data['userId'] as String;
-        await _saveToken(token, userId);
+        // 登录成功，保存登录凭证和用户信息
+        await _saveToken(token, userId, username: username);
         return (success: true, tokenExpired: false, error: null, userId: userId);
       }
       return (success: false, tokenExpired: false, error: (data['error'] as String?) ?? '登录失败', userId: null);
@@ -97,17 +124,21 @@ class SyncService {
     }
   }
 
+  /// 登出：清除内存中的凭证并重置本地存储
   static Future<void> logout() async {
     await _clearToken();
   }
 
+  /// 检查当前是否已登录（通过判断是否有 Token）
   static bool get isLoggedIn => _token.isNotEmpty;
 
+  /// 更新本地记录的上次同步时间
   static Future<void> updateLastSyncTime() async {
     _lastSyncTime = DateTime.now().millisecondsSinceEpoch;
     await AppDatabase.setSetting('lastSyncTime', _lastSyncTime.toString());
   }
 
+  /// 执行完整同步流程：上传本地变更 -> 下载远程变更
   static Future<({bool success, bool tokenExpired})> fullSync() async {
     if (!isLoggedIn) {
       return (success: false, tokenExpired: false);
