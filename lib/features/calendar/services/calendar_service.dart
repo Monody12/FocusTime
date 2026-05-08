@@ -59,12 +59,12 @@ class CalendarService {
       final existing = calendars.data!.where((c) => c.name == _calendarName).firstOrNull;
       if (existing != null) {
         _calendarId = existing.id;
+        dev.log('[CalendarService] 复用已有日历: $_calendarName (ID: $_calendarId)');
         return true;
       }
     }
 
     // 创建新日历 (部分平台可能不支持直接创建，如 iOS 需要引导用户)
-    // 这里简单起见，如果找不到就用默认日历，或者尝试创建
     if (Platform.isAndroid) {
       final createResult = await _calendarPlugin.createCalendar(
         _calendarName,
@@ -73,8 +73,10 @@ class CalendarService {
       );
       if (createResult.isSuccess && createResult.data != null) {
         _calendarId = createResult.data;
+        dev.log('[CalendarService] 创建新日历成功: $_calendarName (ID: $_calendarId)');
         return true;
       }
+      dev.log('[CalendarService] 创建新日历失败，尝试回退');
     }
 
     // 回退方案：使用第一个可写的日历
@@ -82,10 +84,12 @@ class CalendarService {
       final writable = calendars.data!.where((c) => !(c.isReadOnly ?? false)).firstOrNull;
       if (writable != null) {
         _calendarId = writable.id;
+        dev.log('[CalendarService] 回退使用可写日历: ${writable.name} (ID: $_calendarId, Account: ${writable.accountName})');
         return true;
       }
     }
 
+    dev.log('[CalendarService] 未能找到或创建可用日历');
     return false;
   }
 
@@ -93,8 +97,8 @@ class CalendarService {
   static Future<String?> syncTask(TaskItem task) async {
     if (!(await isEnabled())) return task.calendarEventId;
     if (!(await _ensureCalendar())) return task.calendarEventId;
-    
-    // 如果任务取消了提醒，我们需要从日历彻底移除它
+
+    // 如果任务取消了提醒，从日历移除
     if (task.reminderAt == null) {
       if (task.calendarEventId != null) {
         await removeTask(task.calendarEventId!);
@@ -108,7 +112,8 @@ class CalendarService {
       return null;
     }
 
-    // 组装日历事件，传入可能存在的 eventId
+    // 传入已有 eventId 让插件执行 UPDATE 而非 DELETE+INSERT，
+    // 避免 Android 14+ 上 deleteEvent 权限受限导致重复日程
     final event = Event(
       _calendarId,
       eventId: task.calendarEventId,
@@ -116,7 +121,6 @@ class CalendarService {
       description: task.notes ?? '来自 FocusMyTime 的任务提醒',
       start: tz.TZDateTime.from(startTime, tz.local),
       end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)), tz.local),
-      // 如果任务已完成，我们把提醒列表设为空，避免打扰，但事件保留在日历上
       reminders: task.completed ? [] : [Reminder(minutes: 0)],
     );
 
@@ -124,10 +128,29 @@ class CalendarService {
     if (result != null && result.isSuccess) {
       dev.log('[CalendarService] 已同步任务到日历: ${task.title}, EventID: ${result.data}');
       return result.data;
-    } else {
-      dev.log('[CalendarService] 同步日历失败: ${result?.errors.map((e) => e.errorMessage).join(', ')}');
-      return task.calendarEventId;
     }
+
+    // 如果 UPDATE 失败（如事件被手动删除），回退到 DELETE+CREATE
+    dev.log('[CalendarService] UPDATE 失败，尝试 DELETE+CREATE 回退方案');
+    if (task.calendarEventId != null) {
+      await _calendarPlugin.deleteEvent(_calendarId, task.calendarEventId!);
+    }
+    final newEvent = Event(
+      _calendarId,
+      title: '任务提醒: ${task.title}',
+      description: task.notes ?? '来自 FocusMyTime 的任务提醒',
+      start: tz.TZDateTime.from(startTime, tz.local),
+      end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)), tz.local),
+      reminders: task.completed ? [] : [Reminder(minutes: 0)],
+    );
+    final retryResult = await _calendarPlugin.createOrUpdateEvent(newEvent);
+    if (retryResult != null && retryResult.isSuccess) {
+      dev.log('[CalendarService] 重建成功: ${task.title}, EventID: ${retryResult.data}');
+      return retryResult.data;
+    }
+
+    dev.log('[CalendarService] 同步日历完全失败，保留旧 eventId');
+    return task.calendarEventId;
   }
 
   /// 从日历移除任务提醒
@@ -136,6 +159,28 @@ class CalendarService {
     final result = await _calendarPlugin.deleteEvent(_calendarId, eventId);
     if (result.isSuccess) {
       dev.log('[CalendarService] 已从日历移除事件: $eventId');
+      return;
+    }
+    // Android 14+ 可能阻止删除，降级为将事件标记为已取消
+    dev.log('[CalendarService] 删除事件失败，尝试标记为已取消: $eventId');
+    try {
+      final cancelEvent = Event(
+        _calendarId,
+        eventId: eventId,
+        title: '（已取消）',
+        start: tz.TZDateTime.now(tz.local),
+        end: tz.TZDateTime.now(tz.local),
+        status: EventStatus.Canceled,
+        reminders: [],
+      );
+      final updateResult = await _calendarPlugin.createOrUpdateEvent(cancelEvent);
+      if (updateResult != null && updateResult.isSuccess) {
+        dev.log('[CalendarService] 已将事件标记为取消: $eventId');
+      } else {
+        dev.log('[CalendarService] 标记取消也失败: ${updateResult?.errors.map((e) => e.errorMessage).join(', ')}');
+      }
+    } catch (e) {
+      dev.log('[CalendarService] 删除回退方案异常: $e');
     }
   }
 
