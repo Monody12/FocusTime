@@ -1,0 +1,4 @@
+- [日历同步 Android 权限](calendar_sync.md) — Android 14+ ContentProvider DELETE 权限策略及 UPDATE 替代方案
+- [文档与复盘要求](documentation_habits.md) — 修复 bug 后同步更新 KNOWLEDGE_BASE.md / README / pubspec.yaml
+- [跨平台插件 MissingPluginException](cross_platform_plugin_missing.md) — device_calendar 在 Windows 端报 MissingPluginException，无害
+- [记录经验教训](document_lessons_learned.md) — 非显而易见的问题必须记录到知识库和记忆系统
