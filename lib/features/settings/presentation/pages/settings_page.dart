@@ -9,6 +9,7 @@ import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:focus_my_time/features/ai_assistant/services/deepseek_api_client.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -32,6 +33,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _autoStartBreak = false;
   bool _soundEnabled = true;
   String _notificationDuration = 'long';
+
+  // AI API key
+  late TextEditingController _apiKeyController;
 
   // Sync server state
   late TextEditingController _syncServerUrlController;
@@ -93,11 +97,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _loadDbPath();
     _loadPermissions();
     _loadCalendarStatus();
+    _apiKeyController = TextEditingController(text: DeepSeekApiClient.apiKey ?? '');
   }
 
   Future<void> _loadCalendarStatus() async {
     final enabled = await CalendarService.isEnabled();
     if (mounted) setState(() => _calendarSyncEnabled = enabled);
+  }
+
+  Future<void> _saveApiKey() async {
+    final key = _apiKeyController.text.trim();
+    await DeepSeekApiClient.setApiKey(key);
+    _showSnackBar(key.isEmpty ? '已清除 API 密钥' : 'API 密钥已保存');
+  }
+
+  Future<void> _testApiConnection() async {
+    final key = _apiKeyController.text.trim();
+    if (key.isEmpty) {
+      _showSnackBar('请先输入 API 密钥', isError: true);
+      return;
+    }
+    await DeepSeekApiClient.setApiKey(key);
+    _showSnackBar('正在测试连接...');
+    final ok = await DeepSeekApiClient.testConnection();
+    _showSnackBar(ok ? '连接成功！API 密钥有效' : '连接失败，请检查密钥',
+        isError: !ok);
   }
 
   Future<void> _loadPermissions() async {
@@ -132,6 +156,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _minDurationController.dispose();
     _notificationTemplateController.dispose();
     _snoozeDurationController.dispose();
+    _apiKeyController.dispose();
     _syncServerUrlController.dispose();
     _syncUsernameController.dispose();
     _syncPasswordController.dispose();
@@ -866,6 +891,50 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           padding: const EdgeInsets.only(top: 4, left: 2),
                           child: Text(
                             '启用后，有提醒时间的任务将自动同步到手机系统日历中，提供更可靠的提醒。',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // AI 助手配置
+                        _buildSectionTitle('🤖 AI 助手', isDark),
+                        const SizedBox(height: 12),
+                        _buildTextSetting(
+                          label: 'DeepSeek API Key',
+                          controller: _apiKeyController,
+                          hint: '输入 API 密钥',
+                          isDark: isDark,
+                          obscureText: true,
+                          onChanged: (_) {},
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            _SettingButton(
+                              label: '保存密钥',
+                              onPressed: () => _saveApiKey(),
+                              isPrimary: true,
+                              isDark: isDark,
+                            ),
+                            const SizedBox(width: 8),
+                            _SettingButton(
+                              label: '测试连接',
+                              onPressed: () => _testApiConnection(),
+                              isPrimary: true,
+                              isAccent: true,
+                              isDark: isDark,
+                            ),
+                          ],
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8, left: 2),
+                          child: Text(
+                            'API 密钥存储在本地设备中，请勿在不安全的环境中使用。'
+                            '获取密钥: platform.deepseek.com/api_keys',
                             style: TextStyle(
                               fontSize: 11,
                               color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,

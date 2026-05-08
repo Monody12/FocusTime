@@ -17,7 +17,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -94,6 +94,45 @@ class AppDatabase {
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
         updated_at INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE ai_conversations (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE ai_messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        tool_calls_json TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE ai_operations (
+        id TEXT PRIMARY KEY,
+        message_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        params_json TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        reasoning TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -178,6 +217,45 @@ class AppDatabase {
       } catch (e) {
         // Ignore if column already exists
       }
+    }
+
+    if (oldVersion < 8) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          deleted INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ai_messages (
+          id TEXT PRIMARY KEY,
+          conversation_id TEXT NOT NULL,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          tool_calls_json TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          deleted INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS ai_operations (
+          id TEXT PRIMARY KEY,
+          message_id TEXT NOT NULL,
+          type TEXT NOT NULL,
+          params_json TEXT NOT NULL,
+          summary TEXT NOT NULL,
+          reasoning TEXT,
+          status TEXT NOT NULL DEFAULT 'pending',
+          error_message TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          deleted INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
     }
   }
 
@@ -812,6 +890,165 @@ class AppDatabase {
       'listsCount': lists.length,
       'tasksCount': tasks.length,
     };
+  }
+
+  // ========== AI 对话 ==========
+
+  static Future<Map<String, dynamic>> createAiConversation({String? title}) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = 'conv-${DateTime.now().millisecondsSinceEpoch}';
+    await db.insert('ai_conversations', {
+      'id': id,
+      'title': title,
+      'created_at': now,
+      'updated_at': now,
+    });
+    return {'id': id, 'title': title, 'createdAt': now, 'updatedAt': now};
+  }
+
+  static Future<void> updateAiConversationTitle(String id, String title) async {
+    final db = await database;
+    await db.update('ai_conversations', {
+      'title': title,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<List<Map<String, dynamic>>> getAiConversations() async {
+    final db = await database;
+    final result = await db.query('ai_conversations',
+        where: 'deleted = 0', orderBy: 'updated_at DESC');
+    return result.map((r) => {
+      'id': r['id'],
+      'title': r['title'],
+      'createdAt': r['created_at'],
+      'updatedAt': r['updated_at'],
+    }).toList();
+  }
+
+  static Future<void> deleteAiConversation(String id) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update('ai_messages', {'deleted': 1, 'updated_at': now},
+        where: 'conversation_id = ?', whereArgs: [id]);
+    await db.update('ai_operations', {'deleted': 1, 'updated_at': now},
+        where: 'message_id IN (SELECT id FROM ai_messages WHERE conversation_id = ?)', whereArgs: [id]);
+    await db.update('ai_conversations', {'deleted': 1, 'updated_at': now},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ========== AI 消息 ==========
+
+  static Future<Map<String, dynamic>> insertAiMessage({
+    required String conversationId,
+    required String role,
+    required String content,
+    String? toolCallsJson,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = 'msg-${DateTime.now().millisecondsSinceEpoch}';
+    await db.insert('ai_messages', {
+      'id': id,
+      'conversation_id': conversationId,
+      'role': role,
+      'content': content,
+      'tool_calls_json': toolCallsJson,
+      'created_at': now,
+      'updated_at': now,
+    });
+    return {
+      'id': id,
+      'conversationId': conversationId,
+      'role': role,
+      'content': content,
+      'toolCallsJson': toolCallsJson,
+      'createdAt': now,
+    };
+  }
+
+  static Future<List<Map<String, dynamic>>> getAiMessages(String conversationId) async {
+    final db = await database;
+    final result = await db.query('ai_messages',
+        where: 'conversation_id = ? AND deleted = 0',
+        whereArgs: [conversationId],
+        orderBy: 'created_at');
+    return result.map((r) => {
+      'id': r['id'],
+      'conversationId': r['conversation_id'],
+      'role': r['role'],
+      'content': r['content'],
+      'toolCallsJson': r['tool_calls_json'],
+      'createdAt': r['created_at'],
+    }).toList();
+  }
+
+  // ========== AI 操作 ==========
+
+  static Future<Map<String, dynamic>> insertAiOperation({
+    required String messageId,
+    required String type,
+    required String paramsJson,
+    required String summary,
+    String? reasoning,
+    String status = 'pending',
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = 'aio-${DateTime.now().millisecondsSinceEpoch}';
+    await db.insert('ai_operations', {
+      'id': id,
+      'message_id': messageId,
+      'type': type,
+      'params_json': paramsJson,
+      'summary': summary,
+      'reasoning': reasoning,
+      'status': status,
+      'created_at': now,
+      'updated_at': now,
+    });
+    return {
+      'id': id,
+      'messageId': messageId,
+      'type': type,
+      'paramsJson': paramsJson,
+      'summary': summary,
+      'reasoning': reasoning,
+      'status': status,
+      'createdAt': now,
+    };
+  }
+
+  static Future<List<Map<String, dynamic>>> getAiOperations(String messageId) async {
+    final db = await database;
+    final result = await db.query('ai_operations',
+        where: 'message_id = ? AND deleted = 0',
+        whereArgs: [messageId],
+        orderBy: 'created_at');
+    return result.map((r) => {
+      'id': r['id'],
+      'messageId': r['message_id'],
+      'type': r['type'],
+      'paramsJson': r['params_json'],
+      'summary': r['summary'],
+      'reasoning': r['reasoning'],
+      'status': r['status'],
+      'errorMessage': r['error_message'],
+      'createdAt': r['created_at'],
+    }).toList();
+  }
+
+  static Future<void> updateAiOperationStatus(String id, String status, {String? errorMessage}) async {
+    final db = await database;
+    final updates = <String, dynamic>{
+      'status': status,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    };
+    if (errorMessage != null) {
+      updates['error_message'] = errorMessage;
+    }
+    await db.update('ai_operations', updates, where: 'id = ?', whereArgs: [id]);
   }
 
   static String _encodeJson(Map<String, dynamic> json) {

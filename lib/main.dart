@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'core/services/timer_notification_service.dart';
 import 'data/sync/sync_service.dart';
 import 'features/tasks/services/reminder_service.dart';
+import 'features/ai_assistant/services/deepseek_api_client.dart';
 
 import 'dart:async';
 
@@ -28,6 +29,9 @@ void main() {
 
       // 初始化任务提醒服务
       await ReminderService.initialize();
+
+      // 初始化 AI 助手 API 客户端
+      await DeepSeekApiClient.init();
 
       runApp(
         const ProviderScope(

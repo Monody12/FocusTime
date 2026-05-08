@@ -9,6 +9,7 @@ import 'features/tasks/presentation/pages/task_list_page.dart';
 import 'features/tasks/presentation/pages/task_detail_page.dart';
 import 'features/settings/presentation/pages/settings_page.dart';
 import 'features/calendar/presentation/pages/calendar_page.dart';
+import 'features/ai_assistant/presentation/pages/ai_chat_page.dart';
 import 'features/timer/providers/timer_provider.dart';
 import 'features/tasks/providers/task_provider.dart';
 
@@ -23,6 +24,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
   bool _showTimerPanel = false;  // 默认不显示计时器，开始专注后才显示
   bool _showSettings = false;
   bool _showCalendar = false;
+  bool _showAiChat = false;
   bool _showNoTaskToast = false;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -111,6 +113,18 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                       onPressed: () => themeNotifier.toggleTheme(),
                       tooltip: '切换主题',
                       color: isDark ? AppColors.darkText : AppColors.lightText,
+                    ),
+                    const SizedBox(width: 4),
+                    // AI Assistant button
+                    TextButton.icon(
+                      onPressed: () => setState(() => _showAiChat = true),
+                      icon: const Icon(Icons.smart_toy_outlined, size: 18),
+                      label: isMobile ? const Text('') : const Text('AI'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: isDark ? AppColors.darkText : AppColors.lightText,
+                        minimumSize: Size.zero,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
                     ),
                     const SizedBox(width: 4),
                     // Settings button
@@ -271,6 +285,25 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                     ),
                     child: SettingsPage(
                       onClose: () => setState(() => _showSettings = false),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (_showAiChat)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black54,
+                child: Center(
+                  child: Container(
+                    width: isMobile ? size.width * 0.95 : 700,
+                    height: size.height * 0.85,
+                    decoration: BoxDecoration(
+                      color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: AiChatPage(
+                      onClose: () => setState(() => _showAiChat = false),
                     ),
                   ),
                 ),

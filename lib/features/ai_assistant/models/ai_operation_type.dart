@@ -1,0 +1,15 @@
+enum AiOperationType {
+  createTask,
+  updateTask,
+  deleteTask,
+  setDueDate,
+  setReminder,
+  setRecurrence,
+  addToMyDay,
+  toggleImportant,
+  moveToList,
+  reorderTasks,
+  createList,
+  updateList,
+  deleteList,
+}
