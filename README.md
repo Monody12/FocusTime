@@ -38,7 +38,14 @@
 | 音频 | audioplayers |
 | 同步服务 | LWW 增量同步协议 |
 
-### 🚀 最近更新 (v1.0.9)
+### 🚀 最近更新 (v1.0.10)
+- **日历同步 Android 16 兼容修复**：
+    - 修复了修改任务提醒时间后系统日历出现重复日程的问题，将「先删后建」改为直接 UPDATE，跳过 Android 14+ 受限的 deleteEvent 操作。
+    - 修复了取消提醒或删除任务后系统日历事件残留的问题，添加了 deleteEvent 失败时降级标记为 Canceled 的回退机制。
+    - 增强了日历初始化日志，便于排查不同 Android 版本上的权限与归属问题。
+- **状态同步优化**：`scheduleUnifiedReminders` 返回 eventId，确保任务状态与日历事件 ID 保持一致。
+
+### 🚀 历史更新 (v1.0.9)
 - **Android 稳定性与提醒优化**：
     - **修复白屏与时区崩溃**：解决了特定机型返回 `"TimezoneInfo"` 导致时区库崩溃的 Bug，增加了基于系统时间偏移的智能降级容错机制。
     - **彻底解决键盘闪退**：移除了 `build` 方法中误用的 `GlobalKey`，并优化了 Riverpod 细粒度监听，彻底解决了设置页面输入法自动收起的顽疾。
@@ -107,4 +114,4 @@ flutter build windows
 
 ## 版本
 
-当前版本：v1.0.9 (Android Stability & Reminder Optimization)
+当前版本：v1.0.10 (Calendar Sync Fix & Android 16 Compatibility)
