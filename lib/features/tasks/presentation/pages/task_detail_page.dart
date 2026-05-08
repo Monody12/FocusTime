@@ -6,6 +6,8 @@ import '../../../../core/utils/recurrence_utils.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
+import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 
 class TaskDetailPage extends ConsumerStatefulWidget {
   final String taskId;
@@ -575,12 +577,53 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     );
   }
 
-  void _showReminderPresets(TaskItem task) {
+  void _showPermissionDialog() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        title: Text('未开启提醒权限', style: TextStyle(color: isDark ? AppColors.darkText : AppColors.lightText)),
+        content: Text('为了确保提醒能正常送达，请至少开启系统通知或日历同步权限中的一项。', style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await ReminderService.requestExactAlarmPermission();
+            },
+            child: const Text('请求通知权限'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await CalendarService.setEnabled(true);
+              await CalendarService.triggerTestSync();
+            },
+            child: const Text('请求日历权限'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReminderPresets(TaskItem task) async {
+    final hasAny = await ReminderService.hasAnyReminderPermission();
+    if (!hasAny) {
+      if (mounted) _showPermissionDialog();
+      return;
+    }
+
     final now = DateTime.now();
     // 捕获页面级的 context 和 Navigator，避免在异步操作或弹窗关闭后 context 失效
     final pageContext = context;
     final taskNotifier = ref.read(taskProvider.notifier);
     final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    
+    if (!mounted) return;
     
     showModalBottomSheet(
       context: pageContext,

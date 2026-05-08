@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
+import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 
 class TaskList {
   final String id;
@@ -161,8 +162,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
   TaskNotifier() : super(TaskState()) {
     loadLists();
     loadTasks().then((_) {
-      // 首次加载完任务后，刷新所有提醒
+      // 首次加载完任务后，刷新所有提醒和日历
       ReminderService.refreshAll(state.tasks);
+      CalendarService.refreshAll(state.tasks);
     });
   }
 
@@ -272,8 +274,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
       if (result.success) {
         await loadLists();
         await loadTasks();
-        // 同步完成后刷新所有提醒
+        // 同步完成后刷新所有提醒和日历
         ReminderService.refreshAll(state.tasks);
+        CalendarService.refreshAll(state.tasks);
       }
       if (!background) state = state.copyWith(isLoading: false);
       return result;
@@ -323,7 +326,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
     
     // 如果创建时带了提醒（虽然目前 UI 尚未直接支持），进行调度
     if (task.reminderAt != null) {
-      ReminderService.scheduleReminder(task);
+      ReminderService.scheduleUnifiedReminders(task);
     }
     
     _triggerSync();
@@ -361,11 +364,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
     }
 
     if (updatedTask != null) {
-      if (updatedTask.completed) {
-        ReminderService.cancelReminder(id);
-      } else {
-        ReminderService.scheduleReminder(updatedTask);
-      }
+      ReminderService.scheduleUnifiedReminders(updatedTask);
     }
     
     _triggerSync();
@@ -379,6 +378,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
   Future<void> deleteTask(String id) async {
     await AppDatabase.deleteTask(id);
     await ReminderService.cancelReminder(id);
+    await CalendarService.removeTask(id);
     final tasks = state.tasks.where((t) => t.id != id).toList();
     state = state.copyWith(tasks: tasks, clearSelectedTask: state.selectedTaskId == id);
     _triggerSync();
@@ -391,11 +391,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
     // 处理提醒取消/重新调度
     final updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
     if (updatedTask != null) {
-      if (updatedTask.completed) {
-        ReminderService.cancelReminder(id);
-      } else if (updatedTask.reminderAt != null) {
-        ReminderService.scheduleReminder(updatedTask);
-      }
+      ReminderService.scheduleUnifiedReminders(updatedTask);
     }
     
     _triggerSync();

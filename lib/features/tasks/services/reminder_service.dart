@@ -2,12 +2,14 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:developer' as dev;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:windows_notification/windows_notification.dart';
 import 'package:windows_notification/notification_message.dart';
 import '../providers/task_provider.dart';
+import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 
 /// 任务提醒服务
 /// 职责：管理任务的定时提醒通知，支持 Android (系统级调度) 和 Windows (应用级调度)
@@ -55,10 +57,37 @@ class ReminderService {
       }
     }
     
-    tz.setLocalLocation(tz.getLocation(timeZoneName));
+    try {
+      tz.setLocalLocation(tz.getLocation(timeZoneName));
+    } catch (e) {
+      dev.log('[ReminderService] 时区解析失败: $timeZoneName, 尝试降级策略。$e');
+      try {
+        final offsetHours = DateTime.now().timeZoneOffset.inHours;
+        if (offsetHours == 8) {
+          tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
+        } else {
+          tz.setLocalLocation(tz.UTC);
+        }
+      } catch (fallbackError) {
+        tz.setLocalLocation(tz.UTC);
+      }
+    }
 
     // 2. 初始化 Android 通知
     if (Platform.isAndroid) {
+      // Android 13+ 需要显式请求通知权限
+      if (await Permission.notification.isDenied) {
+        await Permission.notification.request();
+      }
+
+      // Android 12+ 检查并引导开启精确闹钟权限
+      if (await Permission.scheduleExactAlarm.isDenied || await Permission.scheduleExactAlarm.isPermanentlyDenied) {
+        dev.log('[ReminderService] 精确闹钟权限未授予，尝试请求...');
+        // 注意：在某些 Android 版本上 request() 可能不会弹出对话框，而是返回 false
+        // 最好在 UI 上引导用户去设置页面
+        await Permission.scheduleExactAlarm.request();
+      }
+
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/ic_launcher');
       const InitializationSettings initializationSettings = InitializationSettings(
@@ -72,6 +101,8 @@ class ReminderService {
         '任务提醒',
         description: '用于发送定时任务提醒',
         importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
       );
       await _androidPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(channel);
     }
@@ -93,6 +124,52 @@ class ReminderService {
 
     _initialized = true;
     dev.log('[ReminderService] 初始化完成, 时区: $timeZoneName');
+  }
+
+  /// 发送一个即时测试通知，用于验证通知通道是否畅通
+  static Future<void> showImmediateTestNotification() async {
+    if (!_initialized) await initialize();
+    
+    if (Platform.isAndroid) {
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'task_reminders',
+        '任务提醒',
+        importance: Importance.max,
+        priority: Priority.high,
+      );
+      const NotificationDetails details = NotificationDetails(android: androidDetails);
+      await _androidPlugin.show(999, '测试通知', '如果你看到了这条消息，说明通知通道正常。', details);
+    } else if (Platform.isWindows) {
+      final message = NotificationMessage.fromCustomTemplate('test_id', group: 'test');
+      const String toastXml = r'''
+        <toast>
+          <visual>
+            <binding template="ToastGeneric">
+              <text>测试通知</text>
+              <text>如果你看到了这条消息，说明通知通道正常。</text>
+            </binding>
+          </visual>
+        </toast>
+      ''';
+      _winNotifier?.showNotificationCustomTemplate(message, toastXml);
+    }
+  }
+
+  /// 获取当前权限状态字符串
+  static Future<Map<String, String>> getPermissionStatus() async {
+    final status = <String, String>{};
+    if (Platform.isAndroid) {
+      status['Notification'] = (await Permission.notification.status).toString();
+      try {
+        status['Exact Alarm'] = (await Permission.scheduleExactAlarm.status).toString();
+        status['Battery Optimization'] = (await Permission.ignoreBatteryOptimizations.status).toString();
+      } catch (e) {
+        status['Exact Alarm'] = 'Error';
+      }
+    } else {
+      status['Platform'] = 'Windows (Not required)';
+    }
+    return status;
   }
 
   /// 为单个任务调度提醒
@@ -118,6 +195,51 @@ class ReminderService {
     } else if (Platform.isWindows) {
       _scheduleWindows(task, reminderDateTime);
     }
+  }
+
+  /// 统一调度提醒（优先日历，其次通知）
+  static Future<void> scheduleUnifiedReminders(TaskItem task) async {
+    if (!_initialized) await initialize();
+
+    if (task.reminderAt == null || task.completed) {
+      await cancelReminder(task.id);
+      await CalendarService.removeTask(task.id);
+      return;
+    }
+
+    // 检查日历权限和启用状态
+    final bool hasCalendarPermission = await CalendarService.hasPermissions();
+    final bool calendarEnabled = await CalendarService.isEnabled();
+    
+    // 检查通知权限
+    final bool hasNotificationPermission = await Permission.notification.isGranted;
+    
+    dev.log('[ReminderService] 权限检查 - 日历: $hasCalendarPermission, 启用: $calendarEnabled, 通知: $hasNotificationPermission');
+
+    if (hasCalendarPermission && calendarEnabled) {
+      dev.log('[ReminderService] 优先使用日历同步: ${task.title}');
+      await CalendarService.syncTask(task);
+      await cancelReminder(task.id); // 确保没有重复的系统通知
+    } else if (hasNotificationPermission) {
+      dev.log('[ReminderService] 使用系统通知: ${task.title}');
+      await scheduleReminder(task);
+      await CalendarService.removeTask(task.id); // 确保日历中没有
+    } else {
+      dev.log('[ReminderService] 无任何提醒权限: ${task.title}');
+      // 这里不抛出 UI 提示，只记录日志。
+      // UI 层的检查由客户端在创建提醒时进行。
+    }
+  }
+
+  /// 检查是否至少有一个提醒权限可用（日历或通知）
+  static Future<bool> hasAnyReminderPermission() async {
+    if (!_initialized) await initialize();
+    
+    final bool hasCalendarPermission = await CalendarService.hasPermissions();
+    final bool calendarEnabled = await CalendarService.isEnabled();
+    final bool hasNotificationPermission = await Permission.notification.isGranted;
+    
+    return (hasCalendarPermission && calendarEnabled) || hasNotificationPermission;
   }
 
   /// 取消指定任务的提醒调度
@@ -156,8 +278,11 @@ class ReminderService {
           '任务提醒',
           channelDescription: '用于发送定时任务提醒',
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max,
           showWhen: true,
+          fullScreenIntent: true,
+          category: AndroidNotificationCategory.alarm,
+          audioAttributesUsage: AudioAttributesUsage.alarm,
         ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -210,6 +335,36 @@ class ReminderService {
     dev.log('[ReminderService] Windows 提醒已加入内存调度: ${task.title}');
   }
 
+  /// 请求忽略电池优化 (Android 专用)
+  static Future<void> requestIgnoreBatteryOptimizations() async {
+    if (Platform.isAndroid) {
+      if (await Permission.ignoreBatteryOptimizations.isDenied) {
+        await Permission.ignoreBatteryOptimizations.request();
+      } else {
+        // 如果已经请求过但仍然被优化，可以引导去设置
+        openAppSettings();
+      }
+    }
+  }
+
+  /// 请求精确闹钟权限 (Android 专用)
+  static Future<void> requestExactAlarmPermission() async {
+    if (Platform.isAndroid) {
+      final status = await Permission.scheduleExactAlarm.status;
+      if (status.isGranted) {
+        dev.log('[ReminderService] 精确闹钟权限已授予');
+      } else {
+        // 在某些 Android 13+ 设备上，request() 可能无反应，
+        // 此时引导用户去系统设置页面的“闹钟与提醒”手动开启
+        await Permission.scheduleExactAlarm.request();
+        // 如果请求后仍未授予，尝试打开应用设置或特定权限页面
+        if (!(await Permission.scheduleExactAlarm.isGranted)) {
+          await openAppSettings();
+        }
+      }
+    }
+  }
+
   /// 刷新所有未来的提醒（通常在同步后或启动时调用）
   static Future<void> refreshAll(List<TaskItem> tasks) async {
     if (!_initialized) await initialize();
@@ -220,6 +375,30 @@ class ReminderService {
       if (task.reminderAt != null && !task.completed) {
         await scheduleReminder(task);
       }
+    }
+  }
+
+  /// 触发一个立即生效的系统闹钟提醒（全屏、高优先级）
+  static Future<void> triggerTestAlarm() async {
+    if (!_initialized) await initialize();
+    
+    if (Platform.isAndroid) {
+      await _androidPlugin.show(
+        888,
+        '测试系统闹钟',
+        '这是一条模拟任务到期的全屏提醒测试。',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'task_reminders',
+            '任务提醒',
+            importance: Importance.max,
+            priority: Priority.max,
+            fullScreenIntent: true,
+            category: AndroidNotificationCategory.alarm,
+            audioAttributesUsage: AudioAttributesUsage.alarm,
+          ),
+        ),
+      );
     }
   }
 }
