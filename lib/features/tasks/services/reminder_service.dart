@@ -10,6 +10,7 @@ import 'package:windows_notification/windows_notification.dart';
 import 'package:windows_notification/notification_message.dart';
 import '../providers/task_provider.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
+import 'package:focus_my_time/data/database/app_database.dart';
 
 /// 任务提醒服务
 /// 职责：管理任务的定时提醒通知，支持 Android (系统级调度) 和 Windows (应用级调度)
@@ -203,7 +204,10 @@ class ReminderService {
 
     if (task.reminderAt == null || task.completed) {
       await cancelReminder(task.id);
-      await CalendarService.removeTask(task.id);
+      if (task.calendarEventId != null) {
+        await CalendarService.removeTask(task.calendarEventId!);
+        await AppDatabase.updateTask(task.id, {'calendarEventId': null});
+      }
       return;
     }
 
@@ -218,12 +222,18 @@ class ReminderService {
 
     if (hasCalendarPermission && calendarEnabled) {
       dev.log('[ReminderService] 优先使用日历同步: ${task.title}');
-      await CalendarService.syncTask(task);
+      final eventId = await CalendarService.syncTask(task);
+      if (eventId != null && eventId != task.calendarEventId) {
+        await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+      }
       await cancelReminder(task.id); // 确保没有重复的系统通知
     } else if (hasNotificationPermission) {
       dev.log('[ReminderService] 使用系统通知: ${task.title}');
       await scheduleReminder(task);
-      await CalendarService.removeTask(task.id); // 确保日历中没有
+      if (task.calendarEventId != null) {
+        await CalendarService.removeTask(task.calendarEventId!);
+        await AppDatabase.updateTask(task.id, {'calendarEventId': null});
+      }
     } else {
       dev.log('[ReminderService] 无任何提醒权限: ${task.title}');
       // 这里不抛出 UI 提示，只记录日志。
@@ -373,7 +383,7 @@ class ReminderService {
     // 这里简单起见，直接覆盖调度
     for (final task in tasks) {
       if (task.reminderAt != null && !task.completed) {
-        await scheduleReminder(task);
+        await scheduleUnifiedReminders(task);
       }
     }
   }

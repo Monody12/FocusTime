@@ -55,6 +55,7 @@ class TaskItem {
   final int? expectedMinutes;
   final bool isImportant;
   final int? reminderAt;
+  final String? calendarEventId;
   final int createdAt;
   final int updatedAt;
 
@@ -74,6 +75,7 @@ class TaskItem {
     this.expectedMinutes,
     this.isImportant = false,
     this.reminderAt,
+    this.calendarEventId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -94,6 +96,7 @@ class TaskItem {
     int? expectedMinutes,
     bool? isImportant,
     int? reminderAt,
+    String? calendarEventId,
     int? createdAt,
     int? updatedAt,
     bool clearNotes = false,
@@ -117,6 +120,7 @@ class TaskItem {
         expectedMinutes: expectedMinutes ?? this.expectedMinutes,
         isImportant: isImportant ?? this.isImportant,
         reminderAt: clearReminder ? null : (reminderAt ?? this.reminderAt),
+        calendarEventId: calendarEventId ?? this.calendarEventId,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -162,9 +166,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
   TaskNotifier() : super(TaskState()) {
     loadLists();
     loadTasks().then((_) {
-      // 首次加载完任务后，刷新所有提醒和日历
+      // 首次加载完任务后，统一刷新所有提醒（通知和日历都会走统一调度）
       ReminderService.refreshAll(state.tasks);
-      CalendarService.refreshAll(state.tasks);
     });
   }
 
@@ -213,6 +216,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
         expectedMinutes: m['expectedMinutes'] as int?,
         isImportant: m['isImportant'] == true,
         reminderAt: m['reminderAt'] as int?,
+        calendarEventId: m['calendarEventId'] as String?,
         createdAt: m['createdAt'] as int,
         updatedAt: m['updatedAt'] as int,
       )).toList();
@@ -318,6 +322,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
       expectedMinutes: result['expectedMinutes'] as int?,
       isImportant: result['isImportant'] == true,
       reminderAt: result['reminderAt'] as int?,
+      calendarEventId: result['calendarEventId'] as String?,
       createdAt: result['createdAt'] as int,
       updatedAt: result['updatedAt'] as int,
     );
@@ -357,6 +362,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
           expectedMinutes: dbTask['expectedMinutes'] as int?,
           isImportant: dbTask['isImportant'] == true,
           reminderAt: dbTask['reminderAt'] as int?,
+          calendarEventId: dbTask['calendarEventId'] as String?,
           createdAt: dbTask['createdAt'] as int,
           updatedAt: dbTask['updatedAt'] as int,
         );
@@ -376,9 +382,12 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> deleteTask(String id) async {
+    final task = state.tasks.where((t) => t.id == id).firstOrNull;
     await AppDatabase.deleteTask(id);
     await ReminderService.cancelReminder(id);
-    await CalendarService.removeTask(id);
+    if (task?.calendarEventId != null) {
+      await CalendarService.removeTask(task!.calendarEventId!);
+    }
     final tasks = state.tasks.where((t) => t.id != id).toList();
     state = state.copyWith(tasks: tasks, clearSelectedTask: state.selectedTaskId == id);
     _triggerSync();

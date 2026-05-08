@@ -17,7 +17,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -53,6 +53,7 @@ class AppDatabase {
         expected_minutes INTEGER,
         is_important INTEGER NOT NULL DEFAULT 0,
         reminder_at INTEGER,
+        calendar_event_id TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         deleted INTEGER NOT NULL DEFAULT 0
@@ -166,6 +167,14 @@ class AppDatabase {
     if (oldVersion < 6) {
       try {
         await db.execute('ALTER TABLE tasks ADD COLUMN reminder_at INTEGER');
+      } catch (e) {
+        // Ignore if column already exists
+      }
+    }
+
+    if (oldVersion < 7) {
+      try {
+        await db.execute('ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT');
       } catch (e) {
         // Ignore if column already exists
       }
@@ -322,6 +331,7 @@ class AppDatabase {
       'expected_minutes': expectedMinutes,
       'is_important': 0,
       'reminder_at': reminderAt,
+      'calendar_event_id': null,
       'created_at': now,
       'updated_at': now,
     });
@@ -342,6 +352,7 @@ class AppDatabase {
       'expectedMinutes': expectedMinutes,
       'isImportant': false,
       'reminderAt': reminderAt,
+      'calendarEventId': null,
       'createdAt': now,
       'updatedAt': now,
     };
@@ -373,6 +384,9 @@ class AppDatabase {
     }
     if (updates.containsKey('reminderAt')) {
       mapped['reminder_at'] = updates['reminderAt'];
+    }
+    if (updates.containsKey('calendarEventId')) {
+      mapped['calendar_event_id'] = updates['calendarEventId'];
     }
 
     mapped['updated_at'] = DateTime.now().millisecondsSinceEpoch;
@@ -588,6 +602,7 @@ class AppDatabase {
       'expectedMinutes': row['expected_minutes'],
       'isImportant': (row['is_important'] as int) == 1,
       'reminderAt': row['reminder_at'],
+      'calendarEventId': row['calendar_event_id'],
       'createdAt': row['created_at'],
       'updatedAt': row['updated_at'],
       'deleted': (row['deleted'] as int) == 1,
@@ -740,6 +755,7 @@ class AppDatabase {
       'expected_minutes': data['expectedMinutes'],
       'is_important': (data['isImportant'] ?? false) ? 1 : 0,
       'reminder_at': data['reminderAt'],
+      'calendar_event_id': data['calendarEventId'],
       'created_at': data['createdAt'],
     };
   }

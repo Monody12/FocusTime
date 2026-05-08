@@ -5,6 +5,7 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:focus_my_time/data/database/app_database.dart';
 
 /// 系统日历同步服务
 class CalendarService {
@@ -12,6 +13,7 @@ class CalendarService {
   static String? _calendarId;
   static const String _calendarName = 'FocusMyTime 提醒';
   static const String _prefKeyEnabled = 'calendar_sync_enabled';
+  static Future<bool>? _initFuture;
 
   /// 检查是否启用了日历同步
   static Future<bool> isEnabled() async {
@@ -31,10 +33,18 @@ class CalendarService {
     return permissions.isSuccess && permissions.data == true;
   }
 
-  /// 初始化并获取/创建专用日历
+  /// 初始化并获取/创建专用日历（带并发锁）
   static Future<bool> _ensureCalendar() async {
     if (_calendarId != null) return true;
+    if (_initFuture != null) return _initFuture!;
 
+    _initFuture = _doEnsureCalendar();
+    final result = await _initFuture!;
+    _initFuture = null;
+    return result;
+  }
+
+  static Future<bool> _doEnsureCalendar() async {
     final permissions = await _calendarPlugin.hasPermissions();
     if (permissions.isSuccess && !permissions.data!) {
       final request = await _calendarPlugin.requestPermissions();
@@ -79,46 +89,104 @@ class CalendarService {
     return false;
   }
 
-  /// 同步单个任务到日历
-  static Future<void> syncTask(TaskItem task) async {
-    if (!(await isEnabled())) return;
-    if (!(await _ensureCalendar())) return;
-    if (task.reminderAt == null || task.completed) {
-      await removeTask(task.id);
-      return;
+  /// 同步单个任务到日历，返回事件 ID
+  static Future<String?> syncTask(TaskItem task) async {
+    if (!(await isEnabled())) return task.calendarEventId;
+    if (!(await _ensureCalendar())) return task.calendarEventId;
+    
+    // 如果任务取消了提醒，我们需要从日历彻底移除它
+    if (task.reminderAt == null) {
+      if (task.calendarEventId != null) {
+        await removeTask(task.calendarEventId!);
+      }
+      return null;
     }
 
     final startTime = DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
-    if (startTime.isBefore(DateTime.now())) return;
+    // 如果提醒时间是过去，且还没有同步过，则不创建
+    if (startTime.isBefore(DateTime.now()) && task.calendarEventId == null) {
+      return null;
+    }
 
+    // 组装日历事件，传入可能存在的 eventId
     final event = Event(
       _calendarId,
+      eventId: task.calendarEventId,
       title: '任务提醒: ${task.title}',
       description: task.notes ?? '来自 FocusMyTime 的任务提醒',
       start: tz.TZDateTime.from(startTime, tz.local),
       end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)), tz.local),
-      reminders: [
-        Reminder(minutes: 0), // 事件开始时提醒
-      ],
+      // 如果任务已完成，我们把提醒列表设为空，避免打扰，但事件保留在日历上
+      reminders: task.completed ? [] : [Reminder(minutes: 0)],
     );
 
-    // 存储 eventId 以便后续更新/删除
-    // 为了简单，我们使用 task.id 作为外部标识符（如果插件支持）
-    // device_calendar 不支持直接设置 ID，所以我们需要自己维护映射或在标题中埋点
-    // 这里采用标题匹配/搜索的方式，或者在数据库中记录 eventId (更稳妥，但需要改数据库)
-    // 暂且采用搜索方式
-    await _calendarPlugin.createOrUpdateEvent(event);
-    dev.log('[CalendarService] 已同步任务到日历: ${task.title}');
+    final result = await _calendarPlugin.createOrUpdateEvent(event);
+    if (result != null && result.isSuccess) {
+      dev.log('[CalendarService] 已同步任务到日历: ${task.title}, EventID: ${result.data}');
+      return result.data;
+    } else {
+      dev.log('[CalendarService] 同步日历失败: ${result?.errors.map((e) => e.errorMessage).join(', ')}');
+      return task.calendarEventId;
+    }
   }
 
   /// 从日历移除任务提醒
-  static Future<void> removeTask(String taskId) async {
+  static Future<void> removeTask(String eventId) async {
     if (!(await _ensureCalendar())) return;
-    // 实际实现中需要根据 taskId 找到对应的 eventId 并删除
-    // 这里作为演示，暂留接口
+    final result = await _calendarPlugin.deleteEvent(_calendarId, eventId);
+    if (result.isSuccess) {
+      dev.log('[CalendarService] 已从日历移除事件: $eventId');
+    }
   }
 
-  /// 全量刷新
+  /// 强制清理并重建整个日历系统
+  static Future<void> forceRebuildCalendar(List<TaskItem> tasks) async {
+    final permissions = await _calendarPlugin.hasPermissions();
+    if (!permissions.isSuccess || !permissions.data!) {
+      final request = await _calendarPlugin.requestPermissions();
+      if (!request.isSuccess || !request.data!) return;
+    }
+
+    // 1. 找到所有同名日历并全部删除
+    final calendars = await _calendarPlugin.retrieveCalendars();
+    if (calendars.isSuccess && calendars.data != null) {
+      for (final c in calendars.data!) {
+        if (c.name == _calendarName && c.id != null) {
+          try {
+            await _calendarPlugin.deleteCalendar(c.id!);
+          } catch (e) {
+            dev.log('[CalendarService] 删除旧日历失败: ${e.toString()}');
+          }
+        }
+      }
+    }
+
+    // 2. 重置内存状态
+    _calendarId = null;
+
+    // 3. 强制清空数据库中所有任务的 eventID
+    final db = await AppDatabase.database;
+    await db.execute('UPDATE tasks SET calendar_event_id = NULL');
+
+    // 4. 重新初始化一个纯净的日历
+    await _ensureCalendar();
+
+    // 5. 将当前所有有效任务重新写入日历
+    for (final task in tasks) {
+      if (task.reminderAt != null && !task.completed) {
+        // 创建一个没有 ID 的副本以强制新建
+        final newTask = task.copyWith(calendarEventId: null, clearReminder: false);
+        final eventId = await syncTask(newTask);
+        if (eventId != null) {
+          await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+        }
+      }
+    }
+    
+    dev.log('[CalendarService] 强制清理与重建完成！');
+  }
+
+  /// 全量刷新（已弃用，建议使用统一调度）
   static Future<void> refreshAll(List<TaskItem> tasks) async {
     if (!(await isEnabled())) return;
     for (final task in tasks) {

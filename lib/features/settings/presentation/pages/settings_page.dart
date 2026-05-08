@@ -432,6 +432,73 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         ),
 
                         const SizedBox(height: 24),
+                        
+                        // Calendar Sync Debug Section
+                        _buildSectionTitle('📅 日历同步高级设置', isDark),
+                        const SizedBox(height: 12),
+                        Text(
+                          '如果您的日历出现重复事件或无法修改的问题，您可以使用此按钮强制清理系统中的所有相关日历并重新同步当前有效任务。',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _SettingButton(
+                          label: '清理日历系统并强制刷新',
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (c) => AlertDialog(
+                                title: const Text('强制清理日历'),
+                                content: const Text('此操作将删除系统中所有名为 "FocusMyTime 提醒" 的日历，并重新同步当前的提醒任务。这需要几秒钟的时间。确定继续吗？'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(c).pop(false),
+                                    child: const Text('取消'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () => Navigator.of(c).pop(true),
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                    child: const Text('确定清理', style: TextStyle(color: Colors.white)),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirm == true) {
+                              try {
+                                // 展示一个全局 Loading
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (c) => const Center(child: CircularProgressIndicator()),
+                                );
+                                
+                                final tasks = ref.read(taskProvider).tasks;
+                                await CalendarService.forceRebuildCalendar(tasks);
+                                
+                                if (context.mounted) {
+                                  Navigator.of(context).pop(); // 关闭 loading
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('日历系统已清理并重新同步完成！')),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  Navigator.of(context).pop(); // 关闭 loading
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('清理失败: $e')),
+                                  );
+                                }
+                              }
+                            }
+                          },
+                          isPrimary: false,
+                          isDark: isDark,
+                        ),
+
+                        const SizedBox(height: 24),
 
                         // Cloud Sync Section
                         _buildSectionTitle('☁ 同步服务器', isDark),
@@ -696,6 +763,61 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           _SettingButton(
                             label: '发送测试通知',
                             onPressed: () => ReminderService.showImmediateTestNotification(),
+                            isPrimary: false,
+                            isDark: isDark,
+                          ),
+                        ]),
+                        const SizedBox(height: 8),
+                        _buildButtonRow([
+                          _SettingButton(
+                            label: '强制清理日历',
+                            onPressed: () async {
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (c) => AlertDialog(
+                                  title: const Text('强制清理日历'),
+                                  content: const Text('此操作将删除系统中所有名为 "FocusMyTime 提醒" 的日历，并重新同步当前的提醒任务。这需要几秒钟的时间。确定继续吗？'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(c).pop(false),
+                                      child: const Text('取消'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.of(c).pop(true),
+                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                                      child: const Text('确定清理', style: TextStyle(color: Colors.white)),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirm == true) {
+                                try {
+                                  showDialog(
+                                    context: context,
+                                    barrierDismissible: false,
+                                    builder: (c) => const Center(child: CircularProgressIndicator()),
+                                  );
+                                  
+                                  final tasks = ref.read(taskProvider).tasks;
+                                  await CalendarService.forceRebuildCalendar(tasks);
+                                  
+                                  if (context.mounted) {
+                                    Navigator.of(context).pop(); // 关闭 loading
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('日历系统已清理并重新同步完成！')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    Navigator.of(context).pop(); // 关闭 loading
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('清理失败: $e')),
+                                    );
+                                  }
+                                }
+                              }
+                            },
                             isPrimary: false,
                             isDark: isDark,
                           ),
