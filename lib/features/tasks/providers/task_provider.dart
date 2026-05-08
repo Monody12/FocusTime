@@ -370,7 +370,12 @@ class TaskNotifier extends StateNotifier<TaskState> {
     }
 
     if (updatedTask != null) {
-      ReminderService.scheduleUnifiedReminders(updatedTask);
+      final eventId = await ReminderService.scheduleUnifiedReminders(updatedTask);
+      if (eventId != updatedTask.calendarEventId) {
+        state = state.copyWith(
+          tasks: state.tasks.map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t).toList(),
+        );
+      }
     }
     
     _triggerSync();
@@ -400,7 +405,12 @@ class TaskNotifier extends StateNotifier<TaskState> {
     // 处理提醒取消/重新调度
     final updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
     if (updatedTask != null) {
-      ReminderService.scheduleUnifiedReminders(updatedTask);
+      final eventId = await ReminderService.scheduleUnifiedReminders(updatedTask);
+      if (eventId != updatedTask.calendarEventId) {
+        state = state.copyWith(
+          tasks: state.tasks.map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t).toList(),
+        );
+      }
     }
     
     _triggerSync();

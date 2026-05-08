@@ -199,7 +199,7 @@ class ReminderService {
   }
 
   /// 统一调度提醒（优先日历，其次通知）
-  static Future<void> scheduleUnifiedReminders(TaskItem task) async {
+  static Future<String?> scheduleUnifiedReminders(TaskItem task) async {
     if (!_initialized) await initialize();
 
     if (task.reminderAt == null || task.completed) {
@@ -208,7 +208,7 @@ class ReminderService {
         await CalendarService.removeTask(task.calendarEventId!);
         await AppDatabase.updateTask(task.id, {'calendarEventId': null});
       }
-      return;
+      return null;
     }
 
     // 检查日历权限和启用状态
@@ -227,6 +227,7 @@ class ReminderService {
         await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
       }
       await cancelReminder(task.id); // 确保没有重复的系统通知
+      return eventId;
     } else if (hasNotificationPermission) {
       dev.log('[ReminderService] 使用系统通知: ${task.title}');
       await scheduleReminder(task);
@@ -234,10 +235,10 @@ class ReminderService {
         await CalendarService.removeTask(task.calendarEventId!);
         await AppDatabase.updateTask(task.id, {'calendarEventId': null});
       }
+      return null;
     } else {
       dev.log('[ReminderService] 无任何提醒权限: ${task.title}');
-      // 这里不抛出 UI 提示，只记录日志。
-      // UI 层的检查由客户端在创建提醒时进行。
+      return task.calendarEventId;
     }
   }
 
