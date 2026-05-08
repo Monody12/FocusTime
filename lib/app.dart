@@ -25,6 +25,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
   bool _showCalendar = false;
   bool _showNoTaskToast = false;
 
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   @override
   Widget build(BuildContext context) {
     // final timerState = ref.watch(timerProvider); // Removed to prevent global rebuilds
@@ -56,7 +58,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
     });
 
     Widget mainContent = Scaffold(
-      key: GlobalKey<ScaffoldState>(), // For drawer access
+      key: _scaffoldKey, // For drawer access
       drawer: isMobile ? Drawer(
         width: 260,
         child: Sidebar(
@@ -69,9 +71,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: Column(
-              children: [
-              // Header (Top-level, spans full width)
+            child: SafeArea(
+              child: Column(
+                children: [
+                // Header (Top-level, spans full width)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
@@ -237,6 +240,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
             ],
           ),
         ),
+      ),
 
           // Task Detail overlay (Mobile only)
           if (isMobile && taskState.selectedTaskId != null && !_showCalendar)

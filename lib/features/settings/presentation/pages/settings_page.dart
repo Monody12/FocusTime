@@ -6,6 +6,9 @@ import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
+import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -39,6 +42,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   String _syncStatus = '';
   int? _lastSyncTime;
   String _dbPath = '';
+  Map<String, String> _permissionStatus = {};
+  bool _calendarSyncEnabled = false;
 
   // 同步服务器登录表单的 FocusNode，用于精确控制 Tab 跳转顺序
   late FocusNode _syncUrlFocusNode;
@@ -86,6 +91,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _setupFocusNode(_syncLoginFocusNode, _syncLogoutFocusNode);
 
     _loadDbPath();
+    _loadPermissions();
+    _loadCalendarStatus();
+  }
+
+  Future<void> _loadCalendarStatus() async {
+    final enabled = await CalendarService.isEnabled();
+    if (mounted) setState(() => _calendarSyncEnabled = enabled);
+  }
+
+  Future<void> _loadPermissions() async {
+    final status = await ReminderService.getPermissionStatus();
+    if (mounted) setState(() => _permissionStatus = status);
   }
 
   void _setupFocusNode(FocusNode node, FocusNode nextNode) {
@@ -130,7 +147,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final timerState = ref.watch(timerProvider);
+    final timerMode = ref.watch(timerProvider.select((s) => s.timerMode));
+    final singleCoreConfig = ref.watch(timerProvider.select((s) => s.singleCoreConfig));
+    final pomodoroConfig = ref.watch(timerProvider.select((s) => s.pomodoroConfig));
+    final soundEnabled = ref.watch(timerProvider.select((s) => s.soundEnabled));
+    final notificationDuration = ref.watch(timerProvider.select((s) => s.notificationDuration));
+    final notificationTemplate = ref.watch(timerProvider.select((s) => s.notificationTemplate));
+    final snoozeDurationMinutes = ref.watch(timerProvider.select((s) => s.snoozeDurationMinutes));
+
+    // 构建一个不包含流逝时间的状态对象供当前页面使用，彻底避免计时器走字导致的页面每秒重绘
+    final timerState = TimerState(
+      timerMode: timerMode,
+      singleCoreConfig: singleCoreConfig,
+      pomodoroConfig: pomodoroConfig,
+      soundEnabled: soundEnabled,
+      notificationDuration: notificationDuration,
+      notificationTemplate: notificationTemplate,
+      snoozeDurationMinutes: snoozeDurationMinutes,
+    );
     final timerNotifier = ref.read(timerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -583,6 +617,140 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           ),
                         ),
 
+                        const SizedBox(height: 24),
+
+                        // Debug Section
+                        _buildSectionTitle('🛠 调试与权限', isDark),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ..._permissionStatus.entries.map((e) => Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${e.key}:',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      e.value,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: e.value.contains('granted') ? Colors.green : Colors.orange,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildButtonRow([
+                          _SettingButton(
+                            label: '检查权限',
+                            onPressed: () async {
+                              await ReminderService.initialize();
+                              await _loadPermissions();
+                            },
+                            isPrimary: false,
+                            isDark: isDark,
+                          ),
+                          _SettingButton(
+                            label: '精确闹钟',
+                            onPressed: () async {
+                              await ReminderService.requestExactAlarmPermission();
+                              await _loadPermissions();
+                            },
+                            isPrimary: false,
+                            isDark: isDark,
+                          ),
+                        ]),
+                        const SizedBox(height: 8),
+                        _buildButtonRow([
+                          _SettingButton(
+                            label: '电池优化',
+                            onPressed: () async {
+                              await ReminderService.requestIgnoreBatteryOptimizations();
+                              await _loadPermissions();
+                            },
+                            isPrimary: false,
+                            isDark: isDark,
+                          ),
+                          _SettingButton(
+                            label: '发送测试通知',
+                            onPressed: () => ReminderService.showImmediateTestNotification(),
+                            isPrimary: false,
+                            isDark: isDark,
+                          ),
+                        ]),
+                        const SizedBox(height: 8),
+                        _buildButtonRow([
+                          _SettingButton(
+                            label: '测试系统闹钟',
+                            onPressed: () => ReminderService.triggerTestAlarm(),
+                            isPrimary: false,
+                            isAccent: true,
+                            isDark: isDark,
+                          ),
+                          _SettingButton(
+                            label: '测试日历同步',
+                            onPressed: () async {
+                              final success = await CalendarService.triggerTestSync();
+                              _showSnackBar(success ? '测试事件已添加至日历' : '日历同步测试失败，请检查权限');
+                            },
+                            isPrimary: false,
+                            isAccent: true,
+                            isDark: isDark,
+                          ),
+                        ]),
+
+                        const SizedBox(height: 24),
+
+                        // Advanced Section
+                        _buildSectionTitle('🚀 高级功能', isDark),
+                        const SizedBox(height: 12),
+                        _buildSwitchSetting(
+                          label: '同步任务到系统日历',
+                          value: _calendarSyncEnabled,
+                          onChanged: (value) async {
+                            await CalendarService.setEnabled(value);
+                            setState(() => _calendarSyncEnabled = value);
+                            if (value) {
+                              // 立即同步所有现有任务
+                              final taskState = ref.read(taskProvider);
+                              CalendarService.refreshAll(taskState.tasks);
+                            }
+                          },
+                          isDark: isDark,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4, left: 2),
+                          child: Text(
+                            '启用后，有提醒时间的任务将自动同步到手机系统日历中，提供更可靠的提醒。',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
+                          ),
+                        ),
+
                         const SizedBox(height: 32),
 
                         // Version info
@@ -877,13 +1045,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return parts.join(' · ');
   }
 
-  /// 构建一个按钮行，并确保其中的 _SettingButton 能够平分宽度
+  /// 构建一个按钮行，包含两个平分的按钮
   Widget _buildButtonRow(List<Widget> children) {
     return Row(
       children: children.map((child) {
         if (child is _SettingButton) {
-          // 只有在 Row 中才使用 Expanded，防止在 Column 中使用导致布局约束错误
-          return Expanded(child: child);
+          return Expanded(child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: child,
+          ));
         }
         return child;
       }).toList(),
