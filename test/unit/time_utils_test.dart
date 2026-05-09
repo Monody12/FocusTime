@@ -40,14 +40,36 @@ void main() {
       expect(result.targetTime.isAfter(now), true);
     });
 
+    test('targetTime is always at a round hour or half hour', () {
+      final result = calculateSingleCoreTarget(25);
+      expect(result.targetTime.second, 0);
+      expect(
+        result.targetTime.minute == 0 || result.targetTime.minute == 30,
+        true,
+        reason: 'Expected minute to be 0 or 30, got ${result.targetTime.minute}',
+      );
+    });
+
     test('durationMinutes respects minDuration parameter', () {
-      // Test with different minDurations
       final result30 = calculateSingleCoreTarget(30);
       final result45 = calculateSingleCoreTarget(45);
 
-      // Both should be at least their respective minDuration
       expect(result30.durationMinutes, greaterThanOrEqualTo(30));
       expect(result45.durationMinutes, greaterThanOrEqualTo(45));
+    });
+
+    test('skips to next round time when too close to current round', () {
+      // 如果当前时间离下一个整点/半点很近（不足 minDuration），
+      // 应该跳到再下一个整点/半点
+      final result = calculateSingleCoreTarget(60);
+      // 无论如何，duration 应该 >= minDuration
+      expect(result.durationMinutes, greaterThanOrEqualTo(60));
+      // 目标时间的分钟必须是 0 或 30
+      expect(
+        result.targetTime.minute == 0 || result.targetTime.minute == 30,
+        true,
+      );
+      expect(result.targetTime.second, 0);
     });
   });
 

@@ -7,36 +7,24 @@ String formatTime(int totalSeconds) {
 ({int durationMinutes, DateTime targetTime}) calculateSingleCoreTarget(int minDuration) {
   final now = DateTime.now();
   final minute = now.minute;
-  final second = now.second;
 
-  // 计算当前时间已经过去的秒数
-  final elapsedSeconds = minute * 60 + second;
-
-  // 找到最近的整点或半点 (00:00 或 00:30)
-  int targetMinute;
+  // 找到下一个整点或半点
+  DateTime nextTarget;
   if (minute < 30) {
-    targetMinute = 30;
+    nextTarget = DateTime(now.year, now.month, now.day, now.hour, 30);
   } else {
-    // minute >= 30, 找到下一个整点
-    targetMinute = 60;
+    nextTarget = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
   }
 
-  final targetTime = DateTime(
-    now.year,
-    now.month,
-    now.day,
-    now.hour + (minute >= 30 ? 1 : 0),
-    targetMinute == 60 ? 0 : targetMinute,
-  );
+  int durationMinutes = nextTarget.difference(now).inMinutes;
 
-  final durationMinutes = targetTime.difference(now).inMinutes;
+  // 如果不足最小时长，继续跳到下一个整点/半点
+  while (durationMinutes < minDuration) {
+    nextTarget = nextTarget.add(const Duration(minutes: 30));
+    durationMinutes = nextTarget.difference(now).inMinutes;
+  }
 
-  // 如果计算出的时间小于最小时间，调整到最小时间
-  final adjustedDuration = durationMinutes < minDuration ? minDuration : durationMinutes;
-
-  final actualTargetTime = now.add(Duration(minutes: adjustedDuration));
-
-  return (durationMinutes: adjustedDuration, targetTime: actualTargetTime);
+  return (durationMinutes: durationMinutes, targetTime: nextTarget);
 }
 
 String formatDate(DateTime date) {
