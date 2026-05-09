@@ -185,16 +185,17 @@ class ReminderService {
     }
 
     final reminderDateTime = DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
-    // 如果提醒时间是过去，则不进行调度
+    // 如果提醒时间是过去，取消已有定时器防止过期提醒还在队列中排队
     if (reminderDateTime.isBefore(DateTime.now())) {
       dev.log('[ReminderService] 提醒时间已过期: ${task.title}');
+      await cancelReminder(task.id);
       return;
     }
 
     if (Platform.isAndroid) {
       await _scheduleAndroid(task, reminderDateTime);
     } else if (Platform.isWindows) {
-      _scheduleWindows(task, reminderDateTime);
+      await _scheduleWindows(task, reminderDateTime);
     }
   }
 
@@ -265,10 +266,13 @@ class ReminderService {
     if (Platform.isWindows) {
       final existingTimer = _windowsTimers[taskId];
       if (existingTimer != null) {
-        if (existingTimer is StreamSubscription) {
+        // Timer 支持 cancel()，可真正阻止回调执行
+        if (existingTimer is Timer) {
+          existingTimer.cancel();
+        } else if (existingTimer is StreamSubscription) {
           existingTimer.cancel();
         } else if (existingTimer is Future) {
-          // Future 无法直接取消，但在回调中会通过标志位检查
+          // Future 无法直接取消，仅作兼容保留
         }
         _windowsTimers.remove(taskId);
       }
@@ -303,23 +307,22 @@ class ReminderService {
     dev.log('[ReminderService] Android 提醒已调度: ${task.title} at $scheduledTime');
   }
 
-  static void _scheduleWindows(TaskItem task, DateTime scheduledTime) {
+  static Future<void> _scheduleWindows(TaskItem task, DateTime scheduledTime) async {
     final duration = scheduledTime.difference(DateTime.now());
     if (duration.isNegative) return;
 
-    // 先取消旧的定时器（如果存在）
-    cancelReminder(task.id);
+    // 先取消旧的定时器，Timer.cancel() 可真正阻止旧回调执行
+    await cancelReminder(task.id);
 
-    // 简单的内存计时器，应用关闭则失效。
-    // 我们存储一个标记，以便在延迟结束时检查任务是否仍然有效
-    final timer = Future.delayed(duration, () {
-      // 检查定时器是否还在追踪列表中，如果不在说明已被取消
-      if (_windowsTimers.containsKey(task.id) && _winNotifier != null) {
+    // 使用 Timer 而非 Future.delayed：Timer 支持 cancel()，
+    // 确保修改提醒时间后旧定时器的回调不会误触发
+    final timer = Timer(duration, () {
+      if (_winNotifier != null) {
         final message = NotificationMessage.fromCustomTemplate(
           task.id,
           group: 'reminders',
         );
-        
+
         // 使用 scenario="alarm" 或 "reminder" 使通知常驻，并添加操作按钮
         final String toastXml = '''
           <toast scenario="alarm">
@@ -336,12 +339,12 @@ class ReminderService {
             <audio src="ms-winsoundevent:Notification.Looping.Alarm" loop="true" />
           </toast>
         ''';
-        
+
         _winNotifier!.showNotificationCustomTemplate(message, toastXml);
-        _windowsTimers.remove(task.id);
       }
+      _windowsTimers.remove(task.id);
     });
-    
+
     _windowsTimers[task.id] = timer;
     dev.log('[ReminderService] Windows 提醒已加入内存调度: ${task.title}');
   }

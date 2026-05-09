@@ -387,15 +387,33 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> deleteTask(String id) async {
+    // 先查找任务（用于后续日历清理），必须在 DB 操作前获取引用
     final task = state.tasks.where((t) => t.id == id).firstOrNull;
+
+    // 1. 数据库软删除（必须最先执行）
     await AppDatabase.deleteTask(id);
-    await ReminderService.cancelReminder(id);
-    if (task?.calendarEventId != null) {
-      await CalendarService.removeTask(task!.calendarEventId!);
-    }
+
+    // 2. 乐观更新 UI：立即从 state.tasks 中移除该任务，确保 UI 即时响应。
+    //    此操作必须在提醒/日历清理之前，避免那些操作抛异常导致 UI 不更新。
     final tasks = state.tasks.where((t) => t.id != id).toList();
     state = state.copyWith(tasks: tasks, clearSelectedTask: state.selectedTaskId == id);
+
+    // 3. 触发同步（不 await，后台执行）
     _triggerSync();
+
+    // 4. 清理提醒和日历事件（可能失败，不能阻塞核心删除流程）
+    try {
+      await ReminderService.cancelReminder(id);
+    } catch (e) {
+      // 取消通知失败不影响删除结果，用户仍可在设置中手动管理通知
+    }
+    if (task?.calendarEventId != null) {
+      try {
+        await CalendarService.removeTask(task!.calendarEventId!);
+      } catch (e) {
+        // Android 14+ 可能拒绝删除日历事件，降级方案已在 CalendarService 内部处理
+      }
+    }
   }
 
   Future<void> toggleTaskComplete(String id) async {
