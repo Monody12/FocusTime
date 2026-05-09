@@ -45,6 +45,21 @@ class TimerPage extends ConsumerWidget {
                 const ModeSelector(),
                 const SizedBox(height: 20),
 
+                // 当前任务名称
+                if (timerState.currentTask.isNotEmpty && timerState.timerPhase == 'focus')
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      timerState.currentTask,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                      ),
+                    ),
+                  ),
+
                 // 计时器圆环
                 const Center(child: TimerDisplay()),
                 const SizedBox(height: 12),

@@ -463,6 +463,11 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   // List info
                   _buildSectionLabel('所属清单：${currentList?.name ?? '未知'}', isDark),
 
+                  const SizedBox(height: 16),
+
+                  // Task timestamps
+                  _buildTimestampInfo(task, isDark),
+
                   // Delete button
                   const SizedBox(height: 16),
                   SizedBox(
@@ -736,6 +741,31 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
         ),
       ),
+    );
+  }
+
+  /// 格式化 Unix 毫秒时间戳为可读日期时间字符串
+  String _formatTimestamp(int milliseconds) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(milliseconds);
+    final month = dt.month.toString().padLeft(2, '0');
+    final day = dt.day.toString().padLeft(2, '0');
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '${dt.year}/$month/$day $hour:$minute';
+  }
+
+  Widget _buildTimestampInfo(TaskItem task, bool isDark) {
+    final textStyle = TextStyle(
+      fontSize: 11,
+      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('创建时间：${_formatTimestamp(task.createdAt)}', style: textStyle),
+        const SizedBox(height: 4),
+        Text('修改时间：${_formatTimestamp(task.updatedAt)}', style: textStyle),
+      ],
     );
   }
 
