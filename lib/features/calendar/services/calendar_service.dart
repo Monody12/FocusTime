@@ -27,10 +27,16 @@ class CalendarService {
     await prefs.setBool(_prefKeyEnabled, enabled);
   }
 
-  /// 检查是否有日历权限
+  /// 检查是否有日历权限（非移动平台直接返回 false）
   static Future<bool> hasPermissions() async {
-    final permissions = await _calendarPlugin.hasPermissions();
-    return permissions.isSuccess && permissions.data == true;
+    if (Platform.isWindows || Platform.isLinux) return false;
+    try {
+      final permissions = await _calendarPlugin.hasPermissions();
+      return permissions.isSuccess && permissions.data == true;
+    } catch (e) {
+      dev.log('[CalendarService] 权限检查异常: $e');
+      return false;
+    }
   }
 
   /// 初始化并获取/创建专用日历（带并发锁）
@@ -209,9 +215,10 @@ class CalendarService {
     // 2. 重置内存状态
     _calendarId = null;
 
-    // 3. 强制清空数据库中所有任务的 eventID
+    // 3. 强制清空数据库中所有任务的 eventID，同时更新 updated_at 触发同步
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
     final db = await AppDatabase.database;
-    await db.execute('UPDATE tasks SET calendar_event_id = NULL');
+    await db.execute('UPDATE tasks SET calendar_event_id = NULL, updated_at = ?', [nowMs]);
 
     // 4. 重新初始化一个纯净的日历
     await _ensureCalendar();
@@ -231,11 +238,19 @@ class CalendarService {
     dev.log('[CalendarService] 强制清理与重建完成！');
   }
 
+  static bool _refreshInProgress = false;
+
   /// 全量刷新（已弃用，建议使用统一调度）
   static Future<void> refreshAll(List<TaskItem> tasks) async {
-    if (!(await isEnabled())) return;
-    for (final task in tasks) {
-      await syncTask(task);
+    if (_refreshInProgress) return;
+    _refreshInProgress = true;
+    try {
+      if (!(await isEnabled())) return;
+      for (final task in tasks) {
+        await syncTask(task);
+      }
+    } finally {
+      _refreshInProgress = false;
     }
   }
 

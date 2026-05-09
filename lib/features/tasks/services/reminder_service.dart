@@ -21,7 +21,9 @@ class ReminderService {
   
   // 用于追踪 Windows 端的内存定时器，以便在任务删除或提醒更改时取消它们
   static final Map<String, dynamic> _windowsTimers = {};
-  
+  static bool _refreshInProgress = false; // 防止并发 refreshAll
+  static bool _refreshPending = false; // 有等待中的 refreshAll 请求
+
   static Function(String)? _onAction;
   
   /// 设置通知动作监听器
@@ -109,6 +111,8 @@ class ReminderService {
     }
 
     // 3. 初始化 Windows 通知客户端
+    // 注意：与 TimerNotificationService 共享同一个 applicationId，
+    // 两个实例的回调都指向 _handleNotificationAction，实际运行中无冲突
     if (Platform.isWindows) {
       _winNotifier = WindowsNotification(
         applicationId: r'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe',
@@ -212,28 +216,48 @@ class ReminderService {
       return null;
     }
 
-    // 检查日历权限和启用状态
-    final bool hasCalendarPermission = await CalendarService.hasPermissions();
-    final bool calendarEnabled = await CalendarService.isEnabled();
-    
+    // 检查日历权限和启用状态（try-catch 保护：桌面平台可能抛 MissingPluginException）
+    bool hasCalendarPermission = false;
+    bool calendarEnabled = false;
+    try {
+      hasCalendarPermission = await CalendarService.hasPermissions();
+      calendarEnabled = await CalendarService.isEnabled();
+    } catch (e) {
+      dev.log('[ReminderService] 日历权限检查失败（预期桌面平台）: $e');
+    }
+
     // 检查通知权限
     final bool hasNotificationPermission = await Permission.notification.isGranted;
-    
+
     dev.log('[ReminderService] 权限检查 - 日历: $hasCalendarPermission, 启用: $calendarEnabled, 通知: $hasNotificationPermission');
 
     if (hasCalendarPermission && calendarEnabled) {
       dev.log('[ReminderService] 优先使用日历同步: ${task.title}');
-      final eventId = await CalendarService.syncTask(task);
-      if (eventId != null && eventId != task.calendarEventId) {
-        await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+      // try-catch 保护：日历操作在桌面平台或权限异常时可能失败
+      try {
+        final eventId = await CalendarService.syncTask(task);
+        if (eventId != null && eventId != task.calendarEventId) {
+          await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+        }
+        await cancelReminder(task.id);
+        return eventId;
+      } catch (e) {
+        dev.log('[ReminderService] 日历同步失败，回退到通知: ${task.title}, $e');
+        // 日历失败后回退到系统通知
+        if (hasNotificationPermission) {
+          await scheduleReminder(task);
+        }
+        return task.calendarEventId;
       }
-      await cancelReminder(task.id); // 确保没有重复的系统通知
-      return eventId;
     } else if (hasNotificationPermission) {
       dev.log('[ReminderService] 使用系统通知: ${task.title}');
       await scheduleReminder(task);
       if (task.calendarEventId != null) {
-        await CalendarService.removeTask(task.calendarEventId!);
+        try {
+          await CalendarService.removeTask(task.calendarEventId!);
+        } catch (e) {
+          dev.log('[ReminderService] 清理日历事件失败（预期桌面平台）: $e');
+        }
         await AppDatabase.updateTask(task.id, {'calendarEventId': null});
       }
       return null;
@@ -246,12 +270,22 @@ class ReminderService {
   /// 检查是否至少有一个提醒权限可用（日历或通知）
   static Future<bool> hasAnyReminderPermission() async {
     if (!_initialized) await initialize();
-    
-    final bool hasCalendarPermission = await CalendarService.hasPermissions();
-    final bool calendarEnabled = await CalendarService.isEnabled();
-    final bool hasNotificationPermission = await Permission.notification.isGranted;
-    
-    return (hasCalendarPermission && calendarEnabled) || hasNotificationPermission;
+
+    // try-catch 保护：桌面平台调用日历/通知插件可能抛 MissingPluginException
+    try {
+      final bool hasCalendarPermission = await CalendarService.hasPermissions();
+      final bool calendarEnabled = await CalendarService.isEnabled();
+      final bool hasNotificationPermission = await Permission.notification.isGranted;
+      return (hasCalendarPermission && calendarEnabled) || hasNotificationPermission;
+    } catch (e) {
+      dev.log('[ReminderService] 权限检查异常（预期桌面平台）: $e');
+      // 桌面平台回退：仅检查通知权限
+      try {
+        return await Permission.notification.isGranted;
+      } catch (_) {
+        return false;
+      }
+    }
   }
 
   /// 取消指定任务的提醒调度
@@ -281,7 +315,10 @@ class ReminderService {
 
   static Future<void> _scheduleAndroid(TaskItem task, DateTime scheduledTime) async {
     final int notificationId = task.id.hashCode;
-    
+
+    // 先取消旧调度再创建新的，防止部分 OEM 设备出现重复通知
+    await _androidPlugin.cancel(notificationId);
+
     await _androidPlugin.zonedSchedule(
       notificationId,
       '任务提醒',
@@ -323,7 +360,6 @@ class ReminderService {
           group: 'reminders',
         );
 
-        // 使用 scenario="alarm" 或 "reminder" 使通知常驻，并添加操作按钮
         final String toastXml = '''
           <toast scenario="alarm">
             <visual>
@@ -343,6 +379,8 @@ class ReminderService {
         _winNotifier!.showNotificationCustomTemplate(message, toastXml);
       }
       _windowsTimers.remove(task.id);
+      // 提醒已触发，清除数据库中的 reminder_at 防止死数据累积
+      AppDatabase.updateTask(task.id, {'reminderAt': null});
     });
 
     _windowsTimers[task.id] = timer;
@@ -379,16 +417,63 @@ class ReminderService {
     }
   }
 
-  /// 刷新所有未来的提醒（通常在同步后或启动时调用）
+  /// 刷新所有未来的提醒（通常在启动或同步后调用）
+  /// 仅调度未来的提醒，过期的跳过（不自动删除——保留用户数据）
   static Future<void> refreshAll(List<TaskItem> tasks) async {
-    if (!_initialized) await initialize();
-    
-    // 先取消所有现有的（可选，Android 覆盖即可，但为了清理已删除任务建议先 Cancel）
-    // 这里简单起见，直接覆盖调度
-    for (final task in tasks) {
-      if (task.reminderAt != null && !task.completed) {
-        await scheduleUnifiedReminders(task);
+    // 如果已有 refreshAll 正在执行，标记待重跑，等当前执行完后自动重跑一次
+    if (_refreshInProgress) {
+      _refreshPending = true;
+      return;
+    }
+    _refreshInProgress = true;
+    try {
+      await _doRefreshAll(tasks);
+      // 如果在执行期间收到了新的 refreshAll 请求，再跑一次（合并多次请求）
+      while (_refreshPending) {
+        _refreshPending = false;
+        await _doRefreshAll(tasks);
       }
+    } finally {
+      _refreshInProgress = false;
+    }
+  }
+
+  static Future<void> _doRefreshAll(List<TaskItem> tasks) async {
+    if (!_initialized) await initialize();
+
+    final now = DateTime.now();
+    final nowMs = now.millisecondsSinceEpoch;
+    final missedThreshold = nowMs - 30 * 60 * 1000; // 过去 30 分钟（仅 Windows 用）
+
+    for (final task in tasks) {
+      if (task.reminderAt == null || task.completed) continue;
+
+      final reminderTime = DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+      if (reminderTime.isAfter(now)) {
+        // 未来提醒：正常调度
+        await scheduleUnifiedReminders(task);
+      } else if (Platform.isWindows &&
+          task.reminderAt! >= missedThreshold &&
+          _winNotifier != null) {
+        // Windows 端：检测刚错过的提醒（APP 关闭期间的提醒）
+        // 使用 task.id 作为 tag 防止重复弹窗
+        final message = NotificationMessage.fromCustomTemplate(
+          'missed_${task.id}',
+          group: 'reminders',
+        );
+        final String toastXml = '''
+          <toast>
+            <visual>
+              <binding template="ToastGeneric">
+                <text>错过了提醒</text>
+                <text>${task.title}</text>
+              </binding>
+            </visual>
+          </toast>
+        ''';
+        _winNotifier!.showNotificationCustomTemplate(message, toastXml);
+      }
+      // 过期提醒不自动删除 reminder_at，保留用户数据
     }
   }
 

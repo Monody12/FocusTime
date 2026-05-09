@@ -165,9 +165,30 @@ class TaskState {
 class TaskNotifier extends StateNotifier<TaskState> {
   TaskNotifier() : super(TaskState()) {
     loadLists();
-    loadTasks().then((_) {
-      // 首次加载完任务后，统一刷新所有提醒（通知和日历都会走统一调度）
-      ReminderService.refreshAll(state.tasks);
+    loadTasks().then((_) async {
+      // 从数据库加载所有有提醒的未完成任务（不受当前视图过滤限制），确保每个提醒都被恢复
+      final allDbTasks = await AppDatabase.getAllTasks();
+      final allTasks = allDbTasks.map((m) => TaskItem(
+        id: m['id'] as String,
+        listId: m['listId'] as String,
+        title: m['title'] as String,
+        notes: m['notes'] as String?,
+        completed: m['completed'] == true,
+        completedAt: m['completedAt'] as int?,
+        dueDate: m['dueDate'] as String?,
+        dueTime: m['dueTime'] as String?,
+        sortOrder: m['sortOrder'] as int,
+        isMyDay: m['isMyDay'] == true,
+        myDayAddedAt: m['myDayAddedAt'] as int?,
+        recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
+        expectedMinutes: m['expectedMinutes'] as int?,
+        isImportant: m['isImportant'] == true,
+        reminderAt: m['reminderAt'] as int?,
+        calendarEventId: m['calendarEventId'] as String?,
+        createdAt: m['createdAt'] as int,
+        updatedAt: m['updatedAt'] as int,
+      )).toList();
+      ReminderService.refreshAll(allTasks);
     });
   }
 

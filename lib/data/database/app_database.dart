@@ -17,7 +17,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 9,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -135,6 +135,9 @@ class AppDatabase {
         deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
+
+    // 加速提醒查询的复合索引
+    await db.execute('CREATE INDEX idx_tasks_reminders ON tasks(deleted, completed, reminder_at)');
 
     // 种子数据
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -257,6 +260,10 @@ class AppDatabase {
         )
       ''');
     }
+
+    if (oldVersion < 9) {
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_tasks_reminders ON tasks(deleted, completed, reminder_at)');
+    }
   }
 
   // ========== 设置 ==========
@@ -375,6 +382,17 @@ class AppDatabase {
   static Future<List<Map<String, dynamic>>> getAllTasks() async {
     final db = await database;
     final result = await db.query('tasks', where: 'deleted = 0', orderBy: 'sort_order');
+    return result.map(_mapTask).toList();
+  }
+
+  /// 获取所有有待处理提醒的未完成任务（仅返回未来的提醒）
+  static Future<List<Map<String, dynamic>>> getActiveReminders() async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final result = await db.query('tasks',
+        where: 'deleted = 0 AND completed = 0 AND reminder_at IS NOT NULL AND reminder_at > ?',
+        whereArgs: [now],
+        orderBy: 'reminder_at');
     return result.map(_mapTask).toList();
   }
 
