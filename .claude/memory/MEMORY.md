@@ -10,3 +10,4 @@
 - [同步触发覆盖：Settings 也必须触发同步](sync_trigger_coverage.md) — 任何持久化变更都必须调用 triggerBackgroundSync
 - [AI 模型选择：Chat 优于 Reasoner](ai_model_selection.md) — 任务管理需要秒级响应，不用推理模型
 - [软件更新机制设计](update_mechanism_design.md) — 推荐自建更新服务器，复用现有公网 IP
+- [数据丢失预防](data_loss_prevention.md) — 绝不能在初始化/恢复流程中自动删除用户数据，refreshAll 语义是恢复不是清理

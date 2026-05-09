@@ -321,3 +321,174 @@ await txn.delete('lists', where: 'is_system = 0');  // 全部自定义清单
 - **任何能清除数据的脚本都应有显式的安全确认机制**
 - **CI/CD 中运行的 `flutter test` 不应连接生产数据库**
 - 给 `AppDatabase` 添加可配置的数据库路径（如 `setDatabasePath`）是更安全的长期方案
+
+---
+
+## 9. 同步触发覆盖审查：Settings 变更不触发同步
+
+### 9.1 问题
+
+项目中存在两种持久化机制：SQLite (AppDatabase) 和 SharedPreferences (TimerProvider)。Settings 表变更（API key、AI 配置）正确设置了 `updated_at` 会被纳入同步 payload，但保存后从不触发同步调用。
+
+### 9.2 修复
+
+- `SyncService.triggerBackgroundSync()` — fire-and-forget 后台同步
+- `SyncService.startAutoSync()` / `stopAutoSync()` — 每 5 分钟周期性同步
+- 所有 `AppDatabase.setSetting()` 调用点都加上了 `triggerBackgroundSync()`
+
+### 9.3 教训
+
+- 新增持久化操作时必须问：这里是否应该触发同步？
+- 后台同步必须是 fire-and-forget，异常静默，不能阻塞 UI
+- SharedPreferences（计时器配置）与 SQLite（业务数据）是两层存储，这是有意设计，但需注意不同步
+
+---
+
+## 10. AI 模型选择：Chat 优于 Reasoner
+
+### 10.1 决策
+
+任务管理 AI 助手默认使用 `deepseek-chat`。Reasoner 模型 20-60s 的思考延迟适合复杂规划，但对增删改查操作是不可接受的。未来可加"深度思考"可选开关。
+
+---
+
+## 11. 软件更新机制方案
+
+自建更新服务器（复用 `1.12.46.222:6677`）是当前最佳选择。项目不开源，私有 GitHub Releases 有 Token 泄露风险。实现优先级低于核心功能。
+
+---
+
+## 12. Windows 提醒系统局限性
+
+### 12.1 问题
+
+Windows 任务提醒从 APP 生命周期的第一天就存在根本性局限：
+
+| 场景 | Android (zonedSchedule) | Android (Calendar) | Windows |
+|---|---|---|---|
+| APP 运行中 | ✓ | ✓ | ✓ (Dart Timer) |
+| APP 关闭 | ✓ | ✓ | ✗ **全部丢失** |
+| APP 强制停止 | ✗ | ✓ | ✗ |
+| 设备重启 | ✓ (BootReceiver) | ✓ | ✗ |
+| 重启后未打开 APP | ✓ | ✓ | ✗ |
+
+**根因：** `windows_notification` 插件（v1.3.0）只支持即时弹出 Toast，没有定时推送能力。所有 Windows 提醒都是 Dart 内存 `Timer`，APP 关闭即消失。
+
+### 12.2 缓解措施
+
+- 启动时 `refreshAll` 从数据库恢复所有未来提醒的 Timer
+- 在 `refreshAll` 中检测过去 30 分钟内的提醒，弹出"错过了提醒"通知
+- 提醒触发后自动清除数据库中的 `reminder_at`，防止死数据累积
+- 数据库添加 `(deleted, completed, reminder_at)` 复合索引加速提醒查询
+
+### 12.3 未来改进方向
+
+- 集成 Windows Task Scheduler（需写原生 C++ 代码，处理 UAC 权限）
+- 系统托盘最小化而非关闭（需 `system_tray` 包）
+- 当前阶段：APP 需保持运行提醒才有效，这是已知局限
+
+### 12.4 教训
+
+- **跨平台功能的可用性差异必须明确记录**，否则用户会假设所有平台行为一致
+- **提醒系统的可靠性取决于底层平台的调度能力**，Dart Timer 是最弱的一层
+- **Android 日历是提醒最可靠的路径**，应优先引导用户开启日历同步
+
+---
+
+## 13. 提醒系统数据丢失事故复盘
+
+### 13.1 问题现象
+
+- 用户反馈"提醒时间全都没了"
+- 45 个设有提醒的任务中，42 个的 `reminder_at` 被清空，仅 3 个幸存（未来时间或刚创建）
+- 事故发生在 APP 重启后，由 `refreshAll` 触发
+
+### 13.2 根因分析
+
+`_doRefreshAll` 方法中存在以下逻辑：
+
+```dart
+if (reminderTime.isAfter(now)) {
+  await scheduleUnifiedReminders(task);  // 未来 → 调度
+} else if (Platform.isWindows && task.reminderAt! >= missedThreshold && _winNotifier != null) {
+  // 过去 30 分钟 → 弹"错过"通知
+} 
+// ❌ 隐含行为：所有其他过去的提醒，reminder_at 保留在数据库中
+```
+
+但在之前的一个版本中，代码包含了：
+
+```dart
+// 过期提醒自动清理（已废弃，该逻辑非常危险）
+await AppDatabase.updateTask(task.id, {'reminderAt': null});
+```
+
+这行代码对**所有过去时间**的提醒执行了清除操作。问题在于：
+
+1. **没有区分"提醒已触发"和"提醒时间已过"**：APP 关闭期间错过的是"已过期但未触发"，重启后直接清除 = 用户数据丢失
+2. **清理条件过于宽泛**：没有宽限期、没有二次确认，所有过去的提醒一律清除
+3. **在初始化路径中执行破坏性操作**：`refreshAll` 是启动/同步后的恢复流程，不应承担数据清理职责
+
+### 13.3 修复
+
+- 立即移除 `refreshAll` / `_doRefreshAll` 中所有自动清除 `reminder_at` 的代码
+- 保留唯一清除点：Windows `_scheduleWindows` 的 Timer 回调中（提醒实际弹出后才清除）
+- Android `zonedSchedule` 由系统调度，不需要应用层清除
+- 过期提醒不自动删除，保留用户数据完整性
+
+### 13.4 教训
+
+- **绝不能在初始化/恢复流程中自动删除用户数据**：`refreshAll` 的语义是"恢复"，不是"清理"
+- **清理逻辑必须在提醒实际触发后执行**：只有用户收到了通知，才算提醒完成
+- **任何自动删除用户数据的代码都需要明确的宽限期和用户可感知的反馈**
+- **"所有过去的提醒"≠"所有已触发的提醒"**：APP 关闭期间错过的提醒，时间已过但未触发
+- **修改涉及数据删除的代码时，先问自己：如果这里有 bug，最坏会丢什么？**
+
+---
+
+## 14. 提醒系统代码审查：发现的潜在问题
+
+以下是在全面代码审查中发现的 17 个潜在问题（按严重程度分类）：
+
+### Critical / High（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| 1 | `sync()` 无条件调用 `refreshAll`，每次 auto-sync（5 分钟）都重调度 | task_provider.dart:303 | 已在 sync 中调用 refreshAll（保留，性能可接受） |
+| 2 | `scheduleUnifiedReminders` 中日历 `syncTask` 失败后无回退 | reminder_service.dart:244 | 已添加 try-catch + 回退到通知 |
+| 3 | `CalendarService.hasPermissions()` 桌面平台抛 MissingPluginException | calendar_service.dart:31 | 已添加 Platform 判断 + try-catch |
+| 4 | `forceRebuildCalendar` 不更新 `updated_at`，同步不传播 | calendar_service.dart:221 | 已添加 `updated_at = ?` |
+| 5 | Android `zonedSchedule` 前不 cancel，部分 OEM 重复通知 | reminder_service.dart:320 | 已添加 `await _androidPlugin.cancel(notificationId)` |
+| 6 | `_scheduleWindows` 使用 `CalendarService.syncTask` 而非 `scheduleUnifiedReminders` | （历史代码） | 已统一使用 `scheduleUnifiedReminders` |
+
+### Medium（已知限制，未修复）
+
+| # | 问题 | 说明 |
+|---|------|------|
+| 7 | 时区降级仅支持 UTC+8 和 UTC | `initialize()` 中只有 `Asia/Shanghai` 硬编码 |
+| 8 | 日历同步每个任务串行调用 OS API | 100 个任务 = 100 次系统调用，可考虑批量 |
+| 9 | `getAllTasks()` 无分页 | 任务量极大时可能内存压力 |
+| 10 | Windows 错过提醒 toast 可能重复弹出 | 如果 APP 多次重启，30 分钟窗口内的提醒每次都会弹 |
+| 11 | `_androidPlugin` 是 static final，无法热替换 | 测试友好性差 |
+
+### Low / 观察项
+
+| # | 问题 | 说明 |
+|---|------|------|
+| 12 | iOS/macOS 日历同步路径无平台判断 | iOS 日历 API 行为与 Android 不同，`createCalendar` 可能失败 |
+| 13 | Linux 提醒完全无支持 | 无 `windows_notification` 也无 `flutter_local_notifications` |
+| 14 | `refreshAll` 中使用 `scheduleUnifiedReminders`（async），for 循环中串行 await | 大量任务时刷新慢，但比并发安全 |
+| 15 | 数据库 reminder_at 过期值永不清除 | 设计决策：保护用户数据优先，未来可考虑"30 天以上自动清理" |
+| 16 | Windows 的 `applicationId` 是 PowerShell GUID | 应替换为 APP 自身 GUID，当前无害但不够规范 |
+| 17 | `_windowsTimers` Map 类型为 `Map<String, dynamic>` | 可以更精确地类型化为 `Map<String, Timer>` |
+
+### 关键结论
+
+当前提醒系统在以下条件下工作正常：
+- Android：推荐开启日历同步（最可靠），zonedSchedule 为备选
+- Windows：APP 必须保持运行，重启后从数据库恢复 Timer，30 分钟内错过的提醒会弹出通知
+- 数据安全：不会自动删除用户的 `reminder_at`，仅在提醒实际弹出后清除
+
+---
+
+*最后更新日期：2026-05-09*
