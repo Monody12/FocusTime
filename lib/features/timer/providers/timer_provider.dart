@@ -577,14 +577,27 @@ class TimerNotifier extends StateNotifier<TimerState> {
     _triggerCompletionNotification(finishedPhase);
   }
 
+  String _formatDuration(int totalSeconds) {
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    if (minutes > 0 && seconds > 0) return '$minutes分$seconds秒';
+    if (minutes > 0) return '$minutes分钟';
+    return '$seconds秒';
+  }
+
   /// 计时结束时触发铃声 + Windows 通知中心 Toast + 应用内弹窗
   void _triggerCompletionNotification(String finishedPhase) {
     final task = state.currentTask.isNotEmpty ? state.currentTask : null;
     final template = state.notificationTemplate;
-    // 将模板中的 {task} 占位符替换为实际任务名
-    final body = task != null
-        ? template.replaceAll('{task}', task)
-        : template.replaceAll('！{task}', '！').replaceAll('{task}', '');
+    final durationStr = _formatDuration(state.totalSeconds);
+    final modeStr = state.timerMode == TimerMode.singleCore ? '单核工作法' : '番茄工作法';
+    // 替换模板中的占位符
+    var body = template
+        .replaceAll('{duration}', durationStr)
+        .replaceAll('{mode}', modeStr);
+    body = task != null
+        ? body.replaceAll('{task}', task)
+        : body.replaceAll('！{task}', '！').replaceAll('{task}', '');
 
     // 根据刚刚结束的阶段决定通知标题
     String title;
