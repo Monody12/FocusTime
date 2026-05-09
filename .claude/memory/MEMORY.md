@@ -7,3 +7,6 @@
 - [同步复活防护](sync_resurrection_guard.md) — applySyncChanges 必须检查本地删除时间戳，防止服务器旧版本复活本地删除
 - [deleteTask 执行顺序](delete_task_order_and_trycatch.md) — 乐观 UI 更新必须在可能失败的原生调用之前，原生调用必须 try-catch
 - [软删除过滤审查清单](soft_delete_filter_audit.md) — 所有数据库方法必须过滤 deleted = 0，已修复的 7 个方法列表
+- [同步触发覆盖：Settings 也必须触发同步](sync_trigger_coverage.md) — 任何持久化变更都必须调用 triggerBackgroundSync
+- [AI 模型选择：Chat 优于 Reasoner](ai_model_selection.md) — 任务管理需要秒级响应，不用推理模型
+- [软件更新机制设计](update_mechanism_design.md) — 推荐自建更新服务器，复用现有公网 IP
