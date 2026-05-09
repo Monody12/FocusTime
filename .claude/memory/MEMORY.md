@@ -2,3 +2,8 @@
 - [文档与复盘要求](documentation_habits.md) — 修复 bug 后同步更新 KNOWLEDGE_BASE.md / README / pubspec.yaml
 - [跨平台插件 MissingPluginException](cross_platform_plugin_missing.md) — device_calendar 在 Windows 端报 MissingPluginException，无害
 - [记录经验教训](document_lessons_learned.md) — 非显而易见的问题必须记录到知识库和记忆系统
+- [测试安全：禁止操作真实数据库](test_safety_no_real_db.md) — flutter test 绝不能连接生产数据库，test/clear_db_tool_test.dart 已删除
+- [Timer vs Future.delayed](timer_vs_future_delayed.md) — Windows 定时器必须用 Timer（支持 cancel），Future.delayed 无法取消
+- [同步复活防护](sync_resurrection_guard.md) — applySyncChanges 必须检查本地删除时间戳，防止服务器旧版本复活本地删除
+- [deleteTask 执行顺序](delete_task_order_and_trycatch.md) — 乐观 UI 更新必须在可能失败的原生调用之前，原生调用必须 try-catch
+- [软删除过滤审查清单](soft_delete_filter_audit.md) — 所有数据库方法必须过滤 deleted = 0，已修复的 7 个方法列表

@@ -5,7 +5,7 @@
 1. **KNOWLEDGE_BASE.md** 新增对应章节，覆盖：问题现象 → 根因分析（含源码引用和行号）→ 修复方案 → 教训
 2. **README.md** 更新版本说明
 3. **pubspec.yaml** 同步版本号
-4. **Git 提交**按逻辑模块拆分，每个 commit 有清晰的描述和 `Co-Authored-By` 签名
+4. **Git 提交**按逻辑模块拆分，每个 commit 有清晰的描述，无需 `Co-Authored-By` 签名
 5. 推送到 GitHub
 
 6. **排查问题时**主动搜索 KNOWLEDGE_BASE.md 和记忆文件，看是否有相关经验
