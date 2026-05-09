@@ -13,6 +13,7 @@ class SyncService {
   static String _username = '';
   static String _fakePassword = ''; // 用于在 UI 中显示的虚拟密码
   static int _lastSyncTime = 0;
+  static bool _syncing = false; // 防止并发同步
 
   static Future<void> init() async {
     // 从本地数据库加载同步配置
@@ -34,6 +35,26 @@ class SyncService {
 
     final lastSync = await AppDatabase.getSetting('lastSyncTime');
     if (lastSync != null) _lastSyncTime = int.tryParse(lastSync) ?? 0;
+
+    // 数据恢复检测：如果 DB 被意外清空但 lastSyncTime 非零，
+    // 重置为 0 以触发全量同步从服务器恢复数据
+    await _recoverIfDataLost();
+  }
+
+  /// 检测到数据库被清空时自动重置 lastSyncTime，确保下次同步从服务器全量拉取
+  static Future<void> _recoverIfDataLost() async {
+    if (_lastSyncTime == 0) return;
+    try {
+      final db = await AppDatabase.database;
+      final result = await db.rawQuery('SELECT COUNT(*) as cnt FROM tasks WHERE deleted = 0');
+      final taskCount = (result.first['cnt'] as int?) ?? 0;
+      if (taskCount == 0) {
+        _lastSyncTime = 0;
+        await AppDatabase.setSetting('lastSyncTime', '0');
+      }
+    } catch (_) {
+      // 恢复检测失败不影响正常启动
+    }
   }
 
   static String get serverUrl => _serverUrl;
@@ -140,24 +161,29 @@ class SyncService {
 
   /// 执行完整同步流程：上传本地变更 -> 下载远程变更
   static Future<({bool success, bool tokenExpired})> fullSync() async {
-    if (!isLoggedIn) {
+    if (!isLoggedIn || _syncing) {
       return (success: false, tokenExpired: false);
     }
+    _syncing = true;
+    try {
+      // Upload local changes
+      final uploadResult = await _syncToServer();
+      if (!uploadResult.success) {
+        return (success: false, tokenExpired: uploadResult.tokenExpired ?? false);
+      }
 
-    // Upload local changes
-    final uploadResult = await _syncToServer();
-    if (!uploadResult.success) {
-      return (success: false, tokenExpired: uploadResult.tokenExpired ?? false);
+      // Download remote changes（使用 _lastSyncTime 而非 serverLastSync，
+      // 确保当本地 _lastSyncTime 很旧时能拉取到全部历史数据）
+      final downloadResult = await _downloadFromServer(_lastSyncTime);
+      if (!downloadResult.success) {
+        return (success: false, tokenExpired: downloadResult.tokenExpired ?? false);
+      }
+
+      await updateLastSyncTime();
+      return (success: true, tokenExpired: false);
+    } finally {
+      _syncing = false;
     }
-
-    // Download remote changes
-    final downloadResult = await _downloadFromServer();
-    if (!downloadResult.success) {
-      return (success: false, tokenExpired: downloadResult.tokenExpired ?? false);
-    }
-
-    await updateLastSyncTime();
-    return (success: true, tokenExpired: false);
   }
 
   static Future<({bool success, bool? tokenExpired, int? serverLastSync})> _syncToServer() async {
@@ -191,7 +217,7 @@ class SyncService {
     }
   }
 
-  static Future<({bool success, bool? tokenExpired, int? serverLastSync})> _downloadFromServer() async {
+  static Future<({bool success, bool? tokenExpired, int? serverLastSync})> _downloadFromServer(int syncTimeForDownload) async {
     try {
       final response = await http.post(
         Uri.parse('$_serverUrl/api/sync'),
@@ -200,7 +226,7 @@ class SyncService {
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'lastSyncTime': _lastSyncTime,
+          'lastSyncTime': syncTimeForDownload,
           'tables': {
             'lists': [],
             'tasks': [],

@@ -345,7 +345,8 @@ class AppDatabase {
 
   static Future<Map<String, dynamic>?> getTaskById(String id) async {
     final db = await database;
-    final result = await db.query('tasks', where: 'id = ?', whereArgs: [id]);
+    // 过滤已删除任务，防止调用方操作已被软删除的僵尸任务
+    final result = await db.query('tasks', where: 'id = ? AND deleted = 0', whereArgs: [id]);
     if (result.isEmpty) return null;
     return _mapTask(result.first);
   }
@@ -473,7 +474,8 @@ class AppDatabase {
     final sets = mapped.keys.where((k) => k != 'id').map((k) => '$k = ?').join(', ');
     final values = mapped.keys.where((k) => k != 'id').map((k) => mapped[k]).toList();
 
-    await db.rawUpdate('UPDATE tasks SET $sets WHERE id = ?', [...values, id]);
+    // 仅更新未删除的任务，防止操作已被软删除的僵尸记录
+    await db.rawUpdate('UPDATE tasks SET $sets WHERE id = ? AND deleted = 0', [...values, id]);
   }
 
   /// 软删除任务及其下的所有会话
@@ -488,7 +490,9 @@ class AppDatabase {
 
   static Future<void> toggleTaskComplete(String id) async {
     final db = await database;
-    final result = await db.query('tasks', columns: ['completed'], where: 'id = ?', whereArgs: [id]);
+    // 仅查询未删除的任务，避免对已删除的僵尸任务进行操作
+    final result = await db.query('tasks', columns: ['completed'],
+        where: 'id = ? AND deleted = 0', whereArgs: [id]);
     if (result.isEmpty) return;
 
     final currentCompleted = result.first['completed'] as int;
@@ -499,27 +503,29 @@ class AppDatabase {
       'completed': newCompleted,
       'completed_at': newCompleted == 1 ? now : null,
       'updated_at': now,
-    }, where: 'id = ?', whereArgs: [id]);
+    }, where: 'id = ? AND deleted = 0', whereArgs: [id]);
   }
 
   static Future<void> addToMyDay(String taskId) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
+    // 仅更新未删除的任务
     await db.update('tasks', {
       'is_my_day': 1,
       'my_day_added_at': now,
       'updated_at': now,
-    }, where: 'id = ?', whereArgs: [taskId]);
+    }, where: 'id = ? AND deleted = 0', whereArgs: [taskId]);
   }
 
   static Future<void> removeFromMyDay(String taskId) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
+    // 仅更新未删除的任务
     await db.update('tasks', {
       'is_my_day': 0,
       'my_day_added_at': null,
       'updated_at': now,
-    }, where: 'id = ?', whereArgs: [taskId]);
+    }, where: 'id = ? AND deleted = 0', whereArgs: [taskId]);
   }
 
   static Future<void> reorderTasks(List<String> taskIds) async {
@@ -609,8 +615,9 @@ class AppDatabase {
 
   static Future<List<Map<String, dynamic>>> getSessionsByTaskId(String taskId) async {
     final db = await database;
+    // 过滤已删除的会话，避免在任务详情中显示无效的专注记录
     final result = await db.query('sessions',
-        where: 'task_id = ?', whereArgs: [taskId], orderBy: 'started_at DESC');
+        where: 'task_id = ? AND deleted = 0', whereArgs: [taskId], orderBy: 'started_at DESC');
     return result.map(_mapSession).toList();
   }
 
@@ -652,8 +659,9 @@ class AppDatabase {
   static Future<List<Map<String, dynamic>>> getRecurrenceCompletionsByDateRange(
       String taskId, String startDate, String endDate) async {
     final db = await database;
+    // 过滤已删除的完成记录
     final result = await db.query('task_recurrence_completions',
-        where: 'task_id = ? AND completion_date BETWEEN ? AND ?',
+        where: 'task_id = ? AND completion_date BETWEEN ? AND ? AND deleted = 0',
         whereArgs: [taskId, startDate, endDate],
         orderBy: 'completion_date DESC');
     return result.map(_mapRecurrenceCompletion).toList();
@@ -779,8 +787,23 @@ class AppDatabase {
     for (final item in records) {
       final id = item['id'] as String;
       if (item['deleted'] == true) {
+        // 服务器端已删除，本地硬删除
         await txn.delete(table, where: 'id = ?', whereArgs: [id]);
       } else {
+        // 服务器端未删除：检查本地是否已有更新的删除记录，防止复活
+        final localRows = await txn.query(table,
+            where: 'id = ? AND deleted = 1', whereArgs: [id],
+            columns: ['updated_at']);
+        if (localRows.isNotEmpty) {
+          final localUpdatedAt = localRows.first['updated_at'] as int;
+          final serverUpdatedAt = item['updatedAt'] as int? ?? 0;
+          // 本地删除时间 ≥ 服务器版本时间 → 保留本地删除，不复活
+          if (localUpdatedAt >= serverUpdatedAt) {
+            continue;
+          }
+          // 服务器版本更新 → 服务器胜出，允许复活（可能是在其他设备上撤销了删除）
+        }
+
         final data = item['data'] as Map<String, dynamic>;
         final row = unmapper(data);
         row['updated_at'] = item['updatedAt'];
