@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
 
 class ChatResponseChunk {
   final String? textDelta;
@@ -54,6 +55,7 @@ class DeepSeekApiClient {
   static Future<void> setApiKey(String key) async {
     _apiKey = key;
     await AppDatabase.setSetting('deepseekApiKey', key);
+    SyncService.triggerBackgroundSync();
   }
 
   static Future<void> loadApiKey() async {

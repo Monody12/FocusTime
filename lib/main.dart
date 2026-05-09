@@ -24,6 +24,11 @@ void main() {
       // 初始化同步服务，从本地数据库加载登录状态
       await SyncService.init();
 
+      // 如果已登录，启动周期性后台同步
+      if (SyncService.isLoggedIn) {
+        SyncService.startAutoSync();
+      }
+
       // 初始化计时器通知服务（铃声 + Windows Toast + 本地弹窗）
       await TimerNotificationService.initialize();
 

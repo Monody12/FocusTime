@@ -1287,10 +1287,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         setState(() {
           _isLoggedIn = true;
           _syncStatus = '注册成功，正在同步...';
-          // 登录成功后，将输入框内容替换为持久化的内容（特别是将真实密码替换为掩码）
           _syncUsernameController.text = SyncService.username;
           _syncPasswordController.text = SyncService.fakePassword;
         });
+        SyncService.startAutoSync();
         _showSnackBar('注册成功');
         _handleSyncNow();
       } else {
@@ -1323,10 +1323,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         setState(() {
           _isLoggedIn = true;
           _syncStatus = '登录成功，正在同步...';
-          // 登录成功后，将输入框内容替换为持久化的内容（特别是将真实密码替换为掩码）
           _syncUsernameController.text = SyncService.username;
           _syncPasswordController.text = SyncService.fakePassword;
         });
+        SyncService.startAutoSync();
         _showSnackBar('登录成功');
         _handleSyncNow();
       } else {
@@ -1342,6 +1342,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _handleLogout() async {
     try {
+      SyncService.stopAutoSync();
       await SyncService.logout();
       setState(() {
         _isLoggedIn = false;

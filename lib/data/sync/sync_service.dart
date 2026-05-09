@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:focus_my_time/data/database/app_database.dart';
@@ -14,6 +15,7 @@ class SyncService {
   static String _fakePassword = ''; // 用于在 UI 中显示的虚拟密码
   static int _lastSyncTime = 0;
   static bool _syncing = false; // 防止并发同步
+  static Timer? _autoSyncTimer;
 
   static Future<void> init() async {
     // 从本地数据库加载同步配置
@@ -253,8 +255,22 @@ class SyncService {
     }
   }
 
-  /// 启动定时同步
-  static void startAutoSync() {
-    // 这里可以实现定时器逻辑，或者在生命周期回调中调用
+  /// 后台触发同步（fire-and-forget，不阻塞调用方）
+  static void triggerBackgroundSync() {
+    unawaited(fullSync().catchError((_) => (success: false, tokenExpired: false)));
+  }
+
+  /// 启动定时同步，每隔 [interval] 自动执行一次后台同步
+  static void startAutoSync({Duration interval = const Duration(minutes: 5)}) {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(interval, (_) {
+      triggerBackgroundSync();
+    });
+  }
+
+  /// 停止定时同步
+  static void stopAutoSync() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = null;
   }
 }

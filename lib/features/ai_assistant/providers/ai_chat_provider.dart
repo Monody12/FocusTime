@@ -8,6 +8,7 @@ import 'package:focus_my_time/features/ai_assistant/services/ai_context_builder.
 import 'package:focus_my_time/features/ai_assistant/services/ai_operation_engine.dart';
 import 'package:focus_my_time/features/ai_assistant/services/deepseek_api_client.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
 
 // Tool definitions sent to DeepSeek
 const _tools = [
@@ -256,21 +257,25 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
   Future<void> saveCustomPrompt(String text) async {
     await AppDatabase.setSetting('aiCustomPrompt', text);
     state = state.copyWith(customPrompt: text);
+    SyncService.triggerBackgroundSync();
   }
 
   Future<void> setDatedListEnabled(bool enabled) async {
     await AppDatabase.setSetting('aiDatedListEnabled', enabled.toString());
     state = state.copyWith(datedListEnabled: enabled);
+    SyncService.triggerBackgroundSync();
   }
 
   Future<void> setDatedListFormat(String format) async {
     await AppDatabase.setSetting('aiDatedListFormat', format);
     state = state.copyWith(datedListFormat: format);
+    SyncService.triggerBackgroundSync();
   }
 
   Future<void> setReminderOnCreate(bool enabled) async {
     await AppDatabase.setSetting('aiReminderOnCreate', enabled.toString());
     state = state.copyWith(reminderOnCreate: enabled);
+    SyncService.triggerBackgroundSync();
   }
 
   @override
