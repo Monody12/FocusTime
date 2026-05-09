@@ -12,6 +12,7 @@ import 'features/calendar/presentation/pages/calendar_page.dart';
 import 'features/ai_assistant/presentation/pages/ai_chat_page.dart';
 import 'features/timer/providers/timer_provider.dart';
 import 'features/tasks/providers/task_provider.dart';
+import 'core/providers/package_info_provider.dart';
 
 class FocusMyTimeApp extends ConsumerStatefulWidget {
   const FocusMyTimeApp({super.key});
@@ -224,12 +225,16 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                 ),
                                 if (!isMobile) ...[
                                   const SizedBox(width: 12),
-                                  Text(
-                                    'v1.0.1',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                  ref.watch(packageInfoProvider).when(
+                                    data: (info) => Text(
+                                      'v${info.version}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                      ),
                                     ),
+                                    loading: () => const SizedBox.shrink(),
+                                    error: (_, _) => const SizedBox.shrink(),
                                   ),
                                 ],
                               ],

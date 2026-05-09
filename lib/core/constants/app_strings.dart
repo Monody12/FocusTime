@@ -1,6 +1,5 @@
 class AppStrings {
   static const appName = 'Focus Tasks';
-  static const version = 'v1.0.1';
 
   // 计时器
   static const startFocus = '🎯 开始专注';

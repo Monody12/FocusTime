@@ -10,6 +10,7 @@ import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:focus_my_time/features/ai_assistant/services/deepseek_api_client.dart';
+import 'package:focus_my_time/core/providers/package_info_provider.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -946,12 +947,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
                         // Version info
                         Center(
-                          child: Text(
-                            'v1.0.8',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          child: ref.watch(packageInfoProvider).when(
+                            data: (info) => Text(
+                              'v${info.version}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                              ),
                             ),
+                            loading: () => const SizedBox.shrink(),
+                            error: (_, _) => const SizedBox.shrink(),
                           ),
                         ),
               ],
