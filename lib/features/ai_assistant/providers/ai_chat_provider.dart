@@ -544,7 +544,6 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     final result = await AiOperationEngine.execute(
       operation: op,
       taskNotifier: taskNotifier,
-      currentLists: taskState.lists,
     );
 
     ops = state.pendingOperations.map((o) {
@@ -581,7 +580,6 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     final results = await AiOperationEngine.executeAll(
       operations: state.pendingOperations,
       taskNotifier: taskNotifier,
-      currentLists: taskState.lists,
     );
 
     for (final r in results) {

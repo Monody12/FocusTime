@@ -92,10 +92,9 @@ class AiOperationEngine {
   static Future<AiOperation> execute({
     required AiOperation operation,
     required TaskNotifier taskNotifier,
-    required List<TaskList> currentLists,
   }) async {
     try {
-      await _dispatch(operation, taskNotifier, currentLists);
+      await _dispatch(operation, taskNotifier);
       return operation.copyWith(status: AiOperationStatus.approved);
     } catch (e) {
       return operation.copyWith(
@@ -108,7 +107,6 @@ class AiOperationEngine {
   static Future<List<AiOperation>> executeAll({
     required List<AiOperation> operations,
     required TaskNotifier taskNotifier,
-    required List<TaskList> currentLists,
   }) async {
     final results = <AiOperation>[];
     for (final op in operations) {
@@ -119,7 +117,6 @@ class AiOperationEngine {
       final result = await execute(
         operation: op,
         taskNotifier: taskNotifier,
-        currentLists: currentLists,
       );
       results.add(result);
     }
@@ -129,7 +126,6 @@ class AiOperationEngine {
   static Future<void> _dispatch(
     AiOperation op,
     TaskNotifier taskNotifier,
-    List<TaskList> currentLists,
   ) async {
     final params = op.params;
 
@@ -137,7 +133,7 @@ class AiOperationEngine {
       case AiOperationType.createTask:
         // Ensure target list exists (for dated lists etc.), resolve to real ID
         if (params.containsKey('listId')) {
-          final realId = await _ensureList(params['listId'] as String, taskNotifier, currentLists);
+          final realId = await _ensureList(params['listId'] as String, taskNotifier);
           params['listId'] = realId;
         }
         await _executeCreateTask(params, taskNotifier);
@@ -201,7 +197,7 @@ class AiOperationEngine {
 
       case AiOperationType.moveToList:
         if (params.containsKey('listId')) {
-          await _ensureList(params['listId'] as String, taskNotifier, currentLists);
+          await _ensureList(params['listId'] as String, taskNotifier);
         }
         await taskNotifier.moveTaskToList(
           params['taskId'] as String,
@@ -236,8 +232,10 @@ class AiOperationEngine {
   static Future<String> _ensureList(
     String listRef,
     TaskNotifier taskNotifier,
-    List<TaskList> currentLists,
   ) async {
+    // ignore: invalid_use_of_protected_member
+    final currentLists = taskNotifier.state.lists;
+
     // First try exact ID match
     var match = currentLists.where((l) => l.id == listRef).firstOrNull;
     if (match != null) return match.id;
