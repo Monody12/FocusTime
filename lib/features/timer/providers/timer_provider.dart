@@ -9,7 +9,7 @@ import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 
-enum TimerMode { singleCore, pomodoro }
+enum TimerMode { singleCore, pomodoro, task }
 enum TimerStatus { idle, running, paused, completed }
 
 class SingleCoreConfig {
@@ -81,6 +81,8 @@ class TimerState {
   final String notificationDuration; // 'short', 'long', 'persistent'
   final String notificationTemplate;
   final int snoozeDurationMinutes;
+  final bool rememberModeChoice; // 是否记住超时后的模式选择
+  final String preferredModeWhenOverdue; // 超时后偏好的模式: 'singleCore', 'pomodoro', ''
 
   TimerState({
     this.timerMode = TimerMode.singleCore,
@@ -101,6 +103,8 @@ class TimerState {
     this.notificationDuration = 'long',
     this.notificationTemplate = '计时完成！{task}',
     this.snoozeDurationMinutes = 10,
+    this.rememberModeChoice = false,
+    this.preferredModeWhenOverdue = '',
   });
 
   TimerState copyWith({
@@ -122,6 +126,8 @@ class TimerState {
     String? notificationDuration,
     String? notificationTemplate,
     int? snoozeDurationMinutes,
+    bool? rememberModeChoice,
+    String? preferredModeWhenOverdue,
   }) =>
       TimerState(
         timerMode: timerMode ?? this.timerMode,
@@ -142,6 +148,8 @@ class TimerState {
         notificationDuration: notificationDuration ?? this.notificationDuration,
         notificationTemplate: notificationTemplate ?? this.notificationTemplate,
         snoozeDurationMinutes: snoozeDurationMinutes ?? this.snoozeDurationMinutes,
+        rememberModeChoice: rememberModeChoice ?? this.rememberModeChoice,
+        preferredModeWhenOverdue: preferredModeWhenOverdue ?? this.preferredModeWhenOverdue,
       );
 
   int get remainingSeconds => (totalSeconds - elapsedSeconds).clamp(0, totalSeconds);
@@ -222,6 +230,8 @@ class TimerNotifier extends StateNotifier<TimerState> {
     final notificationDuration = prefs.getString('notificationDuration') ?? 'long';
     final notificationTemplate = prefs.getString('notificationTemplate') ?? '计时完成！{task}';
     final snoozeDurationMinutes = prefs.getInt('snoozeDurationMinutes') ?? 10;
+    final rememberModeChoice = prefs.getBool('rememberModeChoice') ?? false;
+    final preferredModeWhenOverdue = prefs.getString('preferredModeWhenOverdue') ?? '';
     final taskHistoryStr = prefs.getString('taskHistory') ?? '';
     final taskHistory = taskHistoryStr.isEmpty
         ? <String>[]
@@ -251,7 +261,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
     }
 
     state = state.copyWith(
-      timerMode: timerModeStr == 'pomodoro' ? TimerMode.pomodoro : TimerMode.singleCore,
+      timerMode: timerModeStr == 'pomodoro' ? TimerMode.pomodoro
+          : timerModeStr == 'task' ? TimerMode.task
+          : TimerMode.singleCore,
       timerStatus: timerStatusStr == 'running'
           ? TimerStatus.running
           : timerStatusStr == 'paused'
@@ -280,6 +292,8 @@ class TimerNotifier extends StateNotifier<TimerState> {
       notificationDuration: notificationDuration,
       notificationTemplate: notificationTemplate,
       snoozeDurationMinutes: snoozeDurationMinutes,
+      rememberModeChoice: rememberModeChoice,
+      preferredModeWhenOverdue: preferredModeWhenOverdue,
       taskHistory: taskHistory,
     );
 
@@ -318,6 +332,8 @@ class TimerNotifier extends StateNotifier<TimerState> {
     await prefs.setString('notificationDuration', state.notificationDuration);
     await prefs.setString('notificationTemplate', state.notificationTemplate);
     await prefs.setInt('snoozeDurationMinutes', state.snoozeDurationMinutes);
+    await prefs.setBool('rememberModeChoice', state.rememberModeChoice);
+    await prefs.setString('preferredModeWhenOverdue', state.preferredModeWhenOverdue);
     await prefs.setString('taskHistory', state.taskHistory.join(','));
   }
 
@@ -356,6 +372,16 @@ class TimerNotifier extends StateNotifier<TimerState> {
     _saveState();
   }
 
+  void setRememberModeChoice(bool value) {
+    state = state.copyWith(rememberModeChoice: value);
+    _saveState();
+  }
+
+  void setPreferredModeWhenOverdue(String mode) {
+    state = state.copyWith(preferredModeWhenOverdue: mode);
+    _saveState();
+  }
+
   void setCurrentTask(String task) {
     state = state.copyWith(currentTask: task);
     // 添加到历史记录
@@ -373,16 +399,90 @@ class TimerNotifier extends StateNotifier<TimerState> {
     // 停止铃声提醒
     TimerNotificationService.stopAlarm();
 
+    // 检查任务预期时间
+    if (taskId != null) {
+      final task = _ref.read(taskProvider).tasks.where((t) => t.id == taskId).firstOrNull;
+      if (task != null && task.expectedMinutes != null && task.expectedMinutes! > 0) {
+        // 计算已专注时间并检查是否超时
+        _checkTaskExpectedTimeAndPrompt(task.id, task.title, task.expectedMinutes!);
+        return;
+      }
+    }
+
+    _doStartFocus(taskTitle: taskTitle, taskId: taskId);
+  }
+
+  Future<void> _checkTaskExpectedTimeAndPrompt(String taskId, String taskTitle, int expectedMinutes) async {
+    // 计算任务已专注时间
+    final sessions = await AppDatabase.getSessionsByTaskId(taskId);
+    int spentSeconds = 0;
+    for (final s in sessions) {
+      spentSeconds += (s['durationSeconds'] as int? ?? 0);
+    }
+
+    final remainingMinutes = expectedMinutes - (spentSeconds ~/ 60);
+
+    if (remainingMinutes <= 0) {
+      // 已超时，弹出选择模式对话框
+      // 如果记住选择且有偏好模式，直接使用
+      if (state.rememberModeChoice && state.preferredModeWhenOverdue.isNotEmpty) {
+        final mode = state.preferredModeWhenOverdue == 'pomodoro' ? TimerMode.pomodoro : TimerMode.singleCore;
+        _doStartFocus(taskTitle: taskTitle, taskId: taskId, overrideMode: mode);
+        return;
+      }
+      // 需要用户选择模式
+      _showOverdueModeDialog(taskId, taskTitle);
+    } else {
+      // 正常开始专注
+      _doStartFocus(taskTitle: taskTitle, taskId: taskId, taskExpectedMinutes: remainingMinutes);
+    }
+  }
+
+  void _showOverdueModeDialog(String taskId, String taskTitle) {
+    // 通过 event 通知 UI 显示对话框
+    // 创建一个 stream/broadcast 来触发 UI 对话框
+    _overdueTaskId = taskId;
+    _overdueTaskTitle = taskTitle;
+    _ref.read(overdueModeDialogProvider.notifier).state = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  String? _overdueTaskId;
+  String? _overdueTaskTitle;
+
+  void confirmOverdueMode(TimerMode mode) {
+    if (_overdueTaskId != null && _overdueTaskTitle != null) {
+      _doStartFocus(taskTitle: _overdueTaskTitle, taskId: _overdueTaskId, overrideMode: mode);
+      _overdueTaskId = null;
+      _overdueTaskTitle = null;
+    }
+  }
+
+  void _doStartFocus({String? taskTitle, String? taskId, TimerMode? overrideMode, int? taskExpectedMinutes}) {
     final now = DateTime.now();
     int totalSeconds;
     DateTime? target;
+    final effectiveMode = overrideMode ?? state.timerMode;
 
-    if (state.timerMode == TimerMode.singleCore) {
+    if (effectiveMode == TimerMode.singleCore) {
       final result = calculateSingleCoreTarget(state.singleCoreConfig.minDuration);
       totalSeconds = result.durationMinutes * 60;
       target = result.targetTime;
-    } else {
+    } else if (effectiveMode == TimerMode.pomodoro) {
       totalSeconds = state.pomodoroConfig.focusDuration * 60;
+    } else {
+      // task 模式：有预期时间用预期时间，否则用单核配置
+      if (taskExpectedMinutes != null && taskExpectedMinutes > 0) {
+        totalSeconds = taskExpectedMinutes * 60;
+      } else {
+        final result = calculateSingleCoreTarget(state.singleCoreConfig.minDuration);
+        totalSeconds = result.durationMinutes * 60;
+        target = result.targetTime;
+      }
+    }
+
+    // 如果有任务预期分钟数，使用任务预期时间作为总时长
+    if (taskExpectedMinutes != null && taskExpectedMinutes > 0 && effectiveMode != TimerMode.task) {
+      totalSeconds = taskExpectedMinutes * 60;
     }
 
     state = state.copyWith(
@@ -545,7 +645,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
             state = state.copyWith(currentCycle: 0);
           }
         } else {
-          // 手动模式：进入 completed 状态，等待用户在 UI 上点击“开始休息”
+          // 手动模式：进入 completed 状态，等待用户在 UI 上点击”开始休息”
           // 这里提前设置好 timerPhase，确保用户点击时能正确识别是长休息还是短休息
           state = state.copyWith(
             timerStatus: TimerStatus.completed,
@@ -566,10 +666,20 @@ class TimerNotifier extends StateNotifier<TimerState> {
           );
         }
       }
-    } else {
+    } else if (state.timerMode == TimerMode.singleCore) {
       // 单核工作法完成
       _saveFocusSession(true);
       state = state.copyWith(timerStatus: TimerStatus.completed);
+    } else {
+      // 任务模式完成
+      _saveFocusSession(true);
+      state = state.copyWith(
+        timerStatus: TimerStatus.idle,
+        timerPhase: 'focus',
+        totalSeconds: 0,
+        elapsedSeconds: 0,
+        plannedDurationSeconds: 0,
+      );
     }
 
     // 所有阶段结束后保存状态并触发铃声/系统通知
@@ -654,3 +764,6 @@ final timerProvider = StateNotifierProvider<TimerNotifier, TimerState>((ref) {
 });
 
 final sessionUpdateProvider = StateProvider<int>((ref) => 0);
+
+/// 触发超时任务模式选择对话框的时间戳
+final overdueModeDialogProvider = StateProvider<int>((ref) => 0);

@@ -25,7 +25,7 @@ class ModeSelector extends ConsumerWidget {
         children: [
           Expanded(
             child: _ModeButton(
-              label: '单核工作法',
+              label: '单核',
               isSelected: timerState.timerMode == TimerMode.singleCore,
               onTap: () => timerNotifier.setTimerMode(TimerMode.singleCore),
               isDark: isDark,
@@ -34,9 +34,18 @@ class ModeSelector extends ConsumerWidget {
           const SizedBox(width: 4),
           Expanded(
             child: _ModeButton(
-              label: '番茄工作法',
+              label: '番茄',
               isSelected: timerState.timerMode == TimerMode.pomodoro,
               onTap: () => timerNotifier.setTimerMode(TimerMode.pomodoro),
+              isDark: isDark,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: _ModeButton(
+              label: '任务',
+              isSelected: timerState.timerMode == TimerMode.task,
+              onTap: () => timerNotifier.setTimerMode(TimerMode.task),
               isDark: isDark,
             ),
           ),

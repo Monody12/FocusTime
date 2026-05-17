@@ -394,6 +394,41 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           },
                           isDark: isDark,
                         ),
+                        const SizedBox(height: 12),
+                        _buildSelectSetting(
+                          label: '任务超时后默认模式',
+                          value: timerState.preferredModeWhenOverdue.isEmpty
+                              ? 'ask'
+                              : timerState.preferredModeWhenOverdue,
+                          options: const [
+                            {'value': 'ask', 'label': '每次询问'},
+                            {'value': 'singleCore', 'label': '单核工作法'},
+                            {'value': 'pomodoro', 'label': '番茄工作法'},
+                          ],
+                          onChanged: (value) {
+                            timerNotifier.setPreferredModeWhenOverdue(value);
+                          },
+                          isDark: isDark,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildSwitchSetting(
+                          label: '记住超时后的模式选择',
+                          value: timerState.rememberModeChoice,
+                          onChanged: (value) {
+                            timerNotifier.setRememberModeChoice(value);
+                          },
+                          isDark: isDark,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4, left: 2),
+                          child: Text(
+                            '启用后，选择模式时会记住您的选择，下次超时自动使用该模式',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
+                          ),
+                        ),
 
                         const SizedBox(height: 24),
 

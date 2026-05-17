@@ -5,6 +5,7 @@ import '../../providers/timer_provider.dart';
 import '../widgets/timer_display.dart';
 import '../widgets/timer_controls.dart';
 import '../widgets/mode_selector.dart';
+import '../widgets/overdue_mode_dialog.dart';
 
 class TimerPage extends ConsumerWidget {
   const TimerPage({super.key});
@@ -13,6 +14,13 @@ class TimerPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final timerState = ref.watch(timerProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // 监听超时模式对话框触发
+    ref.listen(overdueModeDialogProvider, (_, timestamp) {
+      if (timestamp > 0) {
+        showOverdueModeDialog(context, ref);
+      }
+    });
 
     final isInBreakPhase = timerState.timerMode == TimerMode.pomodoro &&
         (timerState.timerPhase == 'break' || timerState.timerPhase == 'long-break');
@@ -68,7 +76,9 @@ class TimerPage extends ConsumerWidget {
                 if (timerState.timerMode == TimerMode.singleCore && timerState.targetTime != null)
                   _buildSingleCoreInfo(timerState, isDark)
                 else if (timerState.timerMode == TimerMode.pomodoro)
-                  _buildPomodoroInfo(timerState, isDark),
+                  _buildPomodoroInfo(timerState, isDark)
+                else if (timerState.timerMode == TimerMode.task)
+                  _buildTaskInfo(timerState, isDark),
 
                 const SizedBox(height: 16),
 
@@ -165,6 +175,28 @@ class TimerPage extends ConsumerWidget {
                   fontSize: 12,
                   color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTaskInfo(TimerState timerState, bool isDark) {
+    final remaining = timerState.remainingSeconds ~/ 60;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        alignment: WrapAlignment.center,
+        children: [
+          Text(
+            '任务模式 · 剩余 $remaining 分钟',
+            style: TextStyle(fontSize: 13, color: isDark ? AppColors.darkText : AppColors.lightText),
+          ),
         ],
       ),
     );
