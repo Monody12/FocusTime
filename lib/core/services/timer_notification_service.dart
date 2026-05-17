@@ -122,9 +122,9 @@ class TimerNotificationService {
 
     // 2. 发送通知
     if (Platform.isWindows && _winNotifier != null) {
-      await _sendActionableToast(title: title, body: body, phase: phase, duration: duration);
+      await _sendActionableToast(title: title, body: body, phase: phase, duration: duration, soundEnabled: soundEnabled);
     } else if (Platform.isAndroid) {
-      await _sendAndroidNotification(title: title, body: body, phase: phase);
+      await _sendAndroidNotification(title: title, body: body, phase: phase, soundEnabled: soundEnabled);
     }
   }
 
@@ -132,6 +132,7 @@ class TimerNotificationService {
     required String title,
     required String body,
     required String phase,
+    required bool soundEnabled,
   }) async {
     final List<AndroidNotificationAction> actions = [];
     if (phase == 'focus') {
@@ -153,6 +154,7 @@ class TimerNotificationService {
       actions: actions,
       fullScreenIntent: true,
       category: AndroidNotificationCategory.alarm,
+      playSound: soundEnabled,
     );
 
     final NotificationDetails platformChannelSpecifics =
@@ -184,14 +186,19 @@ class TimerNotificationService {
     required String body,
     required String phase,
     required String duration,
+    required bool soundEnabled,
   }) async {
     try {
       final String scenario = duration == 'persistent'
           ? 'alarm'
           : (duration == 'long' ? 'reminder' : 'default');
-      
-      const String audioSrc = 'ms-winsoundevent:Notification.Looping.Alarm';
-      final String loopingAttr = duration != 'short' ? ' loop="true"' : ' loop="false"';
+
+      String audioElement = '';
+      if (soundEnabled) {
+        const String audioSrc = 'ms-winsoundevent:Notification.Looping.Alarm';
+        final String loopingAttr = duration != 'short' ? ' loop="true"' : ' loop="false"';
+        audioElement = '<audio src="$audioSrc" $loopingAttr />';
+      }
 
       String actionsXml = '';
       if (phase == 'focus') {
@@ -217,7 +224,7 @@ class TimerNotificationService {
           <actions>
             $actionsXml
           </actions>
-          <audio src="$audioSrc" $loopingAttr />
+          $audioElement
         </toast>
       ''';
 

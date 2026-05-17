@@ -353,7 +353,12 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   void toggleSound() {
+    final wasEnabled = state.soundEnabled;
     state = state.copyWith(soundEnabled: !state.soundEnabled);
+    // 关闭提示音时立即停止正在响的铃声
+    if (wasEnabled && !state.soundEnabled) {
+      TimerNotificationService.stopAlarm();
+    }
     _saveState();
   }
 

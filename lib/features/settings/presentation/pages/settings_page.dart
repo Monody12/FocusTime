@@ -391,6 +391,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           onChanged: (value) {
                             setState(() => _soundEnabled = value);
                             timerNotifier.toggleSound();
+                            _showSnackBar(value ? '提示音已开启' : '提示音已关闭');
                           },
                           isDark: isDark,
                         ),

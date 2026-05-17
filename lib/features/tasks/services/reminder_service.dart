@@ -372,7 +372,6 @@ class ReminderService {
               <action content="开始专注" arguments="action:start_focus_task:${task.id}" />
               <action content="稍后提醒我" arguments="action:snooze_reminder:${task.id}" />
             </actions>
-            <audio src="ms-winsoundevent:Notification.Looping.Alarm" loop="true" />
           </toast>
         ''';
 
