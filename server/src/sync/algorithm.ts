@@ -59,7 +59,7 @@ export function getServerChanges(
     const stmt = db.prepare(`
       SELECT record_id, data_json, updated_at, deleted
       FROM sync_records
-      WHERE user_id = ? AND table_name = ? AND updated_at > ?
+      WHERE user_id = ? AND table_name = ? AND (updated_at > ? OR deleted = 1)
       ORDER BY updated_at ASC
     `)
 

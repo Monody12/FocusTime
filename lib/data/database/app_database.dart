@@ -342,9 +342,10 @@ class AppDatabase {
   static Future<void> deleteList(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.update('tasks', {'deleted': 1, 'updated_at': now}, 
-        where: 'list_id = ?', whereArgs: [id]);
-    await db.update('lists', {'deleted': 1, 'updated_at': now}, 
+    // 仅更新未删除的任务，防止更新已删除记录的 updated_at 导致重复同步
+    await db.update('tasks', {'deleted': 1, 'updated_at': now},
+        where: 'list_id = ? AND deleted = 0', whereArgs: [id]);
+    await db.update('lists', {'deleted': 1, 'updated_at': now},
         where: 'id = ?', whereArgs: [id]);
   }
 
@@ -500,9 +501,10 @@ class AppDatabase {
   static Future<void> deleteTask(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.update('sessions', {'deleted': 1, 'updated_at': now}, 
-        where: 'task_id = ?', whereArgs: [id]);
-    await db.update('tasks', {'deleted': 1, 'updated_at': now}, 
+    // 仅更新未删除的会话，防止更新已删除记录的 updated_at 导致重复同步
+    await db.update('sessions', {'deleted': 1, 'updated_at': now},
+        where: 'task_id = ? AND deleted = 0', whereArgs: [id]);
+    await db.update('tasks', {'deleted': 1, 'updated_at': now},
         where: 'id = ?', whereArgs: [id]);
   }
 
@@ -774,7 +776,8 @@ class AppDatabase {
 
   static Future<List<Map<String, dynamic>>> _getSyncTableRecords(
       Database db, String table, int lastSyncTime, Map<String, dynamic> Function(Map<String, dynamic>) mapper) async {
-    final records = await db.query(table, where: 'updated_at > ?', whereArgs: [lastSyncTime]);
+    // 必须同时查询软删除记录（deleted = 1），否则删除操作无法跨设备同步
+    final records = await db.query(table, where: 'updated_at > ? OR deleted = 1', whereArgs: [lastSyncTime]);
     return records.map((r) {
       final mapped = mapper(r);
       return {
@@ -854,6 +857,7 @@ class AppDatabase {
       'is_system': (data['isSystem'] ?? false) ? 1 : 0,
       'sort_order': data['sortOrder'] ?? 0,
       'created_at': data['createdAt'],
+      // updated_at 由调用方在 _applyTableChanges 中统一设置
     };
   }
 
