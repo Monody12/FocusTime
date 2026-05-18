@@ -628,6 +628,8 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
     // 记录刚刚结束的阶段，用于通知显示
     final finishedPhase = state.timerPhase;
+    // 捕获完成的时长，防止在状态重置后变为 0
+    final completedDuration = state.totalSeconds;
 
     // 番茄工作法逻辑
     if (state.timerMode == TimerMode.pomodoro) {
@@ -686,7 +688,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
     // 所有阶段结束后保存状态并触发铃声/系统通知
     _saveState();
-    _triggerCompletionNotification(finishedPhase);
+    _triggerCompletionNotification(finishedPhase, completedDuration);
   }
 
   String _formatDuration(int totalSeconds) {
@@ -698,10 +700,10 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   /// 计时结束时触发铃声 + Windows 通知中心 Toast + 应用内弹窗
-  void _triggerCompletionNotification(String finishedPhase) {
+  void _triggerCompletionNotification(String finishedPhase, int completedDuration) {
     final task = state.currentTask.isNotEmpty ? state.currentTask : null;
     final template = state.notificationTemplate;
-    final durationStr = _formatDuration(state.totalSeconds);
+    final durationStr = _formatDuration(completedDuration);
     final modeStr = state.timerMode == TimerMode.singleCore ? '单核工作法' : '番茄工作法';
     // 替换模板中的占位符
     var body = template
