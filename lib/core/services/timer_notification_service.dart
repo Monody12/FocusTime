@@ -116,7 +116,7 @@ class TimerNotificationService {
 
     // 1. 响铃处理
     if (!Platform.isWindows && soundEnabled) {
-      final bool loop = duration == 'persistent';
+      final bool loop = duration != 'short';
       await _playAlarmSound(loop: loop);
     }
 
@@ -189,9 +189,8 @@ class TimerNotificationService {
     required bool soundEnabled,
   }) async {
     try {
-      final String scenario = duration == 'persistent'
-          ? 'alarm'
-          : (duration == 'long' ? 'reminder' : 'default');
+      // 为了支持声音循环，Windows 要求 scenario 必须是 alarm 或 reminder
+      final String scenario = duration != 'short' ? 'alarm' : 'default';
 
       String audioElement = '';
       if (soundEnabled) {

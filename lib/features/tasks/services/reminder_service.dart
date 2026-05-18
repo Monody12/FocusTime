@@ -449,8 +449,11 @@ class ReminderService {
 
       final reminderTime = DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
       if (reminderTime.isAfter(now)) {
-        // 未来提醒：正常调度
-        await scheduleUnifiedReminders(task);
+        // 未来提醒：正常调度，并将 eventId 持久化到数据库
+        final eventId = await scheduleUnifiedReminders(task);
+        if (eventId != null && eventId != task.calendarEventId) {
+          await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+        }
       } else if (Platform.isWindows &&
           task.reminderAt! >= missedThreshold &&
           _winNotifier != null) {

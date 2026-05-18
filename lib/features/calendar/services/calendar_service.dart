@@ -131,13 +131,13 @@ class CalendarService {
     );
 
     final result = await _calendarPlugin.createOrUpdateEvent(event);
-    if (result != null && result.isSuccess) {
+    if (result != null && result.isSuccess && result.data != null) {
       dev.log('[CalendarService] 已同步任务到日历: ${task.title}, EventID: ${result.data}');
       return result.data;
     }
 
+    dev.log('[CalendarService] createOrUpdateEvent 失败，尝试回退方案: ${result?.errors.map((e) => e.errorMessage).join(', ') ?? 'unknown'}');
     // 如果 UPDATE 失败（如事件被手动删除），回退到 DELETE+CREATE
-    dev.log('[CalendarService] UPDATE 失败，尝试 DELETE+CREATE 回退方案');
     if (task.calendarEventId != null) {
       await _calendarPlugin.deleteEvent(_calendarId, task.calendarEventId!);
     }
@@ -150,7 +150,7 @@ class CalendarService {
       reminders: task.completed ? [] : [Reminder(minutes: 0)],
     );
     final retryResult = await _calendarPlugin.createOrUpdateEvent(newEvent);
-    if (retryResult != null && retryResult.isSuccess) {
+    if (retryResult != null && retryResult.isSuccess && retryResult.data != null) {
       dev.log('[CalendarService] 重建成功: ${task.title}, EventID: ${retryResult.data}');
       return retryResult.data;
     }

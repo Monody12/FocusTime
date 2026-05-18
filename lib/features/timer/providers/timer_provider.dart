@@ -485,10 +485,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
       }
     }
 
-    // 如果有任务预期分钟数，使用任务预期时间作为总时长
-    if (taskExpectedMinutes != null && taskExpectedMinutes > 0 && effectiveMode != TimerMode.task) {
-      totalSeconds = taskExpectedMinutes * 60;
-    }
+
 
     state = state.copyWith(
       timerStatus: TimerStatus.running,

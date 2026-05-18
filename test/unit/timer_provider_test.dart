@@ -154,9 +154,10 @@ void main() {
 
   group('TimerMode enum', () {
     test('has correct values', () {
-      expect(TimerMode.values.length, 2);
+      expect(TimerMode.values.length, 3);
       expect(TimerMode.values, contains(TimerMode.singleCore));
       expect(TimerMode.values, contains(TimerMode.pomodoro));
+      expect(TimerMode.values, contains(TimerMode.task));
     });
   });
 

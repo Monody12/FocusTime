@@ -491,4 +491,114 @@ await AppDatabase.updateTask(task.id, {'reminderAt': null});
 
 ---
 
-*最后更新日期：2026-05-09*
+*最后更新日期：2026-05-17*
+
+## 15. 跨设备同步后日历事件未创建（PC 创建任务，手机同步无日历）
+
+### 15.1 问题现象
+
+- 在 PC 端创建带提醒的任务，登录同一账号的手机端同步后，任务本身同步成功，但系统日历中没有对应事件
+- 手动在手机上创建带提醒的任务，日历正常
+- 手机端反复同步也无法补上缺失的日历事件
+
+### 15.2 根因分析
+
+**三个独立 bug 叠加导致：**
+
+**Bug 1 — `syncTask` 返回 null 但 isSuccess=true（Critical）**
+
+`calendar_service.dart:133`:
+```dart
+final result = await _calendarPlugin.createOrUpdateEvent(event);
+if (result != null && result.isSuccess) {        // ← isSuccess=true 不足以说明成功
+  return result.data;                              // ← data 可能为 null！
+}
+```
+
+部分 Android 设备上，`createOrUpdateEvent` 返回 `isSuccess=true` 但 `data=null`（日历写入被系统拒绝但 API 认为"成功"）。原代码直接返回 `result.data`（即 null），调用方误认为"无 eventId"，后续判断 `eventId != task.calendarEventId` 跳过数据库更新，导致日历事件 ID 永远无法持久化。
+
+**Bug 2 — `createTask` 创建后不持久化 eventId（High）**
+
+`task_provider.dart:354`:
+```dart
+if (task.reminderAt != null) {
+  ReminderService.scheduleUnifiedReminders(task);  // ← 异步调用，不 await
+  // ← eventId 没有被写回数据库！
+}
+```
+
+`createTask` 调用 `scheduleUnifiedReminders` 后没有等待其完成，也没有将返回的 eventId 写回数据库。新任务的 `calendarEventId` 始终为 null。同步到其他设备时，其他设备看到的仍是 null。
+
+**Bug 3 — `sync()` 只对当前视图任务调用 `refreshAll`（Medium）**
+
+`task_provider.dart:303`:
+```dart
+ReminderService.refreshAll(state.tasks);  // ← state.tasks 是当前视图过滤后的列表！
+CalendarService.refreshAll(state.tasks);  // ← 不是所有有提醒的任务！
+```
+
+`loadTasks()` 的查询受 `state.currentViewType` 和 `state.currentListId` 控制。用户在"我的一天"视图时，`state.tasks` 只包含"我的一天"的任务（is_my_day=1）。其他清单（如"任务"）中有提醒的任务完全被跳过，`refreshAll` 不会为它们重建日历事件。
+
+### 15.3 修复
+
+1. **Bug 1**: 增加 `result.data != null` 检查，并添加详细日志输出 `result.errors`（便于排查日历写入被拒的原因）
+
+2. **Bug 2**: `createTask` 中 await `scheduleUnifiedReminders`，将返回的 eventId 写回数据库：
+   ```dart
+   final eventId = await ReminderService.scheduleUnifiedReminders(task);
+   if (eventId != null && eventId != task.calendarEventId) {
+     await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+   }
+   ```
+
+3. **Bug 3**: 在 `sync()` 中改为加载所有有 reminder 的任务，同时在 `refreshAll` 内部，对于每个成功创建的 eventId 也写回数据库。
+
+### 15.4 教训
+
+- **第三方 API 返回值必须同时检查 `isSuccess` 和 `data` 是否为 null**：API 文档说"成功"不一定代表所有字段都有值
+- **异步调用必须 await 并处理返回值**：fire-and-forget 适用于"通知用户成功、忽略失败"的场景，不适用于"需要持久化结果"的场景
+- **同步后的刷新操作必须针对完整数据集**：不能依赖内存中可能被视图过滤的任务列表
+- **日志要包含足够诊断信息**：当 `isSuccess=true` 但 `data=null` 时，只有 `result.errors` 能说明真相
+
+---
+
+*最后更新日期：2026-05-17*
+
+---
+
+## 16. 专注完成提示音与专注时长 Bug 修复
+
+### 16.1 问题现象
+- **提示音问题**：在 Windows 平台上，专注完成后本应循环播放闹钟铃声，但实际上只播放了一次系统默认的提示音。
+- **专注时长问题**：在选择带有“预期时长”的任务后，如果处于非任务模式（如番茄模式），专注时长会被错误地覆盖为任务的预期时长，破坏了番茄钟的固定时长逻辑。
+
+### 16.2 根因分析
+
+**Bug 1 — Windows 提示音未循环且使用默认声音**
+1. 原代码在 `triggerAlarm` 中排除了 Windows 平台调用 `audioplayers` 播放自定义铃声（`!Platform.isWindows`）。
+2. 在 Windows 通知 XML 中，虽然尝试设置 `loop="true"`，但因为 `duration` 默认值为 `'long'`，导致 `scenario` 被设置为 `'reminder'` 或 `'default'`，而在 Windows 中，只有 `scenario="alarm"`（或在某些情况下 `reminder`）且配合特定的系统声音事件才能可靠地触发循环。
+3. 用户期望使用 **Windows 系统默认的闹钟铃声** 且循环播放，而不是应用内置的 `alarm.wav`。
+
+**Bug 2 — 专注时长被错误覆盖**
+在 `timer_provider.dart` 的 `_doStartFocus` 方法中，存在以下逻辑：
+```dart
+if (taskExpectedMinutes != null && taskExpectedMinutes > 0 && effectiveMode != TimerMode.task) {
+  totalSeconds = taskExpectedMinutes * 60;
+}
+```
+这段代码导致了只要任务有预期时间，无论是番茄模式还是单核模式，都会强制使用任务的预期时间，完全破坏了番茄钟等模式的独立性。
+
+### 16.3 修复方案
+
+1. **Windows 提示音修复**：
+   - 保持 Windows 平台不播放内置 `alarm.wav` 铃声的限制。
+   - 在 `_sendActionableToast` 中，当 `duration != 'short'` 时，强制将 `scenario` 设置为 `alarm`。
+   - 使用 Windows 系统 looping 声音源 `ms-winsoundevent:Notification.Looping.Alarm`，并设置 `loop="true"`。
+2. **专注时长修复**：
+   - 删除了 `timer_provider.dart` 中上述强制覆盖时长的 `if` 语句。现在各模式将严格遵循自身的时长逻辑。
+
+### 16.4 教训
+- **Windows 通知机制的特殊性**：Windows 的 Toast 通知对于循环声音有严格s 的 `scenario` 要求。在设计跨平台通知时，必须深入了解各平台的原生限制。
+- **模式独立性原则**：在具有多种工作模式的应用中，各模式的参数应保持高内聚低耦合。避免跨模式的隐式覆盖逻辑。
+
+*最后更新日期：2026-05-18*

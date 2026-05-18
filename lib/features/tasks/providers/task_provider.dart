@@ -299,9 +299,30 @@ class TaskNotifier extends StateNotifier<TaskState> {
       if (result.success) {
         await loadLists();
         await loadTasks();
-        // 同步完成后刷新所有提醒和日历
-        ReminderService.refreshAll(state.tasks);
-        CalendarService.refreshAll(state.tasks);
+        // 同步完成后刷新所有提醒和日历（必须使用完整数据集，不受当前视图过滤影响）
+        final allDbTasks = await AppDatabase.getAllTasks();
+        final allTasks = allDbTasks.map((m) => TaskItem(
+          id: m['id'] as String,
+          listId: m['listId'] as String,
+          title: m['title'] as String,
+          notes: m['notes'] as String?,
+          completed: m['completed'] == true,
+          completedAt: m['completedAt'] as int?,
+          dueDate: m['dueDate'] as String?,
+          dueTime: m['dueTime'] as String?,
+          sortOrder: m['sortOrder'] as int,
+          isMyDay: m['isMyDay'] == true,
+          myDayAddedAt: m['myDayAddedAt'] as int?,
+          recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
+          expectedMinutes: m['expectedMinutes'] as int?,
+          isImportant: m['isImportant'] == true,
+          reminderAt: m['reminderAt'] as int?,
+          calendarEventId: m['calendarEventId'] as String?,
+          createdAt: m['createdAt'] as int,
+          updatedAt: m['updatedAt'] as int,
+        )).toList();
+        ReminderService.refreshAll(allTasks);
+        CalendarService.refreshAll(allTasks);
       }
       if (!background) state = state.copyWith(isLoading: false);
       return result;
@@ -349,12 +370,16 @@ class TaskNotifier extends StateNotifier<TaskState> {
     );
     
     state = state.copyWith(tasks: [...state.tasks, task]);
-    
+
     // 如果创建时带了提醒（虽然目前 UI 尚未直接支持），进行调度
     if (task.reminderAt != null) {
-      ReminderService.scheduleUnifiedReminders(task);
+      final eventId = await ReminderService.scheduleUnifiedReminders(task);
+      // 将日历事件 ID 持久化到数据库，确保跨设备同步时能正确关联
+      if (eventId != null && eventId != task.calendarEventId) {
+        await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+      }
     }
-    
+
     _triggerSync();
   }
 
@@ -392,11 +417,13 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
     if (updatedTask != null) {
       final eventId = await ReminderService.scheduleUnifiedReminders(updatedTask);
-      if (eventId != updatedTask.calendarEventId) {
-        state = state.copyWith(
-          tasks: state.tasks.map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t).toList(),
-        );
+      // 将 eventId 持久化到数据库，不仅仅是内存 state
+      if (eventId != null && eventId != updatedTask.calendarEventId) {
+        await AppDatabase.updateTask(id, {'calendarEventId': eventId});
       }
+      state = state.copyWith(
+        tasks: state.tasks.map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t).toList(),
+      );
     }
     
     _triggerSync();
@@ -445,11 +472,13 @@ class TaskNotifier extends StateNotifier<TaskState> {
     final updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
     if (updatedTask != null) {
       final eventId = await ReminderService.scheduleUnifiedReminders(updatedTask);
-      if (eventId != updatedTask.calendarEventId) {
-        state = state.copyWith(
-          tasks: state.tasks.map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t).toList(),
-        );
+      // 将 eventId 持久化到数据库，不仅仅是内存 state
+      if (eventId != null && eventId != updatedTask.calendarEventId) {
+        await AppDatabase.updateTask(id, {'calendarEventId': eventId});
       }
+      state = state.copyWith(
+        tasks: state.tasks.map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t).toList(),
+      );
     }
     
     _triggerSync();
