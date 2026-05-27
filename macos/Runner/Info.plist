@@ -28,5 +28,13 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>需要日历权限来同步任务提醒</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>需要完整日历权限来同步和管理任务提醒事件</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>需要写入日历权限来同步任务提醒事件</string>
+	<key>NSContactsUsageDescription</key>
+	<string>需要联系人权限来支持日历事件创建</string>
 </dict>
 </plist>
