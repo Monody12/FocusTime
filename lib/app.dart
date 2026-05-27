@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/theme/app_theme.dart';
-import 'core/providers/theme_provider.dart';
-import 'features/sidebar/presentation/widgets/sidebar.dart';
-import 'features/timer/presentation/pages/timer_page.dart';
-import 'features/tasks/presentation/pages/task_list_page.dart';
-import 'features/tasks/presentation/pages/task_detail_page.dart';
-import 'features/settings/presentation/pages/settings_page.dart';
-import 'features/calendar/presentation/pages/calendar_page.dart';
-import 'features/ai_assistant/presentation/pages/ai_chat_page.dart';
-import 'features/timer/providers/timer_provider.dart';
-import 'features/tasks/providers/task_provider.dart';
-import 'core/providers/package_info_provider.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/core/providers/theme_provider.dart';
+import 'package:focus_my_time/features/sidebar/presentation/widgets/sidebar.dart';
+import 'package:focus_my_time/features/timer/presentation/pages/timer_page.dart';
+import 'package:focus_my_time/features/tasks/presentation/pages/task_list_page.dart';
+import 'package:focus_my_time/features/tasks/presentation/pages/task_detail_page.dart';
+import 'package:focus_my_time/features/settings/presentation/pages/settings_page.dart';
+import 'package:focus_my_time/features/calendar/presentation/pages/calendar_page.dart';
+import 'package:focus_my_time/features/ai_assistant/presentation/pages/ai_chat_page.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/core/providers/package_info_provider.dart';
 
 class FocusMyTimeApp extends ConsumerStatefulWidget {
   const FocusMyTimeApp({super.key});
@@ -318,40 +318,33 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       ),
     );
 
-    return MaterialApp(
-      title: 'FocusMyTime',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: themeMode,
-      home: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.keyT, control: true): () {
-            if (taskState.selectedTaskId != null) {
-              final taskNotifier = ref.read(taskProvider.notifier);
-              final task = taskState.tasks.where((t) => t.id == taskState.selectedTaskId).firstOrNull;
-              if (task != null) {
-                if (task.isMyDay) taskNotifier.removeFromMyDay(task.id);
-                else taskNotifier.addToMyDay(task.id);
-              }
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyT, control: true): () {
+          if (taskState.selectedTaskId != null) {
+            final taskNotifier = ref.read(taskProvider.notifier);
+            final task = taskState.tasks.where((t) => t.id == taskState.selectedTaskId).firstOrNull;
+            if (task != null) {
+              if (task.isMyDay) taskNotifier.removeFromMyDay(task.id);
+              else taskNotifier.addToMyDay(task.id);
             }
-          },
-          const SingleActivator(LogicalKeyboardKey.keyD, control: true): () {
-            if (taskState.selectedTaskId != null) {
-              ref.read(taskProvider.notifier).toggleTaskComplete(taskState.selectedTaskId!);
-            }
-          },
-          const SingleActivator(LogicalKeyboardKey.delete): () {
-            if (taskState.selectedTaskId != null) {
-              final task = taskState.tasks.where((t) => t.id == taskState.selectedTaskId).firstOrNull;
-              if (task != null) {
-                _confirmDeleteTask(context, task);
-              }
-            }
-          },
+          }
         },
-        child: mainContent,
-      ),
+        const SingleActivator(LogicalKeyboardKey.keyD, control: true): () {
+          if (taskState.selectedTaskId != null) {
+            ref.read(taskProvider.notifier).toggleTaskComplete(taskState.selectedTaskId!);
+          }
+        },
+        const SingleActivator(LogicalKeyboardKey.delete): () {
+          if (taskState.selectedTaskId != null) {
+            final task = taskState.tasks.where((t) => t.id == taskState.selectedTaskId).firstOrNull;
+            if (task != null) {
+              _confirmDeleteTask(context, task);
+            }
+          }
+        },
+      },
+      child: mainContent,
     );
   }
 
