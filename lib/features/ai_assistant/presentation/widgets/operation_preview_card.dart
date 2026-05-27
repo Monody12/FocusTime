@@ -36,7 +36,7 @@ class OperationPreviewCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDelete
-              ? Colors.red.withValues(alpha: 0.5)
+              ? Colors.red.withOpacity(0.5)
               : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
           width: isDelete ? 1.5 : 1,
         ),
@@ -189,7 +189,7 @@ class OperationPreviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
@@ -233,7 +233,7 @@ class OperationPreviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: color.withOpacity(0.15),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(

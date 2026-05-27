@@ -15,7 +15,7 @@ import 'package:focus_my_time/data/database/app_database.dart';
 /// 任务提醒服务
 /// 职责：管理任务的定时提醒通知，支持 Android (系统级调度) 和 Windows (应用级调度)
 class ReminderService {
-  static final FlutterLocalNotificationsPlugin _androidPlugin = FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _localPlugin = FlutterLocalNotificationsPlugin();
   static WindowsNotification? _winNotifier;
   static bool _initialized = false;
   
@@ -76,7 +76,7 @@ class ReminderService {
       }
     }
 
-    // 2. 初始化 Android 通知
+    // 2. 初始化本地通知 (Android & macOS)
     if (Platform.isAndroid) {
       // Android 13+ 需要显式请求通知权限
       if (await Permission.notification.isDenied) {
@@ -93,10 +93,20 @@ class ReminderService {
 
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/ic_launcher');
+      
+      const DarwinInitializationSettings initializationSettingsDarwin =
+          DarwinInitializationSettings(
+        requestSoundPermission: true,
+        requestBadgePermission: true,
+        requestAlertPermission: true,
+      );
+
       const InitializationSettings initializationSettings = InitializationSettings(
         android: initializationSettingsAndroid,
+        macOS: initializationSettingsDarwin,
       );
-      await _androidPlugin.initialize(initializationSettings);
+      
+      await _localPlugin.initialize(initializationSettings);
       
       // 创建提醒专用的通知渠道
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -107,7 +117,19 @@ class ReminderService {
         playSound: true,
         enableVibration: true,
       );
-      await _androidPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(channel);
+      await _localPlugin.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(channel);
+    } else if (Platform.isMacOS) {
+      // macOS 初始化
+      const DarwinInitializationSettings initializationSettingsDarwin =
+          DarwinInitializationSettings(
+        requestSoundPermission: true,
+        requestBadgePermission: true,
+        requestAlertPermission: true,
+      );
+      const InitializationSettings initializationSettings = InitializationSettings(
+        macOS: initializationSettingsDarwin,
+      );
+      await _localPlugin.initialize(initializationSettings);
     }
 
     // 3. 初始化 Windows 通知客户端
@@ -135,15 +157,24 @@ class ReminderService {
   static Future<void> showImmediateTestNotification() async {
     if (!_initialized) await initialize();
     
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid || Platform.isMacOS) {
       const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
         'task_reminders',
         '任务提醒',
         importance: Importance.max,
         priority: Priority.high,
       );
-      const NotificationDetails details = NotificationDetails(android: androidDetails);
-      await _androidPlugin.show(999, '测试通知', '如果你看到了这条消息，说明通知通道正常。', details);
+      const DarwinNotificationDetails darwinDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      );
+      const NotificationDetails details = NotificationDetails(
+        android: androidDetails,
+        macOS: darwinDetails,
+      );
+      await _localPlugin.show(999, '测试通知', '如果你看到了这条消息，说明通知通道正常。', details);
     } else if (Platform.isWindows) {
       final message = NotificationMessage.fromCustomTemplate('test_id', group: 'test');
       const String toastXml = r'''
@@ -196,8 +227,8 @@ class ReminderService {
       return;
     }
 
-    if (Platform.isAndroid) {
-      await _scheduleAndroid(task, reminderDateTime);
+    if (Platform.isAndroid || Platform.isMacOS) {
+      await _scheduleLocalPlugin(task, reminderDateTime);
     } else if (Platform.isWindows) {
       await _scheduleWindows(task, reminderDateTime);
     }
@@ -290,10 +321,10 @@ class ReminderService {
 
   /// 取消指定任务的提醒调度
   static Future<void> cancelReminder(String taskId) async {
-    // Android 端：根据任务 ID 的 Hash 取消系统调度
-    if (Platform.isAndroid) {
+    // Android/macOS 端：根据任务 ID 的 Hash 取消系统调度
+    if (Platform.isAndroid || Platform.isMacOS) {
       final int notificationId = taskId.hashCode;
-      await _androidPlugin.cancel(notificationId);
+      await _localPlugin.cancel(notificationId);
     }
     
     // Windows 端：取消内存中的定时器
@@ -313,13 +344,13 @@ class ReminderService {
     }
   }
 
-  static Future<void> _scheduleAndroid(TaskItem task, DateTime scheduledTime) async {
+  static Future<void> _scheduleLocalPlugin(TaskItem task, DateTime scheduledTime) async {
     final int notificationId = task.id.hashCode;
 
     // 先取消旧调度再创建新的，防止部分 OEM 设备出现重复通知
-    await _androidPlugin.cancel(notificationId);
+    await _localPlugin.cancel(notificationId);
 
-    await _androidPlugin.zonedSchedule(
+    await _localPlugin.zonedSchedule(
       notificationId,
       '任务提醒',
       task.title,
@@ -336,12 +367,18 @@ class ReminderService {
           category: AndroidNotificationCategory.alarm,
           audioAttributesUsage: AudioAttributesUsage.alarm,
         ),
+        macOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.timeSensitive,
+        ),
       ),
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: 'task:${task.id}',
     );
-    dev.log('[ReminderService] Android 提醒已调度: ${task.title} at $scheduledTime');
+    dev.log('[ReminderService] 本地提醒已调度 (Android/macOS): ${task.title} at $scheduledTime');
   }
 
   static Future<void> _scheduleWindows(TaskItem task, DateTime scheduledTime) async {
@@ -483,8 +520,8 @@ class ReminderService {
   static Future<void> triggerTestAlarm() async {
     if (!_initialized) await initialize();
     
-    if (Platform.isAndroid) {
-      await _androidPlugin.show(
+    if (Platform.isAndroid || Platform.isMacOS) {
+      await _localPlugin.show(
         888,
         '测试系统闹钟',
         '这是一条模拟任务到期的全屏提醒测试。',
@@ -497,6 +534,12 @@ class ReminderService {
             fullScreenIntent: true,
             category: AndroidNotificationCategory.alarm,
             audioAttributesUsage: AudioAttributesUsage.alarm,
+          ),
+          macOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+            interruptionLevel: InterruptionLevel.timeSensitive,
           ),
         ),
       );

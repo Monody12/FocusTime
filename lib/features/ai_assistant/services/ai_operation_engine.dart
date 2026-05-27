@@ -255,7 +255,7 @@ class AiOperationEngine {
   ) async {
     final title = params['title'] as String;
 
-    await taskNotifier.createTask(
+    final task = await taskNotifier.createTask(
       title,
       isMyDay: params['isMyDay'] == true,
       reminderAt: params['reminderAt'] != null
@@ -272,11 +272,7 @@ class AiOperationEngine {
     if (params.containsKey('listId')) updates['listId'] = params['listId'];
 
     if (updates.isNotEmpty) {
-      // ignore: invalid_use_of_protected_member
-      final taskList = taskNotifier.state.tasks;
-      if (taskList.isNotEmpty) {
-        await taskNotifier.updateTask(taskList.last.id, updates);
-      }
+      await taskNotifier.updateTask(task.id, updates);
     }
   }
 

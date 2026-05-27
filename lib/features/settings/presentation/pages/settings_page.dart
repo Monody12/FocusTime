@@ -8,7 +8,6 @@ import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:focus_my_time/features/ai_assistant/services/deepseek_api_client.dart';
 import 'package:focus_my_time/core/providers/package_info_provider.dart';
 
@@ -29,9 +28,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late TextEditingController _minDurationController;
   late TextEditingController _notificationTemplateController;
   late TextEditingController _snoozeDurationController;
-  bool _enableCycle = false;
-  bool _autoStartNext = false;
-  bool _autoStartBreak = false;
   bool _soundEnabled = true;
   String _notificationDuration = 'long';
 
@@ -69,9 +65,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _minDurationController = TextEditingController(text: timerState.singleCoreConfig.minDuration.toString());
     _notificationTemplateController = TextEditingController(text: timerState.notificationTemplate);
     _snoozeDurationController = TextEditingController(text: timerState.snoozeDurationMinutes.toString());
-    _enableCycle = timerState.pomodoroConfig.enableCycle;
-    _autoStartNext = timerState.pomodoroConfig.autoStartNext;
-    _autoStartBreak = timerState.pomodoroConfig.autoStartBreak;
     _soundEnabled = timerState.soundEnabled;
     _notificationDuration = timerState.notificationDuration;
 
@@ -276,7 +269,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           label: '启用循环模式',
                           value: timerState.pomodoroConfig.enableCycle,
                           onChanged: (value) {
-                            setState(() => _enableCycle = value);
                             timerNotifier.updatePomodoroConfig(
                               timerState.pomodoroConfig.copyWith(enableCycle: value),
                             );
@@ -314,7 +306,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             label: '自动开始下一轮',
                             value: timerState.pomodoroConfig.autoStartNext,
                             onChanged: (value) {
-                              setState(() => _autoStartNext = value);
                               timerNotifier.updatePomodoroConfig(
                                 timerState.pomodoroConfig.copyWith(autoStartNext: value),
                               );
@@ -326,7 +317,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             label: '专注后自动进入休息',
                             value: timerState.pomodoroConfig.autoStartBreak,
                             onChanged: (value) {
-                              setState(() => _autoStartBreak = value);
                               timerNotifier.updatePomodoroConfig(
                                 timerState.pomodoroConfig.copyWith(autoStartBreak: value),
                               );
@@ -540,14 +530,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 final tasks = ref.read(taskProvider).tasks;
                                 await CalendarService.forceRebuildCalendar(tasks);
                                 
-                                if (context.mounted) {
+                                if (mounted) {
                                   Navigator.of(context).pop(); // 关闭 loading
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(content: Text('日历系统已清理并重新同步完成！')),
                                   );
                                 }
                               } catch (e) {
-                                if (context.mounted) {
+                                if (mounted) {
                                   Navigator.of(context).pop(); // 关闭 loading
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text('清理失败: $e')),
@@ -864,14 +854,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                   final tasks = ref.read(taskProvider).tasks;
                                   await CalendarService.forceRebuildCalendar(tasks);
                                   
-                                  if (context.mounted) {
+                                  if (mounted) {
                                     Navigator.of(context).pop(); // 关闭 loading
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(content: Text('日历系统已清理并重新同步完成！')),
                                     );
                                   }
                                 } catch (e) {
-                                  if (context.mounted) {
+                                  if (mounted) {
                                     Navigator.of(context).pop(); // 关闭 loading
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text('清理失败: $e')),
@@ -992,7 +982,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               ),
                             ),
                             loading: () => const SizedBox.shrink(),
-                            error: (_, _) => const SizedBox.shrink(),
+                            error: (_, __) => const SizedBox.shrink(),
                           ),
                         ),
               ],

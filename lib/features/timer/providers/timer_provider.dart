@@ -253,11 +253,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
     // If timer was running, calculate actual elapsed time
     int elapsedSeconds = savedElapsedSeconds;
-    int actualElapsedSeconds = savedElapsedSeconds;
     if (timerStatusStr == 'running' && startedAt > 0) {
       final actualElapsed = (DateTime.now().millisecondsSinceEpoch - startedAt) ~/ 1000;
       elapsedSeconds = savedElapsedSeconds + actualElapsed;
-      actualElapsedSeconds = actualElapsed;
     }
 
     state = state.copyWith(

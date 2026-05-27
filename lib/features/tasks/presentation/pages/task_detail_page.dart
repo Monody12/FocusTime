@@ -146,14 +146,14 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     if (task != null && mounted) {
       setState(() {
         _cachedTask = task;
-        _titleController.text = task!.title;
-        _notesController.text = task!.notes ?? '';
-        _expectedMinutesController.text = task!.expectedMinutes?.toString() ?? '';
-        _dueDate = task!.dueDate;
-        _dueTime = task!.dueTime;
-        _dueDateController.text = task!.dueDate ?? '';
-        _dueTimeController.text = task!.dueTime ?? '';
-        _recurrenceConfig = task!.recurrenceConfig;
+        _titleController.text = task.title;
+        _notesController.text = task.notes ?? '';
+        _expectedMinutesController.text = task.expectedMinutes?.toString() ?? '';
+        _dueDate = task.dueDate;
+        _dueTime = task.dueTime;
+        _dueDateController.text = task.dueDate ?? '';
+        _dueTimeController.text = task.dueTime ?? '';
+        _recurrenceConfig = task.recurrenceConfig;
       });
 
       // Load recurrence completion
@@ -192,8 +192,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       );
     }
 
-    final sessionUpdateTick = ref.watch(sessionUpdateProvider);
-
+    // Watch sessionUpdateProvider to trigger rebuild when it changes
+    ref.watch(sessionUpdateProvider);
     // Reload sessions when they update
     ref.listen(sessionUpdateProvider, (_, __) {
       _loadTaskData();
@@ -700,7 +700,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   lastDate: now.add(const Duration(days: 365)),
                 );
                 
-                if (date != null && mounted) {
+                if (date != null && pageContext.mounted) {
                   // 使用页面级的 context 弹出时间选择器
                   final time = await showTimePicker(
                     context: pageContext,
