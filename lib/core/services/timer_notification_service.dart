@@ -170,10 +170,12 @@ class TimerNotificationService {
     final NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
       macOS: const DarwinNotificationDetails(
-        presentAlert: true,
-        presentBadge: true,
-        presentSound: true,
-        interruptionLevel: InterruptionLevel.timeSensitive,
+        presentAlert: true,     // 弹窗提示
+        presentBadge: true,     // 角标
+        presentSound: true,     // 声音
+        presentBanner: true,    // macOS: 横幅样式（屏幕顶部滑入）
+        presentList: true,      // macOS: 通知中心列表中可见
+        interruptionLevel: InterruptionLevel.timeSensitive, // macOS: 时间敏感，突破专注模式
       ),
     );
 
@@ -195,6 +197,12 @@ class TimerNotificationService {
     } catch (e) {
       dev.log('[TimerNotificationService] 铃声播放失败: $e');
     }
+  }
+
+  /// 公开的铃声播放接口，供 ReminderService macOS 定时器调用
+  static Future<void> playAlarmSound({bool loop = true}) async {
+    if (!_initialized) await initialize();
+    await _playAlarmSound(loop: loop);
   }
 
   /// 发送带操作按钮的 Windows Toast 通知

@@ -8,7 +8,8 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:windows_notification/windows_notification.dart';
 import 'package:windows_notification/notification_message.dart';
-import '../providers/task_provider.dart';
+import 'package:focus_my_time/core/services/timer_notification_service.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 
@@ -21,6 +22,7 @@ class ReminderService {
   
   // 用于追踪 Windows 端的内存定时器，以便在任务删除或提醒更改时取消它们
   static final Map<String, dynamic> _windowsTimers = {};
+  static final Map<String, Timer> _macOsAlarmTimers = {};
   static bool _refreshInProgress = false; // 防止并发 refreshAll
   static bool _refreshPending = false; // 有等待中的 refreshAll 请求
 
@@ -153,9 +155,85 @@ class ReminderService {
     dev.log('[ReminderService] 初始化完成, 时区: $timeZoneName');
   }
 
+  /// 请求通知权限（跨平台）
+  ///
+  /// - Android: 通过 permission_handler 请求 POST_NOTIFICATIONS 权限
+  /// - macOS: 通过 flutter_local_notifications 的 macOS 实现请求弹窗/声音/角标权限
+  /// - Windows: 无需权限，直接返回 true
+  static Future<bool> requestNotificationPermission() async {
+    if (!_initialized) await initialize();
+
+    if (Platform.isAndroid) {
+      final status = await Permission.notification.request();
+      return status.isGranted;
+    }
+
+    if (Platform.isMacOS) {
+      // macOS 不能使用 permission_handler（它没有 macOS 实现），
+      // 必须通过 flutter_local_notifications 的 macOS 平台插件来请求权限
+      final macOsPlugin = _localPlugin
+          .resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>();
+      final granted = await macOsPlugin?.requestPermissions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      return granted ?? false;
+    }
+
+    return Platform.isWindows;
+  }
+
+  /// 打开系统通知设置页面（跨平台）
+  ///
+  /// macOS: 通过 URL scheme 直接跳转到系统设置的通知面板
+  /// 其他平台: 使用 permission_handler 的 openAppSettings
+  static Future<void> openNotificationSettings() async {
+    if (Platform.isMacOS) {
+      // macOS URL scheme 打开系统偏好设置中的通知面板
+      await Process.run('open', [
+        'x-apple.systempreferences:com.apple.Notifications-Settings.extension',
+      ]);
+      return;
+    }
+
+    await openAppSettings();
+  }
+
+  /// 检查是否已获得通知权限（跨平台，不弹请求对话框）
+  ///
+  /// - Android: 通过 permission_handler 检查
+  /// - macOS: 通过 flutter_local_notifications 的 macOS 实现检查
+  ///   isEnabled = 系统通知总开关，isAlertEnabled = 横幅/弹窗开关
+  /// - Windows: 无需权限，始终返回 true
+  static Future<bool> _hasNotificationPermission() async {
+    if (Platform.isAndroid) {
+      return Permission.notification.isGranted;
+    }
+
+    if (Platform.isMacOS) {
+      final macOsPlugin = _localPlugin
+          .resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>();
+      final permissions = await macOsPlugin?.checkPermissions();
+      // macOS 通知权限包含多个维度，任一维度开启即视为有权限
+      return permissions?.isEnabled == true || permissions?.isAlertEnabled == true;
+    }
+
+    return Platform.isWindows;
+  }
+
   /// 发送一个即时测试通知，用于验证通知通道是否畅通
   static Future<void> showImmediateTestNotification() async {
     if (!_initialized) await initialize();
+
+    if ((Platform.isAndroid || Platform.isMacOS) &&
+        !await _hasNotificationPermission()) {
+      final granted = await requestNotificationPermission();
+      if (!granted) {
+        await openNotificationSettings();
+        throw Exception('通知权限未开启');
+      }
+    }
     
     if (Platform.isAndroid || Platform.isMacOS) {
       const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
@@ -168,6 +246,8 @@ class ReminderService {
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
+        presentBanner: true,
+        presentList: true,
         interruptionLevel: InterruptionLevel.timeSensitive,
       );
       const NotificationDetails details = NotificationDetails(
@@ -194,16 +274,48 @@ class ReminderService {
   /// 获取当前权限状态字符串
   static Future<Map<String, String>> getPermissionStatus() async {
     final status = <String, String>{};
-    if (Platform.isAndroid) {
-      status['Notification'] = (await Permission.notification.status).toString();
-      try {
-        status['Exact Alarm'] = (await Permission.scheduleExactAlarm.status).toString();
-        status['Battery Optimization'] = (await Permission.ignoreBatteryOptimizations.status).toString();
-      } catch (e) {
-        status['Exact Alarm'] = 'Error';
+    try {
+      if (Platform.isAndroid) {
+        try {
+          status['Notification'] = (await Permission.notification.status).toString();
+        } catch (e) {
+          status['Notification'] = 'Error: $e';
+        }
+        try {
+          status['Exact Alarm'] = (await Permission.scheduleExactAlarm.status).toString();
+        } catch (e) {
+          status['Exact Alarm'] = 'Error: $e';
+        }
+        try {
+          status['Battery Optimization'] = (await Permission.ignoreBatteryOptimizations.status).toString();
+        } catch (e) {
+          status['Battery Optimization'] = 'Error: $e';
+        }
+      } else if (Platform.isWindows) {
+        status['Platform'] = 'Windows (Not required)';
+      } else if (Platform.isMacOS) {
+        status['Platform'] = 'macOS';
+        try {
+          final macOsPlugin = _localPlugin
+              .resolvePlatformSpecificImplementation<MacOSFlutterLocalNotificationsPlugin>();
+          final permissions = await macOsPlugin?.checkPermissions();
+          status['Notification'] = permissions?.isEnabled == true
+              ? 'PermissionStatus.granted'
+              : 'PermissionStatus.denied';
+        } catch (e) {
+          status['Notification'] = 'Error: $e';
+        }
+        try {
+          final hasCal = await CalendarService.hasPermissions();
+          status['Calendar'] = hasCal ? 'PermissionStatus.granted' : 'PermissionStatus.denied';
+        } catch (e) {
+          status['Calendar'] = 'Error: $e';
+        }
+      } else {
+        status['Platform'] = Platform.operatingSystem;
       }
-    } else {
-      status['Platform'] = 'Windows (Not required)';
+    } catch (e) {
+      dev.log('[ReminderService] getPermissionStatus error: $e');
     }
     return status;
   }
@@ -258,7 +370,7 @@ class ReminderService {
     }
 
     // 检查通知权限
-    final bool hasNotificationPermission = await Permission.notification.isGranted;
+    final bool hasNotificationPermission = await _hasNotificationPermission();
 
     dev.log('[ReminderService] 权限检查 - 日历: $hasCalendarPermission, 启用: $calendarEnabled, 通知: $hasNotificationPermission');
 
@@ -306,13 +418,13 @@ class ReminderService {
     try {
       final bool hasCalendarPermission = await CalendarService.hasPermissions();
       final bool calendarEnabled = await CalendarService.isEnabled();
-      final bool hasNotificationPermission = await Permission.notification.isGranted;
+      final bool hasNotificationPermission = await _hasNotificationPermission();
       return (hasCalendarPermission && calendarEnabled) || hasNotificationPermission;
     } catch (e) {
       dev.log('[ReminderService] 权限检查异常（预期桌面平台）: $e');
       // 桌面平台回退：仅检查通知权限
       try {
-        return await Permission.notification.isGranted;
+        return await _hasNotificationPermission();
       } catch (_) {
         return false;
       }
@@ -326,6 +438,9 @@ class ReminderService {
       final int notificationId = taskId.hashCode;
       await _localPlugin.cancel(notificationId);
     }
+
+    final macOsTimer = _macOsAlarmTimers.remove(taskId);
+    macOsTimer?.cancel();
     
     // Windows 端：取消内存中的定时器
     if (Platform.isWindows) {
@@ -371,6 +486,8 @@ class ReminderService {
           presentAlert: true,
           presentBadge: true,
           presentSound: true,
+          presentBanner: true,
+          presentList: true,
           interruptionLevel: InterruptionLevel.timeSensitive,
         ),
       ),
@@ -378,7 +495,29 @@ class ReminderService {
       uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
       payload: 'task:${task.id}',
     );
+    if (Platform.isMacOS) {
+      _scheduleMacOsAlarmTimer(task, scheduledTime);
+    }
     dev.log('[ReminderService] 本地提醒已调度 (Android/macOS): ${task.title} at $scheduledTime');
+  }
+
+  /// 为 macOS 调度应用内响铃定时器
+  ///
+  /// macOS 的系统通知不支持类似 Android 的全屏闹钟体验，
+  /// 因此在系统通知触发的同时，用应用内 Timer 补充播放循环闹钟铃声。
+  /// 注意：仅在 APP 运行期间有效，APP 退出后定时器消失。
+  static void _scheduleMacOsAlarmTimer(TaskItem task, DateTime scheduledTime) {
+    // 取消旧的定时器（如果存在），防止修改提醒时间后重复触发
+    _macOsAlarmTimers.remove(task.id)?.cancel();
+
+    final duration = scheduledTime.difference(DateTime.now());
+    if (duration.isNegative) return;
+
+    _macOsAlarmTimers[task.id] = Timer(duration, () async {
+      _macOsAlarmTimers.remove(task.id);
+      // 触发循环闹钟铃声，直到用户手动关闭
+      await TimerNotificationService.playAlarmSound(loop: true);
+    });
   }
 
   static Future<void> _scheduleWindows(TaskItem task, DateTime scheduledTime) async {
@@ -519,8 +658,19 @@ class ReminderService {
   /// 触发一个立即生效的系统闹钟提醒（全屏、高优先级）
   static Future<void> triggerTestAlarm() async {
     if (!_initialized) await initialize();
+
+    if (Platform.isMacOS) {
+      await TimerNotificationService.triggerAlarm(
+        title: '测试系统闹钟',
+        body: '这是一条模拟任务到期的响铃提醒测试。',
+        soundEnabled: true,
+        phase: 'focus',
+        duration: 'long',
+      );
+      return;
+    }
     
-    if (Platform.isAndroid || Platform.isMacOS) {
+    if (Platform.isAndroid) {
       await _localPlugin.show(
         888,
         '测试系统闹钟',
@@ -539,6 +689,8 @@ class ReminderService {
             presentAlert: true,
             presentBadge: true,
             presentSound: true,
+            presentBanner: true,
+            presentList: true,
             interruptionLevel: InterruptionLevel.timeSensitive,
           ),
         ),

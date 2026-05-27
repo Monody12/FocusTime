@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../../../core/utils/recurrence_utils.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/core/utils/recurrence_utils.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
@@ -144,16 +144,17 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     }
 
     if (task != null && mounted) {
+      final currentTask = task;
       setState(() {
-        _cachedTask = task;
-        _titleController.text = task.title;
-        _notesController.text = task.notes ?? '';
-        _expectedMinutesController.text = task.expectedMinutes?.toString() ?? '';
-        _dueDate = task.dueDate;
-        _dueTime = task.dueTime;
-        _dueDateController.text = task.dueDate ?? '';
-        _dueTimeController.text = task.dueTime ?? '';
-        _recurrenceConfig = task.recurrenceConfig;
+        _cachedTask = currentTask;
+        _titleController.text = currentTask.title;
+        _notesController.text = currentTask.notes ?? '';
+        _expectedMinutesController.text = currentTask.expectedMinutes?.toString() ?? '';
+        _dueDate = currentTask.dueDate;
+        _dueTime = currentTask.dueTime;
+        _dueDateController.text = currentTask.dueDate ?? '';
+        _dueTimeController.text = currentTask.dueTime ?? '';
+        _recurrenceConfig = currentTask.recurrenceConfig;
       });
 
       // Load recurrence completion
@@ -594,7 +595,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           TextButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
-              await ReminderService.requestExactAlarmPermission();
+              await ReminderService.requestNotificationPermission();
             },
             child: const Text('请求通知权限'),
           ),

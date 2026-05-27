@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
@@ -173,6 +175,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final notificationDuration = ref.watch(timerProvider.select((s) => s.notificationDuration));
     final notificationTemplate = ref.watch(timerProvider.select((s) => s.notificationTemplate));
     final snoozeDurationMinutes = ref.watch(timerProvider.select((s) => s.snoozeDurationMinutes));
+    final rememberModeChoice = ref.watch(timerProvider.select((s) => s.rememberModeChoice));
+    final preferredModeWhenOverdue = ref.watch(timerProvider.select((s) => s.preferredModeWhenOverdue));
 
     // 构建一个不包含流逝时间的状态对象供当前页面使用，彻底避免计时器走字导致的页面每秒重绘
     final timerState = TimerState(
@@ -183,6 +187,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       notificationDuration: notificationDuration,
       notificationTemplate: notificationTemplate,
       snoozeDurationMinutes: snoozeDurationMinutes,
+      rememberModeChoice: rememberModeChoice,
+      preferredModeWhenOverdue: preferredModeWhenOverdue,
     );
     final timerNotifier = ref.read(timerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -785,8 +791,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           _SettingButton(
                             label: '检查权限',
                             onPressed: () async {
-                              await ReminderService.initialize();
-                              await _loadPermissions();
+                              try {
+                                await ReminderService.initialize();
+                                final granted = await ReminderService.requestNotificationPermission();
+                                await _loadPermissions();
+                                if (granted) {
+                                  _showSnackBar('通知权限已开启，权限状态已更新');
+                                } else {
+                                  await ReminderService.openNotificationSettings();
+                                  _showSnackBar('通知仍被系统拒绝，已打开 macOS 通知设置', isError: true);
+                                }
+                              } catch (e) {
+                                _showSnackBar('检查权限失败: $e', isError: true);
+                              }
                             },
                             isPrimary: false,
                             isDark: isDark,
@@ -794,8 +811,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           _SettingButton(
                             label: '精确闹钟',
                             onPressed: () async {
-                              await ReminderService.requestExactAlarmPermission();
-                              await _loadPermissions();
+                              if (Platform.isAndroid) {
+                                try {
+                                  await ReminderService.requestExactAlarmPermission();
+                                  await _loadPermissions();
+                                  _showSnackBar('精确闹钟权限请求完成');
+                                } catch (e) {
+                                  _showSnackBar('请求精确闹钟权限失败: $e', isError: true);
+                                }
+                              } else {
+                                _showSnackBar('精确闹钟权限仅在 Android 平台上需要，当前平台无需配置。');
+                              }
                             },
                             isPrimary: false,
                             isDark: isDark,
@@ -806,15 +832,33 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           _SettingButton(
                             label: '电池优化',
                             onPressed: () async {
-                              await ReminderService.requestIgnoreBatteryOptimizations();
-                              await _loadPermissions();
+                              if (Platform.isAndroid) {
+                                try {
+                                  await ReminderService.requestIgnoreBatteryOptimizations();
+                                  await _loadPermissions();
+                                  _showSnackBar('忽略电池优化请求完成');
+                                } catch (e) {
+                                  _showSnackBar('请求忽略电池优化失败: $e', isError: true);
+                                }
+                              } else {
+                                _showSnackBar('忽略电池优化设置仅在 Android 平台上需要，当前平台无需配置。');
+                              }
                             },
                             isPrimary: false,
                             isDark: isDark,
                           ),
                           _SettingButton(
                             label: '发送测试通知',
-                            onPressed: () => ReminderService.showImmediateTestNotification(),
+                            onPressed: () async {
+                              try {
+                                await ReminderService.showImmediateTestNotification();
+                                await _loadPermissions();
+                                _showSnackBar('测试通知已发送，请检查系统通知中心');
+                              } catch (e) {
+                                await _loadPermissions();
+                                _showSnackBar('发送测试通知失败，已打开通知设置: $e', isError: true);
+                              }
+                            },
                             isPrimary: false,
                             isDark: isDark,
                           ),
@@ -856,16 +900,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                   
                                   if (mounted) {
                                     Navigator.of(context).pop(); // 关闭 loading
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('日历系统已清理并重新同步完成！')),
-                                    );
+                                    _showSnackBar('日历系统已清理并重新同步完成！');
                                   }
                                 } catch (e) {
                                   if (mounted) {
                                     Navigator.of(context).pop(); // 关闭 loading
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('清理失败: $e')),
-                                    );
+                                    _showSnackBar('清理失败: $e', isError: true);
                                   }
                                 }
                               }
@@ -878,7 +918,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         _buildButtonRow([
                           _SettingButton(
                             label: '测试系统闹钟',
-                            onPressed: () => ReminderService.triggerTestAlarm(),
+                            onPressed: () async {
+                              try {
+                                await ReminderService.triggerTestAlarm();
+                                _showSnackBar('测试系统闹钟已发送');
+                              } catch (e) {
+                                _showSnackBar('触发测试系统闹钟失败: $e', isError: true);
+                              }
+                            },
                             isPrimary: false,
                             isAccent: true,
                             isDark: isDark,
@@ -886,8 +933,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           _SettingButton(
                             label: '测试日历同步',
                             onPressed: () async {
-                              final success = await CalendarService.triggerTestSync();
-                              _showSnackBar(success ? '测试事件已添加至日历' : '日历同步测试失败，请检查权限');
+                              try {
+                                final success = await CalendarService.triggerTestSync();
+                                _showSnackBar(success ? '测试事件已添加至日历' : '日历同步测试失败，请检查权限');
+                              } catch (e) {
+                                _showSnackBar('测试日历同步异常: $e', isError: true);
+                              }
                             },
                             isPrimary: false,
                             isAccent: true,
@@ -1444,13 +1495,118 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _handleExport() async {
-    setState(() => _syncStatus = '导出功能需要平台文件选择器支持');
-    _clearStatusAfterDelay();
+    try {
+      String? outputPath;
+      if (Platform.isMacOS || Platform.isWindows) {
+        outputPath = await FilePicker.platform.saveFile(
+          dialogTitle: '导出数据库备份',
+          fileName: 'focus_my_time_backup.db',
+          type: FileType.any,
+        );
+      } else {
+        // Mobile platform: choose directory
+        final directoryPath = await FilePicker.platform.getDirectoryPath(
+          dialogTitle: '选择保存备份的目录',
+        );
+        if (directoryPath != null) {
+          outputPath = '$directoryPath/focus_my_time_backup.db';
+        }
+      }
+
+      if (outputPath == null) {
+        return; // User canceled
+      }
+
+      // Ensure extension is .db
+      if (!outputPath.endsWith('.db')) {
+        outputPath += '.db';
+      }
+
+      await AppDatabase.exportDatabase(outputPath);
+      await _loadDbPath();
+      _showSnackBar('备份导出成功！');
+    } catch (e) {
+      _showSnackBar('导出失败: $e', isError: true);
+    }
   }
 
   Future<void> _handleImport() async {
-    setState(() => _syncStatus = '导入功能需要平台文件选择器支持');
-    _clearStatusAfterDelay();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('导入恢复'),
+        content: const Text('导入备份将覆盖当前的所有数据，且无法撤销！确定要继续吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(c).pop(false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(c).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('确定导入', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: '选择要导入的数据库备份文件 (.db)',
+        type: FileType.any,
+      );
+
+      if (result == null || result.files.single.path == null) {
+        return;
+      }
+
+      final backupPath = result.files.single.path!;
+      if (!backupPath.endsWith('.db') && !backupPath.endsWith('.sqlite')) {
+        _showSnackBar('请选择有效的数据库备份文件 (.db)', isError: true);
+        return;
+      }
+
+      await AppDatabase.importDatabase(backupPath);
+
+      // Re-initialize lists and tasks
+      await ref.read(taskProvider.notifier).loadLists();
+      await ref.read(taskProvider.notifier).loadTasks();
+      final allTasks = await _loadAllTaskItems();
+      await ReminderService.refreshAll(allTasks);
+      await CalendarService.refreshAll(allTasks);
+      await _loadPermissions();
+      await _loadCalendarStatus();
+
+      _showSnackBar('数据库恢复成功！');
+    } catch (e) {
+      _showSnackBar('导入失败: $e', isError: true);
+    }
+  }
+
+  Future<List<TaskItem>> _loadAllTaskItems() async {
+    final allDbTasks = await AppDatabase.getAllTasks();
+    return allDbTasks.map((m) => TaskItem(
+      id: m['id'] as String,
+      listId: m['listId'] as String,
+      title: m['title'] as String,
+      notes: m['notes'] as String?,
+      completed: m['completed'] == true,
+      completedAt: m['completedAt'] as int?,
+      dueDate: m['dueDate'] as String?,
+      dueTime: m['dueTime'] as String?,
+      sortOrder: m['sortOrder'] as int,
+      isMyDay: m['isMyDay'] == true,
+      myDayAddedAt: m['myDayAddedAt'] as int?,
+      recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
+      expectedMinutes: m['expectedMinutes'] as int?,
+      isImportant: m['isImportant'] == true,
+      reminderAt: m['reminderAt'] as int?,
+      calendarEventId: m['calendarEventId'] as String?,
+      createdAt: m['createdAt'] as int,
+      updatedAt: m['updatedAt'] as int,
+    )).toList();
   }
 
   void _clearStatusAfterDelay([int milliseconds = 3000]) {
