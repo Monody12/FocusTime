@@ -336,7 +336,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
     sync(background: true);
   }
 
-  Future<void> createTask(String title, {bool isMyDay = false, DateTime? reminderAt}) async {
+  Future<TaskItem> createTask(String title, {bool isMyDay = false, DateTime? reminderAt}) async {
     final listId = state.currentListId == 'system-my-day' || state.currentListId == 'system-all-tasks'
         ? 'system-all-tasks'
         : state.currentListId;
@@ -381,6 +381,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
     }
 
     _triggerSync();
+    return task;
   }
 
   Future<void> updateTask(String id, Map<String, dynamic> updates) async {

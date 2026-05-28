@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
+import 'dart:io';
 
 class AppDatabase {
   static Database? _database;
@@ -9,6 +10,116 @@ class AppDatabase {
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
+  }
+
+  /// 关闭数据库连接，重置单例缓存
+  /// 导入/导出前必须调用，否则文件句柄锁定会导致复制失败
+  static Future<void> close() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+  }
+
+  /// 导出数据库到指定路径
+  ///
+  /// 流程：WAL checkpoint（将 WAL 日志合并到主库）→ 关闭连接 → 复制文件 → 重新打开
+  /// 如果不执行 checkpoint，WAL 中已提交的事务会丢失，备份不完整
+  static Future<void> exportDatabase(String outputPath) async {
+    final sourcePath = await getDbPath();
+    final sourceFile = File(sourcePath);
+    if (!await sourceFile.exists()) {
+      throw Exception('数据库文件不存在: $sourcePath');
+    }
+
+    final db = await database;
+    try {
+      // 将 WAL 日志中的已提交事务写回主数据库文件
+      await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch (_) {
+      // 部分 SQLite 配置未启用 WAL 模式，checkpoint 会失败，可安全忽略
+    }
+
+    // 必须关闭连接才能安全复制数据库文件
+    await close();
+    try {
+      final outputFile = File(outputPath);
+      await outputFile.parent.create(recursive: true);
+      await sourceFile.copy(outputPath);
+    } finally {
+      // 无论复制成功与否，都重新打开数据库供应用继续使用
+      await database;
+    }
+  }
+
+  /// 从备份文件导入恢复数据库
+  ///
+  /// 流程：校验备份 → 关闭连接 → 清理 sidecar 文件 → 覆盖主库 → 清理 sidecar → 重新打开
+  /// 导入后调用方需重新加载任务列表和提醒调度
+  static Future<void> importDatabase(String backupPath) async {
+    await validateBackupFile(backupPath);
+
+    final dbPath = await getDbPath();
+    await close();
+    // 删除旧的 WAL/SHM/journal，防止旧的 sidecar 文件干扰新数据库
+    await _deleteDatabaseSidecars(dbPath);
+
+    try {
+      await File(backupPath).copy(dbPath);
+      // 删除备份文件可能带来的 sidecar（如果备份时 WAL 未 checkpoint）
+      await _deleteDatabaseSidecars(dbPath);
+      await database;
+    } catch (e) {
+      // 导入失败时重置单例，下次访问会重新初始化
+      _database = null;
+      rethrow;
+    }
+  }
+
+  /// 校验备份文件的完整性
+  ///
+  /// 检查项：
+  /// 1. 文件是否存在
+  /// 2. 数据库版本号是否在支持范围内（≤ 当前版本 9）
+  /// 3. 必要的数据表是否存在（lists, tasks, sessions, settings）
+  static Future<void> validateBackupFile(String backupPath) async {
+    final backupFile = File(backupPath);
+    if (!await backupFile.exists()) {
+      throw Exception('备份文件不存在');
+    }
+
+    Database? backupDb;
+    try {
+      // 以只读模式打开备份文件进行校验，不修改原始备份
+      backupDb = await openDatabase(backupPath, readOnly: true);
+      final version = await backupDb.getVersion();
+      if (version > 9) {
+        throw Exception('备份数据库版本过高: $version');
+      }
+
+      final tableRows = await backupDb.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table'",
+      );
+      final tables = tableRows.map((row) => row['name'] as String).toSet();
+      const requiredTables = {'lists', 'tasks', 'sessions', 'settings'};
+      final missingTables = requiredTables.difference(tables);
+      if (missingTables.isNotEmpty) {
+        throw Exception('备份文件缺少必要数据表: ${missingTables.join(', ')}');
+      }
+    } finally {
+      await backupDb?.close();
+    }
+  }
+
+  /// 删除数据库的 WAL、SHM 和 journal 附属文件
+  /// 这些文件在 SQLite WAL 模式下自动生成，导入/导出时需要清理以确保一致性
+  static Future<void> _deleteDatabaseSidecars(String dbPath) async {
+    for (final path in ['$dbPath-wal', '$dbPath-shm', '$dbPath-journal']) {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
   }
 
   static Future<Database> _initDatabase() async {

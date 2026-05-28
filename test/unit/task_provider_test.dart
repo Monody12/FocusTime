@@ -251,7 +251,7 @@ void main() {
 
     test('copyWith can set selectedTaskId to null', () {
       final state = TaskState(selectedTaskId: 'task-1');
-      final updated = state.copyWith(selectedTaskId: null);
+      final updated = state.copyWith(clearSelectedTask: true);
       expect(updated.selectedTaskId, null);
     });
 

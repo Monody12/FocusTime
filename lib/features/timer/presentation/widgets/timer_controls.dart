@@ -71,7 +71,7 @@ class TimerControls extends ConsumerWidget {
             ),
             side: BorderSide(
               color: timerState.timerStatus == TimerStatus.idle
-                  ? Colors.grey.withValues(alpha: 0.3)
+                  ? Colors.grey.withOpacity(0.3)
                   : const Color(0xFF7C3AED),
             ),
             foregroundColor: const Color(0xFF7C3AED),

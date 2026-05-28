@@ -143,7 +143,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     return Container(
       constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
-        color: (isDark ? AppColors.darkAccent : AppColors.lightAccent).withValues(alpha: 0.05),
+        color: (isDark ? AppColors.darkAccent : AppColors.lightAccent).withOpacity(0.05),
         border: Border(
           bottom: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
         ),
@@ -421,8 +421,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                     ),
               style: IconButton.styleFrom(
                 backgroundColor: canSend
-                    ? (isDark ? AppColors.darkAccent : AppColors.lightAccent).withValues(alpha: 0.15)
-                    : Colors.grey.withValues(alpha: 0.1),
+                    ? (isDark ? AppColors.darkAccent : AppColors.lightAccent).withOpacity(0.15)
+                    : Colors.grey.withOpacity(0.1),
               ),
             ),
           ),

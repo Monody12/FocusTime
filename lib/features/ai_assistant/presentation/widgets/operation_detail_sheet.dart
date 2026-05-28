@@ -440,7 +440,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                 : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
           ),
           color: isSet
-              ? (isDark ? AppColors.darkAccent : AppColors.lightAccent).withValues(alpha: 0.08)
+              ? (isDark ? AppColors.darkAccent : AppColors.lightAccent).withOpacity(0.08)
               : Colors.transparent,
         ),
         child: Row(

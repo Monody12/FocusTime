@@ -6,10 +6,13 @@ import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/features/calendar/services/macos_calendar_plugin.dart';
 
 /// 系统日历同步服务
 class CalendarService {
-  static final DeviceCalendarPlugin _calendarPlugin = DeviceCalendarPlugin();
+  static final DeviceCalendarPlugin _deviceCalendarPlugin = DeviceCalendarPlugin();
+  static final MacOsCalendarPlugin _macOsCalendarPlugin = MacOsCalendarPlugin();
+
   static String? _calendarId;
   static const String _calendarName = 'FocusMyTime 提醒';
   static const String _prefKeyEnabled = 'calendar_sync_enabled';
@@ -31,7 +34,7 @@ class CalendarService {
   static Future<bool> hasPermissions() async {
     if (Platform.isWindows || Platform.isLinux) return false;
     try {
-      final permissions = await _calendarPlugin.hasPermissions();
+      final permissions = await _hasPermissionsResult();
       return permissions.isSuccess && permissions.data == true;
     } catch (e) {
       dev.log('[CalendarService] 权限检查异常: $e');
@@ -39,8 +42,57 @@ class CalendarService {
     }
   }
 
+  static Future<Result<bool>> _hasPermissionsResult() {
+    return Platform.isMacOS
+        ? _macOsCalendarPlugin.hasPermissions()
+        : _deviceCalendarPlugin.hasPermissions();
+  }
+
+  static Future<Result<bool>> _requestPermissions() {
+    return Platform.isMacOS
+        ? _macOsCalendarPlugin.requestPermissions()
+        : _deviceCalendarPlugin.requestPermissions();
+  }
+
+  static Future<Result<List<Calendar>>> _retrieveCalendars() {
+    return Platform.isMacOS
+        ? _macOsCalendarPlugin.retrieveCalendars()
+        : _deviceCalendarPlugin.retrieveCalendars();
+  }
+
+  static Future<Result<String>> _createCalendar(String name) {
+    if (Platform.isMacOS) {
+      return _macOsCalendarPlugin.createCalendar(name);
+    }
+
+    return _deviceCalendarPlugin.createCalendar(
+      name,
+      calendarColor: const Color(0xFF7C3AED),
+      localAccountName: 'FocusMyTime',
+    );
+  }
+
+  static Future<Result<String>?> _createOrUpdateEvent(Event event) {
+    return Platform.isMacOS
+        ? _macOsCalendarPlugin.createOrUpdateEvent(event)
+        : _deviceCalendarPlugin.createOrUpdateEvent(event);
+  }
+
+  static Future<Result<bool>> _deleteEvent(String? calendarId, String eventId) {
+    return Platform.isMacOS
+        ? _macOsCalendarPlugin.deleteEvent(calendarId, eventId)
+        : _deviceCalendarPlugin.deleteEvent(calendarId, eventId);
+  }
+
+  static Future<Result<bool>> _deleteCalendar(String calendarId) {
+    return Platform.isMacOS
+        ? _macOsCalendarPlugin.deleteCalendar(calendarId)
+        : _deviceCalendarPlugin.deleteCalendar(calendarId);
+  }
+
   /// 初始化并获取/创建专用日历（带并发锁）
   static Future<bool> _ensureCalendar() async {
+    if (Platform.isWindows || Platform.isLinux) return false;
     if (_calendarId != null) return true;
     if (_initFuture != null) return _initFuture!;
 
@@ -51,16 +103,16 @@ class CalendarService {
   }
 
   static Future<bool> _doEnsureCalendar() async {
-    final permissions = await _calendarPlugin.hasPermissions();
+    final permissions = await _hasPermissionsResult();
     if (permissions.isSuccess && !permissions.data!) {
-      final request = await _calendarPlugin.requestPermissions();
+      final request = await _requestPermissions();
       if (!request.isSuccess || !request.data!) {
         dev.log('[CalendarService] 权限请求失败');
         return false;
       }
     }
 
-    final calendars = await _calendarPlugin.retrieveCalendars();
+    final calendars = await _retrieveCalendars();
     if (calendars.isSuccess && calendars.data != null) {
       final existing = calendars.data!.where((c) => c.name == _calendarName).firstOrNull;
       if (existing != null) {
@@ -70,13 +122,9 @@ class CalendarService {
       }
     }
 
-    // 创建新日历 (部分平台可能不支持直接创建，如 iOS 需要引导用户)
-    if (Platform.isAndroid) {
-      final createResult = await _calendarPlugin.createCalendar(
-        _calendarName,
-        calendarColor: const Color(0xFF7C3AED), // App 主色调
-        localAccountName: 'FocusMyTime',
-      );
+    // 创建专用日历，便于后续安全清理和重建。
+    if (Platform.isAndroid || Platform.isMacOS) {
+      final createResult = await _createCalendar(_calendarName);
       if (createResult.isSuccess && createResult.data != null) {
         _calendarId = createResult.data;
         dev.log('[CalendarService] 创建新日历成功: $_calendarName (ID: $_calendarId)');
@@ -130,7 +178,7 @@ class CalendarService {
       reminders: task.completed ? [] : [Reminder(minutes: 0)],
     );
 
-    final result = await _calendarPlugin.createOrUpdateEvent(event);
+    final result = await _createOrUpdateEvent(event);
     if (result != null && result.isSuccess && result.data != null) {
       dev.log('[CalendarService] 已同步任务到日历: ${task.title}, EventID: ${result.data}');
       return result.data;
@@ -139,7 +187,7 @@ class CalendarService {
     dev.log('[CalendarService] createOrUpdateEvent 失败，尝试回退方案: ${result?.errors.map((e) => e.errorMessage).join(', ') ?? 'unknown'}');
     // 如果 UPDATE 失败（如事件被手动删除），回退到 DELETE+CREATE
     if (task.calendarEventId != null) {
-      await _calendarPlugin.deleteEvent(_calendarId, task.calendarEventId!);
+      await _deleteEvent(_calendarId, task.calendarEventId!);
     }
     final newEvent = Event(
       _calendarId,
@@ -149,7 +197,7 @@ class CalendarService {
       end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)), tz.local),
       reminders: task.completed ? [] : [Reminder(minutes: 0)],
     );
-    final retryResult = await _calendarPlugin.createOrUpdateEvent(newEvent);
+    final retryResult = await _createOrUpdateEvent(newEvent);
     if (retryResult != null && retryResult.isSuccess && retryResult.data != null) {
       dev.log('[CalendarService] 重建成功: ${task.title}, EventID: ${retryResult.data}');
       return retryResult.data;
@@ -162,7 +210,7 @@ class CalendarService {
   /// 从日历移除任务提醒
   static Future<void> removeTask(String eventId) async {
     if (!(await _ensureCalendar())) return;
-    final result = await _calendarPlugin.deleteEvent(_calendarId, eventId);
+    final result = await _deleteEvent(_calendarId, eventId);
     if (result.isSuccess) {
       dev.log('[CalendarService] 已从日历移除事件: $eventId');
       return;
@@ -179,7 +227,7 @@ class CalendarService {
         status: EventStatus.Canceled,
         reminders: [],
       );
-      final updateResult = await _calendarPlugin.createOrUpdateEvent(cancelEvent);
+      final updateResult = await _createOrUpdateEvent(cancelEvent);
       if (updateResult != null && updateResult.isSuccess) {
         dev.log('[CalendarService] 已将事件标记为取消: $eventId');
       } else {
@@ -192,19 +240,19 @@ class CalendarService {
 
   /// 强制清理并重建整个日历系统
   static Future<void> forceRebuildCalendar(List<TaskItem> tasks) async {
-    final permissions = await _calendarPlugin.hasPermissions();
+    final permissions = await _hasPermissionsResult();
     if (!permissions.isSuccess || !permissions.data!) {
-      final request = await _calendarPlugin.requestPermissions();
+      final request = await _requestPermissions();
       if (!request.isSuccess || !request.data!) return;
     }
 
     // 1. 找到所有同名日历并全部删除
-    final calendars = await _calendarPlugin.retrieveCalendars();
+    final calendars = await _retrieveCalendars();
     if (calendars.isSuccess && calendars.data != null) {
       for (final c in calendars.data!) {
         if (c.name == _calendarName && c.id != null) {
           try {
-            await _calendarPlugin.deleteCalendar(c.id!);
+            await _deleteCalendar(c.id!);
           } catch (e) {
             dev.log('[CalendarService] 删除旧日历失败: ${e.toString()}');
           }
@@ -270,7 +318,7 @@ class CalendarService {
       ],
     );
     
-    final result = await _calendarPlugin.createOrUpdateEvent(event);
+    final result = await _createOrUpdateEvent(event);
     return result?.isSuccess ?? false;
   }
 }

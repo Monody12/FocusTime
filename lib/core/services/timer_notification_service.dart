@@ -16,8 +16,8 @@ class TimerNotificationService {
   // Windows 通知客户端（仅 Windows 平台初始化）
   static WindowsNotification? _winNotifier;
 
-  // Android 通知插件
-  static final FlutterLocalNotificationsPlugin _androidNotifier = FlutterLocalNotificationsPlugin();
+  // 本地通知插件 (Android & macOS)
+  static final FlutterLocalNotificationsPlugin _localNotifier = FlutterLocalNotificationsPlugin();
 
   static bool _initialized = false;
 
@@ -38,9 +38,9 @@ class TimerNotificationService {
       _initWindowsNotifier();
     }
 
-    // 3. 在 Android 下初始化通知插件
-    if (Platform.isAndroid) {
-      await _initAndroidNotifier();
+    // 3. 在 Android 和 macOS 下初始化本地通知插件
+    if (Platform.isAndroid || Platform.isMacOS) {
+      await _initLocalNotifier();
     }
   }
 
@@ -62,15 +62,23 @@ class TimerNotificationService {
     }
   }
 
-  static Future<void> _initAndroidNotifier() async {
+  static Future<void> _initLocalNotifier() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     
+    const DarwinInitializationSettings initializationSettingsDarwin =
+        DarwinInitializationSettings(
+      requestSoundPermission: true,
+      requestBadgePermission: true,
+      requestAlertPermission: true,
+    );
+    
     const InitializationSettings initializationSettings = InitializationSettings(
       android: initializationSettingsAndroid,
+      macOS: initializationSettingsDarwin,
     );
 
-    await _androidNotifier.initialize(
+    await _localNotifier.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         final payload = response.actionId ?? response.payload;
@@ -85,18 +93,20 @@ class TimerNotificationService {
     );
 
     // 创建通知渠道（Android 8.0+）
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'focus_timer_channel',
-      '专注计时器',
-      description: '用于发送计时结束的提醒',
-      importance: Importance.max,
-      playSound: true,
-      enableVibration: true,
-    );
+    if (Platform.isAndroid) {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'focus_timer_channel',
+        '专注计时器',
+        description: '用于发送计时结束的提醒',
+        importance: Importance.max,
+        playSound: true,
+        enableVibration: true,
+      );
 
-    await _androidNotifier
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+      await _localNotifier
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    }
   }
 
   /// 注册通知动作监听器
@@ -123,12 +133,12 @@ class TimerNotificationService {
     // 2. 发送通知
     if (Platform.isWindows && _winNotifier != null) {
       await _sendActionableToast(title: title, body: body, phase: phase, duration: duration, soundEnabled: soundEnabled);
-    } else if (Platform.isAndroid) {
-      await _sendAndroidNotification(title: title, body: body, phase: phase, soundEnabled: soundEnabled);
+    } else if (Platform.isAndroid || Platform.isMacOS) {
+      await _sendLocalNotification(title: title, body: body, phase: phase, soundEnabled: soundEnabled);
     }
   }
 
-  static Future<void> _sendAndroidNotification({
+  static Future<void> _sendLocalNotification({
     required String title,
     required String body,
     required String phase,
@@ -157,10 +167,19 @@ class TimerNotificationService {
       playSound: soundEnabled,
     );
 
-    final NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
+      android: androidPlatformChannelSpecifics,
+      macOS: const DarwinNotificationDetails(
+        presentAlert: true,     // 弹窗提示
+        presentBadge: true,     // 角标
+        presentSound: true,     // 声音
+        presentBanner: true,    // macOS: 横幅样式（屏幕顶部滑入）
+        presentList: true,      // macOS: 通知中心列表中可见
+        interruptionLevel: InterruptionLevel.timeSensitive, // macOS: 时间敏感，突破专注模式
+      ),
+    );
 
-    await _androidNotifier.show(
+    await _localNotifier.show(
       0,
       title,
       body,
@@ -178,6 +197,12 @@ class TimerNotificationService {
     } catch (e) {
       dev.log('[TimerNotificationService] 铃声播放失败: $e');
     }
+  }
+
+  /// 公开的铃声播放接口，供 ReminderService macOS 定时器调用
+  static Future<void> playAlarmSound({bool loop = true}) async {
+    if (!_initialized) await initialize();
+    await _playAlarmSound(loop: loop);
   }
 
   /// 发送带操作按钮的 Windows Toast 通知
@@ -250,8 +275,8 @@ class TimerNotificationService {
       } catch (e) {
         dev.log('[TimerNotificationService] 清除 Windows 通知失败: $e');
       }
-    } else if (Platform.isAndroid) {
-      await _androidNotifier.cancel(0);
+    } else if (Platform.isAndroid || Platform.isMacOS) {
+      await _localNotifier.cancel(0);
     }
   }
 

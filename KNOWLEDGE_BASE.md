@@ -610,3 +610,151 @@ if (taskExpectedMinutes != null && taskExpectedMinutes > 0 && effectiveMode != T
 - **状态更新与副作用的顺序**：在重置状态（如清零计数器）前，务必检查是否有后续操作（如发送通知）依赖于当前状态值。
 
 *最后更新日期：2026-05-18*
+
+---
+
+## 17. macOS Ventura 通知、日历与数据库备份适配修复
+
+### 17.1 问题现象
+- macOS 设置页中”检查权限””发送测试通知””测试系统闹钟””测试日历同步”等按钮点击后无明显效果，或返回失败但缺少可诊断原因。
+- 任务提醒在 macOS 上不能稳定触发类似闹钟的响铃体验。
+- 数据库导入/导出直接复制主 `.db` 文件，存在 SQLite WAL 数据未 checkpoint 导致备份不完整、恢复后数据不是预期结果的风险。
+
+### 17.2 根因分析
+1. **通知权限模型混用**：macOS 端未注册 `permission_handler_apple`，但提醒服务使用 `Permission.notification` 判断权限，容易得到 `MissingPluginException` 或错误状态。macOS 应使用 `flutter_local_notifications` 的 `MacOSFlutterLocalNotificationsPlugin.checkPermissions/requestPermissions`。
+2. **日历插件契约不一致**：`device_calendar` 不提供 macOS 实现，项目新增 EventKit MethodChannel 后用 `dynamic` 伪装成同一插件接口，导致方法签名、错误信息和返回值不一致时容易被吞掉。
+3. **EventKit 版本差异**：Ventura 使用 `requestAccess(to: .event)`，新版 macOS 使用 full access API；权限状态和回调需要按系统版本处理。
+4. **SQLite 备份不一致**：启用 WAL 时，最新事务可能在 `focus_my_time.db-wal` 中；只复制 `focus_my_time.db` 可能得到旧数据或半完整备份。
+5. **macOS 通知展示不完整**：DarwinNotificationDetails 缺少 `presentBanner` 和 `presentList` 参数，导致通知在 macOS 上只以弹窗形式出现，不在横幅和通知中心列表中显示。
+
+### 17.3 修复方案
+1. **通知/闹钟**：
+   - macOS 通知权限改为通过 `flutter_local_notifications` 的 macOS 平台实现检查与请求。
+   - macOS 测试闹钟使用系统通知 + 应用内响铃（`TimerNotificationService.triggerAlarm`），符合 macOS 平台限制。
+   - 为 macOS 任务提醒增加应用运行期间的 `Timer` 响铃补充（`_scheduleMacOsAlarmTimer`），同时保留系统 `zonedSchedule` 通知调度。
+   - 所有 DarwinNotificationDetails 统一添加 `presentBanner: true, presentList: true`。
+2. **日历同步**：
+   - `CalendarService` 改为显式分发 Android `DeviceCalendarPlugin` 与 macOS `MacOsCalendarPlugin`，避免 `dynamic` 隐藏契约错误。
+   - 新增 `macos_calendar_plugin.dart`：通过 MethodChannel 桥接 EventKit，返回与 `device_calendar` 相同的 `Result<T>` 类型。
+   - `MainFlutterWindow.swift` 中注册 `com.focusmytime.calendar` channel，实现 hasPermissions / requestPermissions / retrieveCalendars / createCalendar / createOrUpdateEvent / deleteEvent / deleteCalendar 全部 7 个方法。
+   - macOS EventKit 桥接支持 Ventura（`requestAccess(to: .event)`）与 Sonoma+（`requestFullAccessToEvents`）权限 API，并增强时间戳参数解析与错误返回。
+   - macOS 同步优先创建/复用 `FocusMyTime 提醒` 专用日历。
+3. **数据库导入/导出**：
+   - 导出前执行 `PRAGMA wal_checkpoint(TRUNCATE)` 并关闭数据库连接，再复制主库文件。
+   - 导入前校验备份文件版本号和必要表（lists, tasks, sessions, settings），导入时关闭连接、清理 WAL/SHM/journal sidecar，再覆盖数据库并重新加载任务、提醒和日历同步。
+   - 新增 `file_picker` 依赖，设置页实现完整的文件选择器导入/导出流程。
+
+### 17.4 技术细节
+
+**macOS EventKit 权限兼容性矩阵**：
+
+| macOS 版本 | 权限 API | 授权状态枚举 |
+|---|---|---|
+| 10.14 及更早 | 无需权限 | N/A |
+| 10.15 ~ 13.x (Ventura) | `requestAccess(to: .event)` | `.authorized` |
+| 14.0+ (Sonoma) | `requestFullAccessToEvents` | `.fullAccess` / `.writeOnly` / `.authorized` |
+
+**macOS 闹钟实现策略**：
+- 系统通知（`zonedSchedule`）：APP 退出后仍可触发，但无循环铃声
+- 应用内 Timer（`_scheduleMacOsAlarmTimer`）：APP 运行时补充循环铃声，退出后失效
+- 两者并行，确保提醒时刻 APP 运行中时有完整闹钟体验
+
+**SQLite WAL 备份流程**：
+1. `PRAGMA wal_checkpoint(TRUNCATE)` — 将 WAL 日志合并到主库
+2. `close()` — 释放文件句柄
+3. `File.copy()` — 安全复制完整数据库
+4. `database` getter — 重新打开连接
+
+### 17.5 教训
+- **跨平台插件不能只看 Dart API 名字**：同一个权限概念在 Android、Windows、macOS 上可能由完全不同的插件或系统能力承载。`permission_handler` 在 macOS 上无实现，必须用 `flutter_local_notifications` 的平台实现。
+- **桌面平台要显式处理原生桥接错误**：MethodChannel 失败要返回可见错误，不能让 UI 只收到 `false`。
+- **SQLite 备份必须考虑 WAL**：生产级导入/导出不能直接复制主数据库文件，必须先 checkpoint。
+- **macOS 通知需要完整配置 DarwinNotificationDetails**：`presentBanner` 和 `presentList` 缺失会导致通知不在横幅和通知中心显示，用户可能以为通知没发出。
+
+---
+
+## 18. MaterialApp 结构重构：ProviderScope 层级调整
+
+### 18.1 问题
+原代码中 `MaterialApp` 在 `FocusMyTimeApp`（ConsumerStatefulWidget）的 `build` 方法内创建，导致 `themeProvider` 的 `ref.watch` 必须在 `MaterialApp` 之上才能生效，但 `MaterialApp` 本身就是 `build` 的返回值。
+
+### 18.2 修复
+将 `MaterialApp` 上移到 `main.dart` 的 `ProviderScope > Consumer` 中，`FocusMyTimeApp` 改为返回 `CallbackShortcuts > mainContent`（不再包裹 MaterialApp）。
+
+```dart
+// main.dart — MaterialApp 在 ProviderScope 内部
+ProviderScope(
+  child: Consumer(
+    builder: (context, ref, child) {
+      final themeMode = ref.watch(themeProvider);
+      return MaterialApp(
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: themeMode,
+        home: const FocusMyTimeApp(),
+      );
+    },
+  ),
+);
+```
+
+### 18.3 教训
+- **MaterialApp 应在 ProviderScope 内部但 Consumer 外部或内部均可**，关键是确保 `ref.watch` 能访问到 Provider。
+- **FocusMyTimeApp 不再需要关心主题/路由**，职责更清晰：只负责侧边栏 + 内容区布局和键盘快捷键。
+
+---
+
+## 19. setState 中的闭包捕获警告修复
+
+### 19.1 问题
+`task_detail_page.dart` 中 `setState` 回调内直接使用了外层 `async` 方法中可能为 null 的 `task` 变量，Dart 静态分析器发出 `unnecessary_null_comparison` 警告。
+
+### 19.2 修复
+在 `setState` 调用前，先将 `task` 捕获到一个 `final currentTask = task` 局部变量中，确保 `setState` 内引用的是一个确定非空的值。
+
+```dart
+// 修复前
+if (task != null && mounted) {
+  setState(() {
+    _titleController.text = task.title; // ⚠️ task 可能在 async gap 后为 null
+  });
+}
+
+// 修复后
+if (task != null && mounted) {
+  final currentTask = task; // 捕获到局部变量
+  setState(() {
+    _titleController.text = currentTask.title; // ✅ 确定非空
+  });
+}
+```
+
+### 19.3 教训
+- **async 方法中使用 `mounted` 检查后，变量仍可能被重新赋值**：`setState` 回调是延迟执行的，回调闭包捕获的是变量引用而非值。
+- **在 `setState` 调用前用 `final` 局部变量捕获异步结果**：这是 Dart async/await 与 Flutter setState 搭配使用的标准安全模式。
+
+---
+
+## 20. 跨平台设置页的平台守卫模式
+
+### 20.1 问题
+设置页中”精确闹钟””电池优化”等按钮在 macOS 上点击后无效果或报错，因为这些功能是 Android 专属的。
+
+### 20.2 修复模式
+对每个平台专属操作添加 `Platform.isXxx` 判断，非目标平台显示提示 SnackBar：
+
+```dart
+onPressed: () async {
+  if (Platform.isAndroid) {
+    await ReminderService.requestExactAlarmPermission();
+  } else {
+    _showSnackBar('精确闹钟权限仅在 Android 平台上需要');
+  }
+},
+```
+
+### 20.3 教训
+- **桌面端不应暴露移动端专属的权限操作**：或者至少给出明确的”当前平台不需要此操作”反馈。
+- **所有异步操作都需要 try-catch**：设置页的按钮回调中统一添加了错误捕获和 SnackBar 反馈，避免静默失败。
+
+*最后更新日期：2026-05-28*

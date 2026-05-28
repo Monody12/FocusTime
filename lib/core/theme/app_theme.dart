@@ -37,7 +37,7 @@ class AppTheme {
       secondary: AppColors.darkAccent,
       onSurface: AppColors.darkText,
     ),
-    cardTheme: const CardThemeData(
+    cardTheme: const CardTheme(
       color: AppColors.darkSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -90,9 +90,9 @@ class AppTheme {
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return AppColors.darkAccent.withValues(alpha: 0.5);
+          return AppColors.darkAccent.withOpacity(0.5);
         }
-        return Colors.grey.withValues(alpha: 0.3);
+        return Colors.grey.withOpacity(0.3);
       }),
     ),
     dividerTheme: const DividerThemeData(
@@ -113,7 +113,7 @@ class AppTheme {
       secondary: AppColors.lightAccent,
       onSurface: AppColors.lightText,
     ),
-    cardTheme: CardThemeData(
+    cardTheme: CardTheme(
       color: AppColors.lightSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -166,9 +166,9 @@ class AppTheme {
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
-          return AppColors.lightAccent.withValues(alpha: 0.5);
+          return AppColors.lightAccent.withOpacity(0.5);
         }
-        return Colors.grey.withValues(alpha: 0.3);
+        return Colors.grey.withOpacity(0.3);
       }),
     ),
     dividerTheme: DividerThemeData(
