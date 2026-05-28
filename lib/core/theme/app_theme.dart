@@ -37,7 +37,7 @@ class AppTheme {
       secondary: AppColors.darkAccent,
       onSurface: AppColors.darkText,
     ),
-    cardTheme: const CardTheme(
+    cardTheme: const CardThemeData(
       color: AppColors.darkSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -113,7 +113,7 @@ class AppTheme {
       secondary: AppColors.lightAccent,
       onSurface: AppColors.lightText,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: AppColors.lightSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
