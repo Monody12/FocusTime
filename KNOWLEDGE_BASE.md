@@ -757,4 +757,26 @@ onPressed: () async {
 - **桌面端不应暴露移动端专属的权限操作**：或者至少给出明确的”当前平台不需要此操作”反馈。
 - **所有异步操作都需要 try-catch**：设置页的按钮回调中统一添加了错误捕获和 SnackBar 反馈，避免静默失败。
 
-*最后更新日期：2026-05-28*
+---
+
+## 21. Windows 平台运行崩溃与 Flutter SDK 降级适配 (Windows DLL Load Crash & Theme Mismatch)
+
+### 21.1 问题现象
+- 使用 Flutter 3.22.3 (适配 macOS Ventura SDK 限制) 时，编译 Windows 报错，提示找不到 `CardThemeData`。
+- Windows 平台在启动时发生 Native Crash (进程退出码 `0xC0000139` / `STATUS_ENTRYPOINT_NOT_FOUND` / 找不到入口点)。
+
+### 21.2 根因分析
+1. **CardThemeData 编译报错**：`CardThemeData` 是较新 Flutter 版本才引入的。在 Flutter 3.22.3 下，CardTheme 的配置类是 `CardTheme` 而不是 `CardThemeData`。
+2. **Windows DLL 入口点缺失**：在 Windows 10 LTSC (21H2) 系统中，系统内置的 `icu.dll` 并不包含 `ucal_getHostTimeZone` 函数。`flutter_timezone` 插件的 v2.x.x+ 版本在 Windows 下编译时使用了较新的 Windows SDK API，该 API 在运行时会加载此缺失的符号，从而导致程序运行时载入 DLL 失败 (ERROR_PROC_NOT_FOUND / 错误 127 / 状态码 `0xC0000139`)。
+3. **时区库版本限制**：尝试升级 `flutter_timezone` 到 `v5.x.x` 受到 `meta` 版本限制（v5.x.x 要求 `meta >= 1.16.0`），而 Flutter 3.22.3 固定依赖了 `meta 1.12.0`。
+
+### 21.3 修复方案
+1. **修改时区依赖**：在 `pubspec.yaml` 中将 `flutter_timezone` 升级为 `^4.1.1`。该版本已包含完整的 Windows 支持，且不依赖高于 `1.12.0` 的 `meta`，同时避开了旧版 icu.dll 动态链接缺失函数的问题，兼顾了 Windows 10 LTSC 兼容性与 Flutter 3.22.3 SDK 限制。
+2. **替换 CardThemeData 为 CardTheme**：在 `lib/core/theme/app_theme.dart` 中，将 `CardThemeData` 替换为 `CardTheme`，确保在 Flutter 3.22.3 (macOS Ventura + Xcode 15.2 兼容版本) 下能够顺利通过编译。
+
+### 21.4 教训
+- 在适配特定低版本系统（如 macOS Ventura）降级 Flutter SDK 时，必须同步检查第三方依赖在不同目标平台（如 Windows 10 LTSC 物理机）上的行为差异。
+- 时区插件等涉及 Native / FFI 装载的项目，应通过独立的测试脚本（如 `DynamicLibrary.open`）来排查原生 DLL 的加载问题，防止 Native crash 导致 Flutter 无法捕获堆栈。
+- 多设备开发中，对于被 SDK 严格锁定的 Transitive 依赖 (如 `meta`)，应找到能平衡各端限制的兼容版本（如 `flutter_timezone 4.1.1`）。
+
+*最后更新日期：2026-05-29*
