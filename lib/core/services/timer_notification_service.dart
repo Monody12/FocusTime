@@ -189,8 +189,9 @@ class TimerNotificationService {
     required bool soundEnabled,
   }) async {
     try {
-      // 为了支持声音循环，Windows 要求 scenario 必须是 alarm 或 reminder
-      final String scenario = duration != 'short' ? 'alarm' : 'default';
+      final String scenario = duration == 'persistent'
+          ? 'alarm'
+          : (duration == 'long' ? 'reminder' : 'default');
 
       String audioElement = '';
       if (soundEnabled) {
