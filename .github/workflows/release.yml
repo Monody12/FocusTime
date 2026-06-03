@@ -22,7 +22,7 @@ jobs:
       matrix:
         include:
           # Windows 平台
-          - os: windows-latest
+          - os: windows-2019
             platform: windows
             build_cmd: flutter build windows --release
             asset_name: FocusMyTime-Windows-Setup.exe
