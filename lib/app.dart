@@ -13,7 +13,8 @@ import 'package:focus_my_time/features/ai_assistant/presentation/pages/ai_chat_p
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/core/providers/package_info_provider.dart';
-
+import 'package:focus_my_time/features/update/services/update_service.dart';
+import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
 class FocusMyTimeApp extends ConsumerStatefulWidget {
   const FocusMyTimeApp({super.key});
 
@@ -29,6 +30,20 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
   bool _showNoTaskToast = false;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    // 延迟检查更新，避免阻塞首屏
+    Future.delayed(const Duration(seconds: 2), _checkUpdate);
+  }
+
+  Future<void> _checkUpdate() async {
+    final updateInfo = await UpdateService.checkForUpdates();
+    if (updateInfo != null && mounted) {
+      UpdateDialog.show(context, updateInfo);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
