@@ -567,6 +567,61 @@ class AppDatabase {
     };
   }
 
+  static Future<Map<String, dynamic>> duplicateTaskForRecurrence(
+    Map<String, dynamic> oldTask,
+    String? newDueDate,
+    int? newReminderAt,
+  ) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final id = 'task-${DateTime.now().millisecondsSinceEpoch}';
+
+    // The oldTask is already mapped (camelCase keys), but we need snake_case for DB insertion.
+    final dbInsertMap = {
+      'id': id,
+      'list_id': oldTask['listId'],
+      'title': oldTask['title'],
+      'notes': oldTask['notes'],
+      'completed': 0,
+      'completed_at': null,
+      'due_date': newDueDate,
+      'due_time': oldTask['dueTime'],
+      'sort_order': oldTask['sortOrder'],
+      'is_my_day': oldTask['isMyDay'] == true ? 1 : 0,
+      'my_day_added_at': oldTask['myDayAddedAt'],
+      'recurrence_config': oldTask['recurrenceConfig'] != null ? _encodeJson(oldTask['recurrenceConfig']) : null,
+      'expected_minutes': oldTask['expectedMinutes'],
+      'is_important': oldTask['isImportant'] == true ? 1 : 0,
+      'reminder_at': newReminderAt,
+      'calendar_event_id': null, // Need a new calendar event for the new task
+      'created_at': now,
+      'updated_at': now,
+    };
+
+    await db.insert('tasks', dbInsertMap);
+
+    return {
+      'id': id,
+      'listId': oldTask['listId'],
+      'title': oldTask['title'],
+      'notes': oldTask['notes'],
+      'completed': false,
+      'completedAt': null,
+      'dueDate': newDueDate,
+      'dueTime': oldTask['dueTime'],
+      'sortOrder': oldTask['sortOrder'],
+      'isMyDay': oldTask['isMyDay'] == true,
+      'myDayAddedAt': oldTask['myDayAddedAt'],
+      'recurrenceConfig': oldTask['recurrenceConfig'],
+      'expectedMinutes': oldTask['expectedMinutes'],
+      'isImportant': oldTask['isImportant'] == true,
+      'reminderAt': newReminderAt,
+      'calendarEventId': null,
+      'createdAt': now,
+      'updatedAt': now,
+    };
+  }
+
   static Future<void> updateTask(String id, Map<String, dynamic> updates) async {
     final db = await database;
     final mapped = <String, dynamic>{};
@@ -868,7 +923,7 @@ class AppDatabase {
     payload['task_recurrence_completions'] = await _getSyncTableRecords(db, 'task_recurrence_completions', lastSyncTime, _mapRecurrenceCompletion);
     
     // settings 特殊处理：排除同步配置相关的 key
-    final SYNC_KEYS = ['syncServerUrl', 'syncToken', 'syncUserId', 'lastSyncTime', 'syncDir'];
+    final SYNC_KEYS = ['syncServerUrl', 'syncToken', 'syncUserId', 'lastSyncTime', 'syncDir', 'syncUsername', 'syncFakePassword', 'syncRealPassword'];
     final settingsRecords = await db.query('settings', 
         where: 'updated_at > ? AND key NOT IN (${SYNC_KEYS.map((_) => '?').join(',')})',
         whereArgs: [lastSyncTime, ...SYNC_KEYS]);
@@ -947,9 +1002,20 @@ class AppDatabase {
 
   static Future<void> _applySettingsChanges(Transaction txn, dynamic records) async {
     if (records is! List) return;
+    const ignoreKeys = {
+      'syncServerUrl',
+      'syncToken',
+      'syncUserId',
+      'lastSyncTime',
+      'syncDir',
+      'syncUsername',
+      'syncFakePassword',
+      'syncRealPassword',
+    };
     for (final item in records) {
       final data = item['data'] as Map<String, dynamic>;
       final key = data['key'] as String;
+      if (ignoreKeys.contains(key)) continue;
       final value = data['value'] as String;
       await txn.insert('settings', {
         'key': key,
