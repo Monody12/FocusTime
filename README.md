@@ -133,6 +133,42 @@ flutter build windows
 - [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) — **开发者知识库**：记录了从 Electron 到 Flutter 的迁移经验、同步算法细节及解决方案。
 - [功能模块索引](docs/project-index.md) — 代码文件快速定位
 
+## 服务端部署
+
+本项目自带一个用于多端同步的 Node.js 后端服务，位于 `server/` 目录下。
+
+### 1. 安装依赖
+
+```bash
+cd server
+npm install
+```
+
+### 2. 配置环境变量
+
+复制环境配置文件示例并进行配置：
+
+```bash
+cp .env.example .env
+```
+
+在 `.env` 文件中配置以下内容：
+- `PORT`: 服务运行端口（默认 6677）
+- `JWT_SECRET`: 用于签发 Token 的密钥，请在生产环境务必修改为一个随机的长字符串。
+
+### 3. 运行服务
+
+开发环境运行：
+```bash
+npm run dev
+```
+
+生产环境部署（推荐使用 PM2）：
+```bash
+npm run build
+pm2 start ecosystem.config.js
+```
+
 ## 版本
 
 当前版本：v1.0.13 (Recurring Tasks like Microsoft To Do)

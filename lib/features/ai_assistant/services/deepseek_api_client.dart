@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 
@@ -40,28 +41,59 @@ class ChatResponseChunk {
 class DeepSeekApiClient {
   static const String _baseUrl = 'https://api.deepseek.com/v1';
   static const String _model = 'deepseek-chat';
+  static const String _encryptionKey = 'FocusMyTimeSecretKey_DeepSeekKey'; // 32位AES密钥
   static String? _apiKey;
   static bool _initialized = false;
 
   static String? get apiKey => _apiKey;
   static bool get isConfigured => _apiKey != null && _apiKey!.isNotEmpty;
 
+  // 使用 AES 对密钥进行加密存储，防止本地数据库明文泄露
+  static String _encryptKey(String plainText) {
+    if (plainText.isEmpty) return plainText;
+    final key = encrypt.Key.fromUtf8(_encryptionKey);
+    final iv = encrypt.IV.fromLength(16);
+    final encrypter = encrypt.Encrypter(encrypt.AES(key));
+    final encrypted = encrypter.encrypt(plainText, iv: iv);
+    return '${iv.base64}:${encrypted.base64}';
+  }
+
+  static String _decryptKey(String encryptedText) {
+    if (encryptedText.isEmpty || !encryptedText.contains(':')) return encryptedText;
+    try {
+      final parts = encryptedText.split(':');
+      final iv = encrypt.IV.fromBase64(parts[0]);
+      final key = encrypt.Key.fromUtf8(_encryptionKey);
+      final encrypter = encrypt.Encrypter(encrypt.AES(key));
+      return encrypter.decrypt64(parts[1], iv: iv);
+    } catch (_) {
+      return '';
+    }
+  }
+
   static Future<void> init() async {
     if (_initialized) return;
-    _apiKey = 'sk-5fda9d63ba3d4c25b13f6cbd96ac7e1c';
+    await loadApiKey();
     _initialized = true;
   }
 
   static Future<void> setApiKey(String key) async {
     _apiKey = key;
-    await AppDatabase.setSetting('deepseekApiKey', key);
+    final encrypted = _encryptKey(key);
+    await AppDatabase.setSetting('deepseekApiKey', encrypted);
     SyncService.triggerBackgroundSync();
   }
 
   static Future<void> loadApiKey() async {
     final saved = await AppDatabase.getSetting('deepseekApiKey');
     if (saved != null && saved.isNotEmpty) {
-      _apiKey = saved;
+      _apiKey = _decryptKey(saved);
+      // 兼容旧的未加密数据
+      if (_apiKey!.isEmpty && !saved.contains(':')) {
+        _apiKey = saved;
+        // 自动将其加密保存
+        await setApiKey(saved);
+      }
     }
   }
 

@@ -923,7 +923,7 @@ class AppDatabase {
     payload['task_recurrence_completions'] = await _getSyncTableRecords(db, 'task_recurrence_completions', lastSyncTime, _mapRecurrenceCompletion);
     
     // settings 特殊处理：排除同步配置相关的 key
-    final SYNC_KEYS = ['syncServerUrl', 'syncToken', 'syncUserId', 'lastSyncTime', 'syncDir', 'syncUsername', 'syncFakePassword', 'syncRealPassword'];
+    final SYNC_KEYS = ['syncServerUrl', 'syncToken', 'syncUserId', 'lastSyncTime', 'syncDir', 'syncUsername', 'syncFakePassword', 'syncRealPassword', 'deepseekApiKey'];
     final settingsRecords = await db.query('settings', 
         where: 'updated_at > ? AND key NOT IN (${SYNC_KEYS.map((_) => '?').join(',')})',
         whereArgs: [lastSyncTime, ...SYNC_KEYS]);
