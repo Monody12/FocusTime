@@ -3,6 +3,7 @@ import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
+import 'package:focus_my_time/core/utils/recurrence_utils.dart';
 
 class TaskList {
   final String id;
@@ -466,14 +467,78 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> toggleTaskComplete(String id) async {
-    await AppDatabase.toggleTaskComplete(id);
+    final task = state.tasks.where((t) => t.id == id).firstOrNull;
+    if (task == null) return;
+
+    final willComplete = !task.completed;
+
+    if (willComplete && task.recurrenceConfig != null) {
+      // 1. Calculate next date
+      final config = RecurrenceConfig.fromJson(task.recurrenceConfig!);
+      final currentDue = task.dueDate != null ? DateTime.parse(task.dueDate!) : DateTime.now();
+      final nextDue = getNextDate(currentDue, config);
+      final newDueDateStr = '${nextDue.year}-${nextDue.month.toString().padLeft(2, '0')}-${nextDue.day.toString().padLeft(2, '0')}';
+
+      // 2. Calculate next reminder time if exists
+      int? newReminderAt;
+      if (task.reminderAt != null) {
+        final currentReminder = DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+        final newReminder = DateTime(
+          nextDue.year, nextDue.month, nextDue.day,
+          currentReminder.hour, currentReminder.minute, currentReminder.second
+        );
+        newReminderAt = newReminder.millisecondsSinceEpoch;
+      }
+
+      // 3. Clear current task's recurrence config
+      await AppDatabase.updateTask(id, {'recurrenceConfig': null});
+
+      // 4. Mark current task completed
+      await AppDatabase.toggleTaskComplete(id);
+
+      // 5. Generate new task for recurrence
+      final dbTask = await AppDatabase.getTaskById(id);
+      if (dbTask != null) {
+        dbTask['recurrenceConfig'] = task.recurrenceConfig;
+        final newDbTask = await AppDatabase.duplicateTaskForRecurrence(dbTask, newDueDateStr, newReminderAt);
+        
+        final newTask = TaskItem(
+          id: newDbTask['id'] as String,
+          listId: newDbTask['listId'] as String,
+          title: newDbTask['title'] as String,
+          notes: newDbTask['notes'] as String?,
+          completed: newDbTask['completed'] == true,
+          completedAt: newDbTask['completedAt'] as int?,
+          dueDate: newDbTask['dueDate'] as String?,
+          dueTime: newDbTask['dueTime'] as String?,
+          sortOrder: newDbTask['sortOrder'] as int,
+          isMyDay: newDbTask['isMyDay'] == true,
+          myDayAddedAt: newDbTask['myDayAddedAt'] as int?,
+          recurrenceConfig: newDbTask['recurrenceConfig'] as Map<String, dynamic>?,
+          expectedMinutes: newDbTask['expectedMinutes'] as int?,
+          isImportant: newDbTask['isImportant'] == true,
+          reminderAt: newDbTask['reminderAt'] as int?,
+          calendarEventId: newDbTask['calendarEventId'] as String?,
+          createdAt: newDbTask['createdAt'] as int,
+          updatedAt: newDbTask['updatedAt'] as int,
+        );
+
+        // Schedule reminders and calendar event for the newly created task
+        final newEventId = await ReminderService.scheduleUnifiedReminders(newTask);
+        if (newEventId != null) {
+          await AppDatabase.updateTask(newTask.id, {'calendarEventId': newEventId});
+        }
+      }
+    } else {
+      await AppDatabase.toggleTaskComplete(id);
+    }
+
     await loadTasks(showLoading: false);
     
-    // 处理提醒取消/重新调度
+    // 处理原任务的提醒取消/重新调度
     final updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
     if (updatedTask != null) {
       final eventId = await ReminderService.scheduleUnifiedReminders(updatedTask);
-      // 将 eventId 持久化到数据库，不仅仅是内存 state
       if (eventId != null && eventId != updatedTask.calendarEventId) {
         await AppDatabase.updateTask(id, {'calendarEventId': eventId});
       }
