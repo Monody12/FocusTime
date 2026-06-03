@@ -13,9 +13,36 @@ class SyncService {
   static String _userId = '';
   static String _username = '';
   static String _fakePassword = ''; // 用于在 UI 中显示的虚拟密码
+  static String _realPassword = ''; // 真实的密码明文缓存
   static int _lastSyncTime = 0;
   static bool _syncing = false; // 防止并发同步
   static Timer? _autoSyncTimer;
+
+  static const String _encryptionKey = 'FocusMyTimeSecretKey!';
+
+  static String _encrypt(String text) {
+    if (text.isEmpty) return '';
+    final bytes = utf8.encode(text);
+    final keyBytes = utf8.encode(_encryptionKey);
+    final encrypted = List<int>.generate(bytes.length, (i) => bytes[i] ^ keyBytes[i % keyBytes.length]);
+    return base64.encode(encrypted);
+  }
+
+  static String _decrypt(String base64text) {
+    if (base64text.isEmpty) return '';
+    try {
+      final bytes = base64.decode(base64text);
+      final keyBytes = utf8.encode(_encryptionKey);
+      final decrypted = List<int>.generate(bytes.length, (i) => bytes[i] ^ keyBytes[i % keyBytes.length]);
+      return utf8.decode(decrypted);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  // 仅供测试使用
+  static String encryptForTesting(String text) => _encrypt(text);
+  static String decryptForTesting(String base64text) => _decrypt(base64text);
 
   static Future<void> init() async {
     // 从本地数据库加载同步配置
@@ -34,6 +61,11 @@ class SyncService {
 
     final fakePassword = await AppDatabase.getSetting('syncFakePassword');
     if (fakePassword != null) _fakePassword = fakePassword;
+
+    final realPasswordEncrypted = await AppDatabase.getSetting('syncRealPassword');
+    if (realPasswordEncrypted != null) {
+      _realPassword = _decrypt(realPasswordEncrypted);
+    }
 
     final lastSync = await AppDatabase.getSetting('lastSyncTime');
     if (lastSync != null) _lastSyncTime = int.tryParse(lastSync) ?? 0;
@@ -64,6 +96,7 @@ class SyncService {
   static String get userId => _userId;
   static String get username => _username;
   static String get fakePassword => _fakePassword;
+  static String get realPassword => _realPassword;
   static int get lastSyncTime => _lastSyncTime;
 
   static Future<void> setServerUrl(String url) async {
@@ -71,7 +104,7 @@ class SyncService {
     await AppDatabase.setSetting('syncServerUrl', url);
   }
 
-  static Future<void> _saveToken(String token, String userId, {String? username}) async {
+  static Future<void> _saveToken(String token, String userId, {String? username, String? password}) async {
     _token = token;
     _userId = userId;
     await AppDatabase.setSetting('syncToken', token);
@@ -84,6 +117,13 @@ class SyncService {
       await AppDatabase.setSetting('syncUsername', _username);
       await AppDatabase.setSetting('syncFakePassword', _fakePassword);
     }
+
+    // 如果提供了密码，说明是登录或注册成功，保存真实密码的加密版本
+    if (password != null) {
+      _realPassword = password;
+      final encrypted = _encrypt(password);
+      await AppDatabase.setSetting('syncRealPassword', encrypted);
+    }
   }
 
   static Future<void> _clearToken() async {
@@ -91,10 +131,12 @@ class SyncService {
     _userId = '';
     _username = '';
     _fakePassword = '';
+    _realPassword = '';
     await AppDatabase.setSetting('syncToken', '');
     await AppDatabase.setSetting('syncUserId', '');
     await AppDatabase.setSetting('syncUsername', '');
     await AppDatabase.setSetting('syncFakePassword', '');
+    await AppDatabase.setSetting('syncRealPassword', '');
   }
 
   static Future<({bool success, bool tokenExpired, String? error, String? userId})> register({
@@ -113,7 +155,7 @@ class SyncService {
         final token = data['token'] as String;
         final userId = data['userId'] as String;
         // 注册成功，保存登录凭证和用户信息
-        await _saveToken(token, userId, username: username);
+        await _saveToken(token, userId, username: username, password: password);
         return (success: true, tokenExpired: false, error: null, userId: userId);
       }
       return (success: false, tokenExpired: false, error: (data['error'] as String?) ?? '注册失败', userId: null);
@@ -138,7 +180,7 @@ class SyncService {
         final token = data['token'] as String;
         final userId = data['userId'] as String;
         // 登录成功，保存登录凭证和用户信息
-        await _saveToken(token, userId, username: username);
+        await _saveToken(token, userId, username: username, password: password);
         return (success: true, tokenExpired: false, error: null, userId: userId);
       }
       return (success: false, tokenExpired: false, error: (data['error'] as String?) ?? '登录失败', userId: null);

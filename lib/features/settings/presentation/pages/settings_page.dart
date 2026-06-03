@@ -47,6 +47,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   String _dbPath = '';
   Map<String, String> _permissionStatus = {};
   bool _calendarSyncEnabled = false;
+  bool _obscurePassword = true;
 
   // 同步服务器登录表单的 FocusNode，用于精确控制 Tab 跳转顺序
   late FocusNode _syncUrlFocusNode;
@@ -597,7 +598,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 hint: '密码',
                                 isDark: isDark,
                                 enabled: !_isLoggedIn,
-                                obscureText: true,
+                                obscureText: _obscurePassword,
+                                isPassword: true,
+                                onPasswordVisibilityToggle: () {
+                                  setState(() {
+                                    _obscurePassword = !_obscurePassword;
+                                    if (!_obscurePassword && _syncPasswordController.text == SyncService.fakePassword) {
+                                      final decrypted = SyncService.realPassword;
+                                      if (decrypted.isNotEmpty) {
+                                        _syncPasswordController.text = decrypted;
+                                      }
+                                    }
+                                  });
+                                },
                                 focusNode: _syncPasswordFocusNode,
                                 nextFocusNode: _syncRegisterFocusNode,
                                 onSubmitted: (_) => _isLoggedIn ? null : _handleLogin(),
@@ -1190,6 +1203,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     FocusNode? nextFocusNode,
     // Enter 键提交回调（密码框登录用）
     ValueChanged<String>? onSubmitted,
+    bool isPassword = false,
+    VoidCallback? onPasswordVisibilityToggle,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1218,6 +1233,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
+            ),
+            suffixIcon: isPassword
+                ? InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: onPasswordVisibilityToggle,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(
+                        obscureText ? Icons.visibility_off : Icons.visibility,
+                        size: 16,
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                  )
+                : null,
+            suffixIconConstraints: const BoxConstraints(
+              minWidth: 32,
+              minHeight: 32,
             ),
           ),
           onChanged: onChanged,
@@ -1354,10 +1387,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
 
     try {
+      String passwordToUse = _syncPasswordController.text;
+      if (passwordToUse == SyncService.fakePassword) {
+        final realPassword = SyncService.realPassword;
+        if (realPassword.isNotEmpty) {
+          passwordToUse = realPassword;
+        }
+      }
+
       await SyncService.setServerUrl(_syncServerUrlController.text);
       final result = await SyncService.register(
         username: _syncUsernameController.text,
-        password: _syncPasswordController.text,
+        password: passwordToUse,
       );
 
       if (result.success) {
@@ -1390,10 +1431,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
 
     try {
+      String passwordToUse = _syncPasswordController.text;
+      if (passwordToUse == SyncService.fakePassword) {
+        final realPassword = SyncService.realPassword;
+        if (realPassword.isNotEmpty) {
+          passwordToUse = realPassword;
+        }
+      }
+
       await SyncService.setServerUrl(_syncServerUrlController.text);
       final result = await SyncService.login(
         username: _syncUsernameController.text,
-        password: _syncPasswordController.text,
+        password: passwordToUse,
       );
 
       if (result.success) {
