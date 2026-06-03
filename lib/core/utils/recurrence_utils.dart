@@ -83,24 +83,23 @@ List<DateTime> getRecurrenceDatesInRange(
   final start = DateTime.parse(startStr);
   final end = DateTime.parse(endStr);
   var current = DateTime.parse(anchorDate);
-  final anchor = DateTime.parse(anchorDate);
 
   // 如果开始日期在锚点之前，从锚点开始
   if (current.isBefore(start)) {
-    current = _getNextDate(current, config, anchor);
+    current = getNextDate(current, config);
   }
 
   while (!current.isAfter(end)) {
     if (!current.isBefore(start)) {
       dates.add(current);
     }
-    current = _getNextDate(current, config, anchor);
+    current = getNextDate(current, config);
   }
 
   return dates;
 }
 
-DateTime _getNextDate(DateTime current, RecurrenceConfig config, DateTime anchor) {
+DateTime getNextDate(DateTime current, RecurrenceConfig config) {
   switch (config.frequency) {
     case RecurrenceFrequency.daily:
       return current.add(Duration(days: config.interval));
