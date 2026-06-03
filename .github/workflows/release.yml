@@ -3,11 +3,11 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # 当推送带有 v 前缀的 tag 时触发，例如 v1.0.13
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: '发布的版本号 (例如: v1.0.13)'
+        description: 'Release version, for example v1.0.13'
         required: true
         default: 'v1.0.13'
 
@@ -15,23 +15,22 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    name: Build & Release
+  build:
+    name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
+      fail-fast: false
       matrix:
         include:
-          # Windows 平台
-          - os: windows-2019
+          - os: windows-latest
             platform: windows
-            build_cmd: flutter build windows --release
-            asset_name: FocusMyTime-Windows-Setup.exe
-          # Android 平台
+            artifactName: FocusMyTime-Windows-Setup
+            artifactPath: FocusMyTime-Windows-Setup.exe
           - os: ubuntu-latest
             platform: android
-            build_cmd: flutter build apk --release
-            asset_path: build/app/outputs/flutter-apk/app-release.apk
-            asset_name: FocusMyTime-Android.apk
+            artifactName: FocusMyTime-Android
+            artifactPath: FocusMyTime-Android.apk
 
     steps:
       - name: Checkout repository
@@ -41,32 +40,62 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.22.3'
-          channel: 'stable'
+          channel: stable
           cache: true
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Application
-        run: ${{ matrix.build_cmd }}
-
-      # 针对 Windows：使用 Inno Setup 打包为安装程序
-      - name: Build Windows Installer
+      - name: Enable Windows desktop
         if: matrix.platform == 'windows'
+        run: flutter config --enable-windows-desktop
+
+      - name: Build Windows application
+        if: matrix.platform == 'windows'
+        run: flutter build windows --release
+
+      - name: Install Inno Setup
+        if: matrix.platform == 'windows'
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows installer
+        if: matrix.platform == 'windows'
+        shell: pwsh
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\packaging\inno_setup.iss'
 
-      # 针对 Android：重命名 APK 文件以便于发布
-      - name: Rename APK
+      - name: Build Android APK
         if: matrix.platform == 'android'
-        run: mv ${{ matrix.asset_path }} ${{ matrix.asset_name }}
+        run: flutter build apk --release
 
-      # 上传到 GitHub Releases
-      - name: Upload to GitHub Release
+      - name: Rename Android APK
+        if: matrix.platform == 'android'
+        run: mv build/app/outputs/flutter-apk/app-release.apk FocusMyTime-Android.apk
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifactName }}
+          path: ${{ matrix.artifactPath }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
           name: Release ${{ github.event.inputs.version || github.ref_name }}
-          files: ${{ matrix.asset_name }}
+          files: release-assets/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
