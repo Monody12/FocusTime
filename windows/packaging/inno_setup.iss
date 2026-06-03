@@ -15,9 +15,6 @@ WizardStyle=modern
 ; Requires no admin privileges to install (installs to user AppData\Local\Programs if autopf is used by non-admin)
 PrivilegesRequired=lowest
 
-[Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
-
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
