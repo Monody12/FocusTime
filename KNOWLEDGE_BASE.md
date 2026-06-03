@@ -783,6 +783,28 @@ onPressed: () async {
 
 ---
 
+## 23. Windows Release 安装包缺失 sqlite3.dll
+
+### 23.1 问题现象
+- GitHub Actions 生成的 Windows 安装包可以正常安装。
+- 安装后首次启动即进入红屏错误页，提示 `Failed to load dynamic library 'sqlite3.dll'`，错误码为 126。
+- 同一台开发机上直接运行开发环境或旧构建目录不一定复现，因为开发模式可以从 Pub Cache 或本机环境找到 SQLite 动态库。
+
+### 23.2 根因分析
+`sqflite_common_ffi` 在 Windows debug/development 模式可以使用包内调试用的 `sqlite3.dll`，但 Windows release 模式要求 `sqlite3.dll` 位于 exe 同目录。原安装包脚本只打包 `build/windows/x64/runner/Release`，而该目录没有 SQLite 原生库，导致安装后的独立环境无法加载 FFI 动态库。
+
+### 23.3 修复方案
+在 `pubspec.yaml` 添加 `sqlite3_flutter_libs` 作为直接依赖，让 Flutter Windows 插件构建流程自动把 SQLite 原生库作为 bundled library 复制到 release 输出目录。Inno Setup 继续打包 `build/windows/x64/runner/Release/*`，即可随安装包携带 `sqlite3.dll`。
+
+### 23.4 教训
+- FFI/Native 依赖不能只验证开发机运行，必须验证安装后的独立目录运行。
+- Windows Flutter release 包要检查 exe 同级目录是否包含所有 Native DLL，尤其是 SQLite、通知、时区、音频等插件依赖。
+- 对 GitHub Release 安装包问题，优先复现“安装后的目录”，不要只看 `flutter run` 或开发机 PATH。
+
+*最后更新日期：2026-06-03*
+
+---
+
 ## 22. 密码同步本地加密与密码显示功能 (Encrypted Local Password Sync & Visibility Toggle)
 
 ### 22.1 问题现象
