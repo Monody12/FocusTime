@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import '../../../../core/utils/time_utils.dart';
 import 'package:focus_my_time/core/services/timer_notification_service.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
@@ -190,7 +191,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
     if (action.startsWith('action:snooze_reminder:')) {
       final taskId = action.replaceFirst('action:snooze_reminder:', '');
-      final nextReminder = DateTime.now().add(Duration(minutes: state.snoozeDurationMinutes));
+      final nextReminder = AppTime.now().add(Duration(minutes: state.snoozeDurationMinutes));
       _ref.read(taskProvider.notifier).setReminder(taskId, nextReminder);
       return;
     }
@@ -461,7 +462,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   void _doStartFocus({String? taskTitle, String? taskId, TimerMode? overrideMode, int? taskExpectedMinutes}) {
-    final now = DateTime.now();
+    final now = AppTime.now();
     int totalSeconds;
     DateTime? target;
     final effectiveMode = overrideMode ?? state.timerMode;

@@ -1,4 +1,5 @@
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 
 class AiContextBuilder {
   static String buildSystemPrompt({
@@ -11,7 +12,8 @@ class AiContextBuilder {
     bool reminderOnCreate = false,
   }) {
     final todayStr = _formatDate(now);
-    final timeStr = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     final buf = StringBuffer();
 
@@ -20,6 +22,8 @@ class AiContextBuilder {
     buf.writeln('## 当前时间');
     buf.writeln('日期: $todayStr ($_weekdayName(now))');
     buf.writeln('时间: $timeStr');
+    buf.writeln(
+        '时区: ${AppTime.label(AppTime.mode)} (${AppTime.offsetLabelForMode(AppTime.mode)})');
     buf.writeln('所有时间安排必须不早于当前时间。');
     buf.writeln();
 
@@ -49,7 +53,8 @@ class AiContextBuilder {
     final weekEnd = _formatDate(now.add(const Duration(days: 7)));
     final weekTasks = allTasks.where((t) {
       if (t.dueDate == null || t.dueDate == todayStr) return false;
-      return t.dueDate!.compareTo(todayStr) > 0 && t.dueDate!.compareTo(weekEnd) <= 0;
+      return t.dueDate!.compareTo(todayStr) > 0 &&
+          t.dueDate!.compareTo(weekEnd) <= 0;
     }).toList();
 
     if (weekTasks.isNotEmpty) {
@@ -88,7 +93,8 @@ class AiContextBuilder {
     buf.writeln('5. 如果需要修改的任务 ID 不确定，先向用户确认');
     buf.writeln('6. 当用户描述的任务带有时间信息时（如"明天下午3点"），应计算出正确的日期和时间');
     buf.writeln('7. 使用中文与用户交流');
-    buf.writeln('8. 重要：reminderAt=任务开始时间，dueDate/dueTime=任务截止时间（结束时间），两者不是同一个时间。截止时间 = 开始时间 + expectedMinutes。');
+    buf.writeln(
+        '8. 重要：reminderAt=任务开始时间，dueDate/dueTime=任务截止时间（结束时间），两者不是同一个时间。截止时间 = 开始时间 + expectedMinutes。');
 
     // Custom user preferences
     if (customPrompt.isNotEmpty) {
@@ -105,7 +111,8 @@ class AiContextBuilder {
       buf.writeln('当前日期清单名称: $dateStr');
       buf.writeln('日期格式: $datedListFormat');
       buf.writeln('规则: 创建任务时，请使用清单名 "$dateStr" 作为 listId。如果该清单不存在，系统会自动创建。');
-      buf.writeln('不要使用系统清单（system-my-day/system-all-tasks/system-important），请使用日期清单。');
+      buf.writeln(
+          '不要使用系统清单（system-my-day/system-all-tasks/system-important），请使用日期清单。');
     }
 
     // Reminder on create
@@ -114,12 +121,15 @@ class AiContextBuilder {
       buf.writeln('## 任务开始时间提醒（已启用）');
       buf.writeln('重要字段区分：');
       buf.writeln('- reminderAt = 任务开始时间（用户何时开始做），ISO 8601 格式');
-      buf.writeln('- dueDate + dueTime = 任务截止时间（用户何时必须完成），截止时间 = 开始时间 + expectedMinutes');
+      buf.writeln(
+          '- dueDate + dueTime = 任务截止时间（用户何时必须完成），截止时间 = 开始时间 + expectedMinutes');
       buf.writeln('规则：');
       buf.writeln('1. 创建任务时必须设置 reminderAt 为任务的开始时间');
-      buf.writeln('2. 必须根据开始时间 + expectedMinutes 计算出正确的截止时间（dueDate + dueTime）');
+      buf.writeln(
+          '2. 必须根据开始时间 + expectedMinutes 计算出正确的截止时间（dueDate + dueTime）');
       buf.writeln('3. 如果用户没有明确截止时间，则用开始时间 + expectedMinutes 推算');
-      buf.writeln('例如：用户说"22:20开始，1.5小时"，则 reminderAt = "$todayStr"T"22:20:00"，expectedMinutes = 90，dueDate = "$todayStr"，dueTime = "23:50"。');
+      buf.writeln(
+          '例如：用户说"22:20开始，1.5小时"，则 reminderAt = "$todayStr"T"22:20:00"，expectedMinutes = 90，dueDate = "$todayStr"，dueTime = "23:50"。');
       buf.writeln('这3个字段必须同时存在，这是强制要求。');
     }
 
@@ -137,7 +147,7 @@ class AiContextBuilder {
     }
     if (t.isMyDay) parts.add('[我的一天]');
     if (t.reminderAt != null) {
-      final reminderDate = DateTime.fromMillisecondsSinceEpoch(t.reminderAt!);
+      final reminderDate = AppTime.fromMillisecondsSinceEpoch(t.reminderAt!);
       parts.add('提醒: ${_formatDateTime(reminderDate)}');
     }
     if (t.recurrenceConfig != null) parts.add('[重复]');

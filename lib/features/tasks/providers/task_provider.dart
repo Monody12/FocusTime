@@ -3,6 +3,7 @@ import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/core/utils/recurrence_utils.dart';
 
 class TaskList {
@@ -158,7 +159,8 @@ class TaskState {
         tasks: tasks ?? this.tasks,
         currentListId: currentListId ?? this.currentListId,
         currentViewType: currentViewType ?? this.currentViewType,
-        selectedTaskId: clearSelectedTask ? null : (selectedTaskId ?? this.selectedTaskId),
+        selectedTaskId:
+            clearSelectedTask ? null : (selectedTaskId ?? this.selectedTaskId),
         isLoading: isLoading ?? this.isLoading,
       );
 }
@@ -169,41 +171,46 @@ class TaskNotifier extends StateNotifier<TaskState> {
     loadTasks().then((_) async {
       // 从数据库加载所有有提醒的未完成任务（不受当前视图过滤限制），确保每个提醒都被恢复
       final allDbTasks = await AppDatabase.getAllTasks();
-      final allTasks = allDbTasks.map((m) => TaskItem(
-        id: m['id'] as String,
-        listId: m['listId'] as String,
-        title: m['title'] as String,
-        notes: m['notes'] as String?,
-        completed: m['completed'] == true,
-        completedAt: m['completedAt'] as int?,
-        dueDate: m['dueDate'] as String?,
-        dueTime: m['dueTime'] as String?,
-        sortOrder: m['sortOrder'] as int,
-        isMyDay: m['isMyDay'] == true,
-        myDayAddedAt: m['myDayAddedAt'] as int?,
-        recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
-        expectedMinutes: m['expectedMinutes'] as int?,
-        isImportant: m['isImportant'] == true,
-        reminderAt: m['reminderAt'] as int?,
-        calendarEventId: m['calendarEventId'] as String?,
-        createdAt: m['createdAt'] as int,
-        updatedAt: m['updatedAt'] as int,
-      )).toList();
+      final allTasks = allDbTasks
+          .map((m) => TaskItem(
+                id: m['id'] as String,
+                listId: m['listId'] as String,
+                title: m['title'] as String,
+                notes: m['notes'] as String?,
+                completed: m['completed'] == true,
+                completedAt: m['completedAt'] as int?,
+                dueDate: m['dueDate'] as String?,
+                dueTime: m['dueTime'] as String?,
+                sortOrder: m['sortOrder'] as int,
+                isMyDay: m['isMyDay'] == true,
+                myDayAddedAt: m['myDayAddedAt'] as int?,
+                recurrenceConfig:
+                    m['recurrenceConfig'] as Map<String, dynamic>?,
+                expectedMinutes: m['expectedMinutes'] as int?,
+                isImportant: m['isImportant'] == true,
+                reminderAt: m['reminderAt'] as int?,
+                calendarEventId: m['calendarEventId'] as String?,
+                createdAt: m['createdAt'] as int,
+                updatedAt: m['updatedAt'] as int,
+              ))
+          .toList();
       ReminderService.refreshAll(allTasks);
     });
   }
 
   Future<void> loadLists() async {
     final dbLists = await AppDatabase.getLists();
-    final lists = dbLists.map((m) => TaskList(
-      id: m['id'] as String,
-      name: m['name'] as String,
-      // 使用 == true 进行健壮性判断，防止数据库返回 Null 或 0/1 时触发类型错误
-      isSystem: m['isSystem'] == true,
-      sortOrder: m['sortOrder'] as int,
-      createdAt: m['createdAt'] as int,
-      updatedAt: m['updatedAt'] as int,
-    )).toList();
+    final lists = dbLists
+        .map((m) => TaskList(
+              id: m['id'] as String,
+              name: m['name'] as String,
+              // 使用 == true 进行健壮性判断，防止数据库返回 Null 或 0/1 时触发类型错误
+              isSystem: m['isSystem'] == true,
+              sortOrder: m['sortOrder'] as int,
+              createdAt: m['createdAt'] as int,
+              updatedAt: m['updatedAt'] as int,
+            ))
+        .toList();
     state = state.copyWith(lists: lists);
   }
 
@@ -221,27 +228,30 @@ class TaskNotifier extends StateNotifier<TaskState> {
         dbTasks = await AppDatabase.getTasksByList(state.currentListId);
       }
 
-      final tasks = dbTasks.map((m) => TaskItem(
-        id: m['id'] as String,
-        listId: m['listId'] as String,
-        title: m['title'] as String,
-        notes: m['notes'] as String?,
-        // 将数据库返回的动态值安全地转换为布尔值
-        completed: m['completed'] == true,
-        completedAt: m['completedAt'] as int?,
-        dueDate: m['dueDate'] as String?,
-        dueTime: m['dueTime'] as String?,
-        sortOrder: m['sortOrder'] as int,
-        isMyDay: m['isMyDay'] == true,
-        myDayAddedAt: m['myDayAddedAt'] as int?,
-        recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
-        expectedMinutes: m['expectedMinutes'] as int?,
-        isImportant: m['isImportant'] == true,
-        reminderAt: m['reminderAt'] as int?,
-        calendarEventId: m['calendarEventId'] as String?,
-        createdAt: m['createdAt'] as int,
-        updatedAt: m['updatedAt'] as int,
-      )).toList();
+      final tasks = dbTasks
+          .map((m) => TaskItem(
+                id: m['id'] as String,
+                listId: m['listId'] as String,
+                title: m['title'] as String,
+                notes: m['notes'] as String?,
+                // 将数据库返回的动态值安全地转换为布尔值
+                completed: m['completed'] == true,
+                completedAt: m['completedAt'] as int?,
+                dueDate: m['dueDate'] as String?,
+                dueTime: m['dueTime'] as String?,
+                sortOrder: m['sortOrder'] as int,
+                isMyDay: m['isMyDay'] == true,
+                myDayAddedAt: m['myDayAddedAt'] as int?,
+                recurrenceConfig:
+                    m['recurrenceConfig'] as Map<String, dynamic>?,
+                expectedMinutes: m['expectedMinutes'] as int?,
+                isImportant: m['isImportant'] == true,
+                reminderAt: m['reminderAt'] as int?,
+                calendarEventId: m['calendarEventId'] as String?,
+                createdAt: m['createdAt'] as int,
+                updatedAt: m['updatedAt'] as int,
+              ))
+          .toList();
 
       state = state.copyWith(tasks: tasks, isLoading: false);
     } catch (e) {
@@ -255,7 +265,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   void setSelectedTask(String? taskId) {
-    state = state.copyWith(selectedTaskId: taskId, clearSelectedTask: taskId == null);
+    state = state.copyWith(
+        selectedTaskId: taskId, clearSelectedTask: taskId == null);
   }
 
   Future<TaskList> createList(String name) async {
@@ -275,7 +286,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
   Future<void> updateList(String id, String name) async {
     await AppDatabase.updateList(id, name);
-    final lists = state.lists.map((l) => l.id == id ? l.copyWith(name: name) : l).toList();
+    final lists = state.lists
+        .map((l) => l.id == id ? l.copyWith(name: name) : l)
+        .toList();
     state = state.copyWith(lists: lists);
     _triggerSync();
   }
@@ -287,7 +300,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
     _triggerSync();
   }
 
-  Future<({bool success, bool tokenExpired})> sync({bool background = false}) async {
+  Future<({bool success, bool tokenExpired})> sync(
+      {bool background = false}) async {
     if (!SyncService.isLoggedIn) {
       return (success: false, tokenExpired: false);
     }
@@ -302,26 +316,29 @@ class TaskNotifier extends StateNotifier<TaskState> {
         await loadTasks();
         // 同步完成后刷新所有提醒和日历（必须使用完整数据集，不受当前视图过滤影响）
         final allDbTasks = await AppDatabase.getAllTasks();
-        final allTasks = allDbTasks.map((m) => TaskItem(
-          id: m['id'] as String,
-          listId: m['listId'] as String,
-          title: m['title'] as String,
-          notes: m['notes'] as String?,
-          completed: m['completed'] == true,
-          completedAt: m['completedAt'] as int?,
-          dueDate: m['dueDate'] as String?,
-          dueTime: m['dueTime'] as String?,
-          sortOrder: m['sortOrder'] as int,
-          isMyDay: m['isMyDay'] == true,
-          myDayAddedAt: m['myDayAddedAt'] as int?,
-          recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
-          expectedMinutes: m['expectedMinutes'] as int?,
-          isImportant: m['isImportant'] == true,
-          reminderAt: m['reminderAt'] as int?,
-          calendarEventId: m['calendarEventId'] as String?,
-          createdAt: m['createdAt'] as int,
-          updatedAt: m['updatedAt'] as int,
-        )).toList();
+        final allTasks = allDbTasks
+            .map((m) => TaskItem(
+                  id: m['id'] as String,
+                  listId: m['listId'] as String,
+                  title: m['title'] as String,
+                  notes: m['notes'] as String?,
+                  completed: m['completed'] == true,
+                  completedAt: m['completedAt'] as int?,
+                  dueDate: m['dueDate'] as String?,
+                  dueTime: m['dueTime'] as String?,
+                  sortOrder: m['sortOrder'] as int,
+                  isMyDay: m['isMyDay'] == true,
+                  myDayAddedAt: m['myDayAddedAt'] as int?,
+                  recurrenceConfig:
+                      m['recurrenceConfig'] as Map<String, dynamic>?,
+                  expectedMinutes: m['expectedMinutes'] as int?,
+                  isImportant: m['isImportant'] == true,
+                  reminderAt: m['reminderAt'] as int?,
+                  calendarEventId: m['calendarEventId'] as String?,
+                  createdAt: m['createdAt'] as int,
+                  updatedAt: m['updatedAt'] as int,
+                ))
+            .toList();
         ReminderService.refreshAll(allTasks);
         CalendarService.refreshAll(allTasks);
       }
@@ -337,18 +354,20 @@ class TaskNotifier extends StateNotifier<TaskState> {
     sync(background: true);
   }
 
-  Future<TaskItem> createTask(String title, {bool isMyDay = false, DateTime? reminderAt}) async {
-    final listId = state.currentListId == 'system-my-day' || state.currentListId == 'system-all-tasks'
+  Future<TaskItem> createTask(String title,
+      {bool isMyDay = false, DateTime? reminderAt}) async {
+    final listId = state.currentListId == 'system-my-day' ||
+            state.currentListId == 'system-all-tasks'
         ? 'system-all-tasks'
         : state.currentListId;
-    
+
     final result = await AppDatabase.createTask(
-      listId: listId, 
-      title: title, 
+      listId: listId,
+      title: title,
       isMyDay: isMyDay,
       reminderAt: reminderAt?.millisecondsSinceEpoch,
     );
-    
+
     final task = TaskItem(
       id: result['id'] as String,
       listId: result['listId'] as String,
@@ -369,7 +388,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
       createdAt: result['createdAt'] as int,
       updatedAt: result['updatedAt'] as int,
     );
-    
+
     state = state.copyWith(tasks: [...state.tasks, task]);
 
     // 如果创建时带了提醒（虽然目前 UI 尚未直接支持），进行调度
@@ -388,7 +407,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
   Future<void> updateTask(String id, Map<String, dynamic> updates) async {
     await AppDatabase.updateTask(id, updates);
     await loadTasks(showLoading: false);
-    
+
     // 检查并调度提醒。即使任务不在当前视图列表中（state.tasks），也需要从数据库重新获取并调度。
     TaskItem? updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
     if (updatedTask == null) {
@@ -418,16 +437,19 @@ class TaskNotifier extends StateNotifier<TaskState> {
     }
 
     if (updatedTask != null) {
-      final eventId = await ReminderService.scheduleUnifiedReminders(updatedTask);
+      final eventId =
+          await ReminderService.scheduleUnifiedReminders(updatedTask);
       // 将 eventId 持久化到数据库，不仅仅是内存 state
       if (eventId != null && eventId != updatedTask.calendarEventId) {
         await AppDatabase.updateTask(id, {'calendarEventId': eventId});
       }
       state = state.copyWith(
-        tasks: state.tasks.map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t).toList(),
+        tasks: state.tasks
+            .map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t)
+            .toList(),
       );
     }
-    
+
     _triggerSync();
   }
 
@@ -446,7 +468,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
     // 2. 乐观更新 UI：立即从 state.tasks 中移除该任务，确保 UI 即时响应。
     //    此操作必须在提醒/日历清理之前，避免那些操作抛异常导致 UI 不更新。
     final tasks = state.tasks.where((t) => t.id != id).toList();
-    state = state.copyWith(tasks: tasks, clearSelectedTask: state.selectedTaskId == id);
+    state = state.copyWith(
+        tasks: tasks, clearSelectedTask: state.selectedTaskId == id);
 
     // 3. 触发同步（不 await，后台执行）
     _triggerSync();
@@ -475,18 +498,24 @@ class TaskNotifier extends StateNotifier<TaskState> {
     if (willComplete && task.recurrenceConfig != null) {
       // 1. Calculate next date
       final config = RecurrenceConfig.fromJson(task.recurrenceConfig!);
-      final currentDue = task.dueDate != null ? DateTime.parse(task.dueDate!) : DateTime.now();
+      final currentDue =
+          task.dueDate != null ? DateTime.parse(task.dueDate!) : AppTime.now();
       final nextDue = getNextDate(currentDue, config);
-      final newDueDateStr = '${nextDue.year}-${nextDue.month.toString().padLeft(2, '0')}-${nextDue.day.toString().padLeft(2, '0')}';
+      final newDueDateStr =
+          '${nextDue.year}-${nextDue.month.toString().padLeft(2, '0')}-${nextDue.day.toString().padLeft(2, '0')}';
 
       // 2. Calculate next reminder time if exists
       int? newReminderAt;
       if (task.reminderAt != null) {
-        final currentReminder = DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
-        final newReminder = DateTime(
-          nextDue.year, nextDue.month, nextDue.day,
-          currentReminder.hour, currentReminder.minute, currentReminder.second
-        );
+        final currentReminder =
+            AppTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+        final newReminder = AppTime.create(
+            nextDue.year,
+            nextDue.month,
+            nextDue.day,
+            currentReminder.hour,
+            currentReminder.minute,
+            currentReminder.second);
         newReminderAt = newReminder.millisecondsSinceEpoch;
       }
 
@@ -500,8 +529,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
       final dbTask = await AppDatabase.getTaskById(id);
       if (dbTask != null) {
         dbTask['recurrenceConfig'] = task.recurrenceConfig;
-        final newDbTask = await AppDatabase.duplicateTaskForRecurrence(dbTask, newDueDateStr, newReminderAt);
-        
+        final newDbTask = await AppDatabase.duplicateTaskForRecurrence(
+            dbTask, newDueDateStr, newReminderAt);
+
         final newTask = TaskItem(
           id: newDbTask['id'] as String,
           listId: newDbTask['listId'] as String,
@@ -514,7 +544,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
           sortOrder: newDbTask['sortOrder'] as int,
           isMyDay: newDbTask['isMyDay'] == true,
           myDayAddedAt: newDbTask['myDayAddedAt'] as int?,
-          recurrenceConfig: newDbTask['recurrenceConfig'] as Map<String, dynamic>?,
+          recurrenceConfig:
+              newDbTask['recurrenceConfig'] as Map<String, dynamic>?,
           expectedMinutes: newDbTask['expectedMinutes'] as int?,
           isImportant: newDbTask['isImportant'] == true,
           reminderAt: newDbTask['reminderAt'] as int?,
@@ -524,9 +555,11 @@ class TaskNotifier extends StateNotifier<TaskState> {
         );
 
         // Schedule reminders and calendar event for the newly created task
-        final newEventId = await ReminderService.scheduleUnifiedReminders(newTask);
+        final newEventId =
+            await ReminderService.scheduleUnifiedReminders(newTask);
         if (newEventId != null) {
-          await AppDatabase.updateTask(newTask.id, {'calendarEventId': newEventId});
+          await AppDatabase.updateTask(
+              newTask.id, {'calendarEventId': newEventId});
         }
       }
     } else {
@@ -534,19 +567,22 @@ class TaskNotifier extends StateNotifier<TaskState> {
     }
 
     await loadTasks(showLoading: false);
-    
+
     // 处理原任务的提醒取消/重新调度
     final updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
     if (updatedTask != null) {
-      final eventId = await ReminderService.scheduleUnifiedReminders(updatedTask);
+      final eventId =
+          await ReminderService.scheduleUnifiedReminders(updatedTask);
       if (eventId != null && eventId != updatedTask.calendarEventId) {
         await AppDatabase.updateTask(id, {'calendarEventId': eventId});
       }
       state = state.copyWith(
-        tasks: state.tasks.map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t).toList(),
+        tasks: state.tasks
+            .map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t)
+            .toList(),
       );
     }
-    
+
     _triggerSync();
   }
 
@@ -580,7 +616,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
     // 1. 乐观更新：立即在内存中更新任务顺序，避免 UI 抖动
     final tasks = [...state.tasks];
     final idToIndex = {for (int i = 0; i < taskIds.length; i++) taskIds[i]: i};
-    
+
     // 只重新对传入的任务进行排序，保持其他任务（如已完成）的相对位置
     tasks.sort((a, b) {
       final indexA = idToIndex[a.id];
@@ -604,7 +640,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
     // 1. 乐观更新
     final lists = [...state.lists];
     final idToIndex = {for (int i = 0; i < listIds.length; i++) listIds[i]: i};
-    
+
     lists.sort((a, b) {
       final indexA = idToIndex[a.id];
       final indexB = idToIndex[b.id];

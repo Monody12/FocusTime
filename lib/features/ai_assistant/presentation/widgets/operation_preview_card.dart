@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
 
 class OperationPreviewCard extends StatelessWidget {
@@ -51,7 +52,9 @@ class OperationPreviewCard extends StatelessWidget {
                 Icon(
                   _typeIcon(),
                   size: 20,
-                  color: isDelete ? Colors.red : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
+                  color: isDelete
+                      ? Colors.red
+                      : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -71,13 +74,16 @@ class OperationPreviewCard extends StatelessWidget {
               const SizedBox(height: 6),
               _buildTimeDetail(isDark),
             ],
-            if (operation.reasoning != null && operation.reasoning!.isNotEmpty) ...[
+            if (operation.reasoning != null &&
+                operation.reasoning!.isNotEmpty) ...[
               const SizedBox(height: 6),
               Text(
                 operation.reasoning!,
                 style: TextStyle(
                   fontSize: 12,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
               ),
             ],
@@ -95,9 +101,14 @@ class OperationPreviewCard extends StatelessWidget {
                 children: [
                   _actionButton('拒绝', Icons.close, Colors.grey, onReject),
                   const SizedBox(width: 8),
-                  _actionButton('编辑', Icons.edit_outlined, isDark ? AppColors.darkAccent : AppColors.lightAccent, onEdit),
+                  _actionButton(
+                      '编辑',
+                      Icons.edit_outlined,
+                      isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                      onEdit),
                   const SizedBox(width: 8),
-                  _actionButton('批准', Icons.check, const Color(0xFF10B981), onApprove),
+                  _actionButton(
+                      '批准', Icons.check, const Color(0xFF10B981), onApprove),
                 ],
               ),
             ],
@@ -116,14 +127,14 @@ class OperationPreviewCard extends StatelessWidget {
 
     DateTime? startDt;
     if (reminderAt != null) {
-      startDt = DateTime.tryParse(reminderAt);
+      startDt = AppTime.parseSelectedIso(reminderAt);
     }
     DateTime? endDt;
     if (dueDate != null && dueTime != null) {
       try {
         final parts = dueTime.split(':');
         final dateParts = dueDate.split('-');
-        endDt = DateTime(
+        endDt = AppTime.create(
           int.parse(dateParts[0]),
           int.parse(dateParts[1]),
           int.parse(dateParts[2]),
@@ -134,12 +145,15 @@ class OperationPreviewCard extends StatelessWidget {
     } else if (dueDate != null) {
       try {
         final dateParts = dueDate.split('-');
-        endDt = DateTime(int.parse(dateParts[0]), int.parse(dateParts[1]), int.parse(dateParts[2]));
+        endDt = AppTime.create(int.parse(dateParts[0]), int.parse(dateParts[1]),
+            int.parse(dateParts[2]));
       } catch (_) {}
     }
 
     final duration = expectedMinutes ??
-        (startDt != null && endDt != null ? endDt.difference(startDt).inMinutes : null);
+        (startDt != null && endDt != null
+            ? endDt.difference(startDt).inMinutes
+            : null);
 
     final chips = <Widget>[];
 
@@ -153,15 +167,20 @@ class OperationPreviewCard extends StatelessWidget {
       if (endDt != null) {
         chips.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Icon(Icons.arrow_forward, size: 12,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+          child: Icon(Icons.arrow_forward,
+              size: 12,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary),
         ));
       }
     }
     if (endDt != null) {
       chips.add(_timeChip(
         Icons.flag_outlined,
-        startDt != null ? '截止 ${_fmtTime(endDt)}' : '截止 ${_fmtDate(endDt)} ${_fmtTime(endDt)}',
+        startDt != null
+            ? '截止 ${_fmtTime(endDt)}'
+            : '截止 ${_fmtDate(endDt)} ${_fmtTime(endDt)}',
         isDark,
       ));
     }
@@ -185,7 +204,8 @@ class OperationPreviewCard extends StatelessWidget {
   }
 
   Widget _timeChip(IconData icon, String label, bool isDark, {Color? accent}) {
-    final color = accent ?? (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary);
+    final color = accent ??
+        (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -199,7 +219,8 @@ class OperationPreviewCard extends StatelessWidget {
           const SizedBox(width: 3),
           Text(
             label,
-            style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500),
+            style: TextStyle(
+                fontSize: 11, color: color, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -207,11 +228,11 @@ class OperationPreviewCard extends StatelessWidget {
   }
 
   String _fmtTime(DateTime dt) {
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return AppTime.formatTime(dt);
   }
 
   String _fmtDate(DateTime dt) {
-    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+    return AppTime.formatDate(dt);
   }
 
   Widget _statusChip(bool isDark) {
@@ -238,12 +259,14 @@ class OperationPreviewCard extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500),
+        style:
+            TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500),
       ),
     );
   }
 
-  Widget _actionButton(String label, IconData icon, Color color, VoidCallback onTap) {
+  Widget _actionButton(
+      String label, IconData icon, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(6),
@@ -256,7 +279,8 @@ class OperationPreviewCard extends StatelessWidget {
             const SizedBox(width: 4),
             Text(
               label,
-              style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w500),
+              style: TextStyle(
+                  fontSize: 13, color: color, fontWeight: FontWeight.w500),
             ),
           ],
         ),

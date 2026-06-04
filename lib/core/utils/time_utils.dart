@@ -1,19 +1,22 @@
+import 'package:focus_my_time/core/utils/app_time.dart';
+
 String formatTime(int totalSeconds) {
   final minutes = totalSeconds ~/ 60;
   final seconds = totalSeconds % 60;
   return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
 }
 
-({int durationMinutes, DateTime targetTime}) calculateSingleCoreTarget(int minDuration) {
-  final now = DateTime.now();
+({int durationMinutes, DateTime targetTime}) calculateSingleCoreTarget(
+    int minDuration) {
+  final now = AppTime.now();
   final minute = now.minute;
 
   // 找到下一个整点或半点
   DateTime nextTarget;
   if (minute < 30) {
-    nextTarget = DateTime(now.year, now.month, now.day, now.hour, 30);
+    nextTarget = AppTime.create(now.year, now.month, now.day, now.hour, 30);
   } else {
-    nextTarget = DateTime(now.year, now.month, now.day, now.hour + 1, 0);
+    nextTarget = AppTime.create(now.year, now.month, now.day, now.hour + 1, 0);
   }
 
   int durationMinutes = nextTarget.difference(now).inMinutes;
@@ -28,9 +31,9 @@ String formatTime(int totalSeconds) {
 }
 
 String formatDate(DateTime date) {
-  return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  return AppTime.formatDate(date);
 }
 
 String formatTimeOfDay(DateTime date) {
-  return '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+  return AppTime.formatTime(date);
 }

@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:focus_my_time/app.dart';
 import 'package:focus_my_time/core/services/timer_notification_service.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
+import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 import 'package:focus_my_time/features/ai_assistant/services/deepseek_api_client.dart';
@@ -23,6 +25,12 @@ void main() {
         sqfliteFfiInit();
         databaseFactory = databaseFactoryFfi;
       }
+
+      debugPrint('AppTime.configure() starting');
+      final timeZoneModeValue =
+          await AppDatabase.getSetting(AppTime.settingKey);
+      AppTime.configure(AppTime.modeFromValue(timeZoneModeValue));
+      debugPrint('AppTime.configure() finished');
 
       debugPrint('SyncService.init() starting');
       // 初始化同步服务，从本地数据库加载登录状态

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
 import 'package:focus_my_time/features/ai_assistant/presentation/widgets/chat_bubble.dart';
 import 'package:focus_my_time/features/ai_assistant/presentation/widgets/operation_detail_sheet.dart';
@@ -635,7 +636,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
   }
 
   String _getFormattedDate(String format) {
-    final now = DateTime.now();
+    final now = AppTime.now();
     return format
         .replaceAll('yyyy', now.year.toString())
         .replaceAll('MM', now.month.toString().padLeft(2, '0'))

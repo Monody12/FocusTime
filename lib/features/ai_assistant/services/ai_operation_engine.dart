@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation_type.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
@@ -11,7 +12,7 @@ class AiOperationEngine {
     required List<TaskList> currentLists,
   }) {
     final params = operation.params;
-    final now = DateTime.now();
+    final now = AppTime.now();
 
     switch (operation.type) {
       case AiOperationType.createTask:
@@ -133,7 +134,8 @@ class AiOperationEngine {
       case AiOperationType.createTask:
         // Ensure target list exists (for dated lists etc.), resolve to real ID
         if (params.containsKey('listId')) {
-          final realId = await _ensureList(params['listId'] as String, taskNotifier);
+          final realId =
+              await _ensureList(params['listId'] as String, taskNotifier);
           params['listId'] = realId;
         }
         await _executeCreateTask(params, taskNotifier);
@@ -144,10 +146,14 @@ class AiOperationEngine {
         final updates = <String, dynamic>{};
         if (params.containsKey('title')) updates['title'] = params['title'];
         if (params.containsKey('notes')) updates['notes'] = params['notes'];
-        if (params.containsKey('dueDate')) updates['dueDate'] = params['dueDate'];
-        if (params.containsKey('dueTime')) updates['dueTime'] = params['dueTime'];
-        if (params.containsKey('expectedMinutes')) updates['expectedMinutes'] = params['expectedMinutes'];
-        if (params.containsKey('isImportant')) updates['isImportant'] = params['isImportant'];
+        if (params.containsKey('dueDate'))
+          updates['dueDate'] = params['dueDate'];
+        if (params.containsKey('dueTime'))
+          updates['dueTime'] = params['dueTime'];
+        if (params.containsKey('expectedMinutes'))
+          updates['expectedMinutes'] = params['expectedMinutes'];
+        if (params.containsKey('isImportant'))
+          updates['isImportant'] = params['isImportant'];
         if (updates.isNotEmpty) {
           await taskNotifier.updateTask(taskId, updates);
         }
@@ -169,7 +175,7 @@ class AiOperationEngine {
         final reminderStr = params['reminderAt'] as String?;
         DateTime? reminderAt;
         if (reminderStr != null) {
-          reminderAt = DateTime.tryParse(reminderStr);
+          reminderAt = AppTime.parseSelectedIso(reminderStr);
         }
         await taskNotifier.setReminder(taskId, reminderAt);
         break;
@@ -259,7 +265,7 @@ class AiOperationEngine {
       title,
       isMyDay: params['isMyDay'] == true,
       reminderAt: params['reminderAt'] != null
-          ? DateTime.tryParse(params['reminderAt'] as String)
+          ? AppTime.parseSelectedIso(params['reminderAt'] as String)
           : null,
     );
 
@@ -267,8 +273,10 @@ class AiOperationEngine {
     if (params.containsKey('notes')) updates['notes'] = params['notes'];
     if (params.containsKey('dueDate')) updates['dueDate'] = params['dueDate'];
     if (params.containsKey('dueTime')) updates['dueTime'] = params['dueTime'];
-    if (params.containsKey('expectedMinutes')) updates['expectedMinutes'] = params['expectedMinutes'];
-    if (params.containsKey('isImportant')) updates['isImportant'] = params['isImportant'] == true;
+    if (params.containsKey('expectedMinutes'))
+      updates['expectedMinutes'] = params['expectedMinutes'];
+    if (params.containsKey('isImportant'))
+      updates['isImportant'] = params['isImportant'] == true;
     if (params.containsKey('listId')) updates['listId'] = params['listId'];
 
     if (updates.isNotEmpty) {
@@ -282,13 +290,8 @@ class AiOperationEngine {
       final hour = int.parse(parts[0]);
       final minute = int.parse(parts[1]);
       final dateParts = date.split('-');
-      return DateTime(
-        int.parse(dateParts[0]),
-        int.parse(dateParts[1]),
-        int.parse(dateParts[2]),
-        hour,
-        minute,
-      );
+      return AppTime.create(int.parse(dateParts[0]), int.parse(dateParts[1]),
+          int.parse(dateParts[2]), hour, minute);
     } catch (_) {
       return null;
     }

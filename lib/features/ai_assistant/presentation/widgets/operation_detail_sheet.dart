@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
 
 class OperationDetailSheet extends StatefulWidget {
@@ -43,7 +44,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     _hasTimeFields = dueDate != null || reminderAt != null;
 
     if (reminderAt != null) {
-      _startDt = DateTime.tryParse(reminderAt);
+      _startDt = AppTime.parseSelectedIso(reminderAt);
     }
 
     if (dueDate != null && dueTime != null) {
@@ -57,7 +58,8 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
             ? _endDt!.difference(_startDt!).inMinutes
             : 0);
 
-    _durationCtrl.text = _durationMinutes > 0 ? _durationMinutes.toString() : '';
+    _durationCtrl.text =
+        _durationMinutes > 0 ? _durationMinutes.toString() : '';
   }
 
   @override
@@ -91,7 +93,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
   // ── Picker handlers ──────────────────────────────────────────
 
   Future<void> _pickStartDate() async {
-    final initial = _startDt ?? _endDt ?? DateTime.now();
+    final initial = _startDt ?? _endDt ?? AppTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -100,8 +102,10 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
       helpText: '选择开始日期',
     );
     if (picked == null) return;
-    final newStart = DateTime(
-      picked.year, picked.month, picked.day,
+    final newStart = AppTime.create(
+      picked.year,
+      picked.month,
+      picked.day,
       _startDt?.hour ?? 0,
       _startDt?.minute ?? 0,
     );
@@ -112,22 +116,23 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
   }
 
   Future<void> _pickStartTime() async {
-    final initial = TimeOfDay.fromDateTime(_startDt ?? _endDt ?? DateTime.now());
+    final initial = TimeOfDay.fromDateTime(_startDt ?? _endDt ?? AppTime.now());
     final picked = await showTimePicker(
       context: context,
       initialTime: initial,
       helpText: '选择开始时间',
     );
     if (picked == null) return;
-    final base = _startDt ?? _endDt ?? DateTime.now();
+    final base = _startDt ?? _endDt ?? AppTime.now();
     setState(() {
-      _startDt = DateTime(base.year, base.month, base.day, picked.hour, picked.minute);
+      _startDt = AppTime.create(
+          base.year, base.month, base.day, picked.hour, picked.minute);
       _adjustEndFromStart();
     });
   }
 
   Future<void> _pickEndDate() async {
-    final initial = _endDt ?? _startDt ?? DateTime.now();
+    final initial = _endDt ?? _startDt ?? AppTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -136,8 +141,10 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
       helpText: '选择截止日期',
     );
     if (picked == null) return;
-    final newEnd = DateTime(
-      picked.year, picked.month, picked.day,
+    final newEnd = AppTime.create(
+      picked.year,
+      picked.month,
+      picked.day,
       _endDt?.hour ?? 0,
       _endDt?.minute ?? 0,
     );
@@ -148,16 +155,17 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
   }
 
   Future<void> _pickEndTime() async {
-    final initial = TimeOfDay.fromDateTime(_endDt ?? _startDt ?? DateTime.now());
+    final initial = TimeOfDay.fromDateTime(_endDt ?? _startDt ?? AppTime.now());
     final picked = await showTimePicker(
       context: context,
       initialTime: initial,
       helpText: '选择截止时间',
     );
     if (picked == null) return;
-    final base = _endDt ?? _startDt ?? DateTime.now();
+    final base = _endDt ?? _startDt ?? AppTime.now();
     setState(() {
-      _endDt = DateTime(base.year, base.month, base.day, picked.hour, picked.minute);
+      _endDt = AppTime.create(
+          base.year, base.month, base.day, picked.hour, picked.minute);
       _recalcDuration();
     });
   }
@@ -177,7 +185,8 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     if (_startDt != null && _endDt != null) {
       final diff = _endDt!.difference(_startDt!).inMinutes;
       _durationMinutes = diff > 0 ? diff : 0;
-      _durationCtrl.text = _durationMinutes > 0 ? _durationMinutes.toString() : '';
+      _durationCtrl.text =
+          _durationMinutes > 0 ? _durationMinutes.toString() : '';
     }
   }
 
@@ -234,7 +243,9 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                   widget.operation.typeLabel,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: isDark
+                        ? AppColors.darkTextSecondary
+                        : AppColors.lightTextSecondary,
                   ),
                 ),
               ],
@@ -255,7 +266,8 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                  backgroundColor:
+                      isDark ? AppColors.darkAccent : AppColors.lightAccent,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
@@ -276,7 +288,8 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     final labelStyle = TextStyle(
       fontSize: 12,
       fontWeight: FontWeight.w500,
-      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+      color:
+          isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
     );
     final tileStyle = TextStyle(
       fontSize: 14,
@@ -374,10 +387,14 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                 hintText: '分钟',
                 hintStyle: TextStyle(
                   fontSize: 13,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 isDense: true,
               ),
               onChanged: (_) => _onDurationChanged(),
@@ -392,7 +409,9 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                 : '—',
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
         ],
@@ -440,13 +459,15 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                 : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
           ),
           color: isSet
-              ? (isDark ? AppColors.darkAccent : AppColors.lightAccent).withOpacity(0.08)
+              ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
+                  .withOpacity(0.08)
               : Colors.transparent,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16,
+            Icon(icon,
+                size: 16,
                 color: isSet
                     ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
                     : Colors.grey),
@@ -513,7 +534,9 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
           decoration: InputDecoration(
             labelText: label,
             labelStyle: TextStyle(
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
@@ -521,7 +544,8 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                 color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
               ),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           ),
           style: style,
           keyboardType: isNumber ? TextInputType.number : TextInputType.text,
@@ -555,7 +579,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     try {
       final dateParts = date.split('-');
       final timeParts = time.split(':');
-      return DateTime(
+      return AppTime.create(
         int.parse(dateParts[0]),
         int.parse(dateParts[1]),
         int.parse(dateParts[2]),
@@ -567,11 +591,9 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     }
   }
 
-  String _fmtDate(DateTime dt) =>
-      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  String _fmtDate(DateTime dt) => AppTime.formatDate(dt);
 
-  String _fmtTime(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  String _fmtTime(DateTime dt) => AppTime.formatTime(dt);
 }
 
 void showOperationDetailSheet(
@@ -583,7 +605,8 @@ void showOperationDetailSheet(
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+    backgroundColor:
+        isDark ? AppColors.darkBackground : AppColors.lightBackground,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),

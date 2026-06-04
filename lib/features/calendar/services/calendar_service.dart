@@ -5,12 +5,14 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/features/calendar/services/macos_calendar_plugin.dart';
 
 /// 系统日历同步服务
 class CalendarService {
-  static final DeviceCalendarPlugin _deviceCalendarPlugin = DeviceCalendarPlugin();
+  static final DeviceCalendarPlugin _deviceCalendarPlugin =
+      DeviceCalendarPlugin();
   static final MacOsCalendarPlugin _macOsCalendarPlugin = MacOsCalendarPlugin();
 
   static String? _calendarId;
@@ -114,7 +116,8 @@ class CalendarService {
 
     final calendars = await _retrieveCalendars();
     if (calendars.isSuccess && calendars.data != null) {
-      final existing = calendars.data!.where((c) => c.name == _calendarName).firstOrNull;
+      final existing =
+          calendars.data!.where((c) => c.name == _calendarName).firstOrNull;
       if (existing != null) {
         _calendarId = existing.id;
         dev.log('[CalendarService] 复用已有日历: $_calendarName (ID: $_calendarId)');
@@ -135,10 +138,12 @@ class CalendarService {
 
     // 回退方案：使用第一个可写的日历
     if (calendars.isSuccess && calendars.data != null) {
-      final writable = calendars.data!.where((c) => !(c.isReadOnly ?? false)).firstOrNull;
+      final writable =
+          calendars.data!.where((c) => !(c.isReadOnly ?? false)).firstOrNull;
       if (writable != null) {
         _calendarId = writable.id;
-        dev.log('[CalendarService] 回退使用可写日历: ${writable.name} (ID: $_calendarId, Account: ${writable.accountName})');
+        dev.log(
+            '[CalendarService] 回退使用可写日历: ${writable.name} (ID: $_calendarId, Account: ${writable.accountName})');
         return true;
       }
     }
@@ -160,7 +165,7 @@ class CalendarService {
       return null;
     }
 
-    final startTime = DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+    final startTime = AppTime.fromMillisecondsSinceEpoch(task.reminderAt!);
     // 如果提醒时间是过去，且还没有同步过，则不创建
     if (startTime.isBefore(DateTime.now()) && task.calendarEventId == null) {
       return null;
@@ -173,18 +178,21 @@ class CalendarService {
       eventId: task.calendarEventId,
       title: '任务提醒: ${task.title}',
       description: task.notes ?? '来自 FocusMyTime 的任务提醒',
-      start: tz.TZDateTime.from(startTime, tz.local),
-      end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)), tz.local),
+      start: tz.TZDateTime.from(startTime, AppTime.notificationLocation()),
+      end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)),
+          AppTime.notificationLocation()),
       reminders: task.completed ? [] : [Reminder(minutes: 0)],
     );
 
     final result = await _createOrUpdateEvent(event);
     if (result != null && result.isSuccess && result.data != null) {
-      dev.log('[CalendarService] 已同步任务到日历: ${task.title}, EventID: ${result.data}');
+      dev.log(
+          '[CalendarService] 已同步任务到日历: ${task.title}, EventID: ${result.data}');
       return result.data;
     }
 
-    dev.log('[CalendarService] createOrUpdateEvent 失败，尝试回退方案: ${result?.errors.map((e) => e.errorMessage).join(', ') ?? 'unknown'}');
+    dev.log(
+        '[CalendarService] createOrUpdateEvent 失败，尝试回退方案: ${result?.errors.map((e) => e.errorMessage).join(', ') ?? 'unknown'}');
     // 如果 UPDATE 失败（如事件被手动删除），回退到 DELETE+CREATE
     if (task.calendarEventId != null) {
       await _deleteEvent(_calendarId, task.calendarEventId!);
@@ -193,13 +201,17 @@ class CalendarService {
       _calendarId,
       title: '任务提醒: ${task.title}',
       description: task.notes ?? '来自 FocusMyTime 的任务提醒',
-      start: tz.TZDateTime.from(startTime, tz.local),
-      end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)), tz.local),
+      start: tz.TZDateTime.from(startTime, AppTime.notificationLocation()),
+      end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)),
+          AppTime.notificationLocation()),
       reminders: task.completed ? [] : [Reminder(minutes: 0)],
     );
     final retryResult = await _createOrUpdateEvent(newEvent);
-    if (retryResult != null && retryResult.isSuccess && retryResult.data != null) {
-      dev.log('[CalendarService] 重建成功: ${task.title}, EventID: ${retryResult.data}');
+    if (retryResult != null &&
+        retryResult.isSuccess &&
+        retryResult.data != null) {
+      dev.log(
+          '[CalendarService] 重建成功: ${task.title}, EventID: ${retryResult.data}');
       return retryResult.data;
     }
 
@@ -231,7 +243,8 @@ class CalendarService {
       if (updateResult != null && updateResult.isSuccess) {
         dev.log('[CalendarService] 已将事件标记为取消: $eventId');
       } else {
-        dev.log('[CalendarService] 标记取消也失败: ${updateResult?.errors.map((e) => e.errorMessage).join(', ')}');
+        dev.log(
+            '[CalendarService] 标记取消也失败: ${updateResult?.errors.map((e) => e.errorMessage).join(', ')}');
       }
     } catch (e) {
       dev.log('[CalendarService] 删除回退方案异常: $e');
@@ -266,7 +279,8 @@ class CalendarService {
     // 3. 强制清空数据库中所有任务的 eventID，同时更新 updated_at 触发同步
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final db = await AppDatabase.database;
-    await db.execute('UPDATE tasks SET calendar_event_id = NULL, updated_at = ?', [nowMs]);
+    await db.execute(
+        'UPDATE tasks SET calendar_event_id = NULL, updated_at = ?', [nowMs]);
 
     // 4. 重新初始化一个纯净的日历
     await _ensureCalendar();
@@ -275,14 +289,15 @@ class CalendarService {
     for (final task in tasks) {
       if (task.reminderAt != null && !task.completed) {
         // 创建一个没有 ID 的副本以强制新建
-        final newTask = task.copyWith(calendarEventId: null, clearReminder: false);
+        final newTask =
+            task.copyWith(calendarEventId: null, clearReminder: false);
         final eventId = await syncTask(newTask);
         if (eventId != null) {
           await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
         }
       }
     }
-    
+
     dev.log('[CalendarService] 强制清理与重建完成！');
   }
 
@@ -305,19 +320,20 @@ class CalendarService {
   /// 触发一次立即的日历同步测试
   static Future<bool> triggerTestSync() async {
     if (!(await _ensureCalendar())) return false;
-    
-    final startTime = DateTime.now().add(const Duration(minutes: 5));
+
+    final startTime = AppTime.now().add(const Duration(minutes: 5));
     final event = Event(
       _calendarId,
       title: 'FocusMyTime 同步测试',
       description: '如果你看到这个事件，说明日历同步功能正常。',
-      start: tz.TZDateTime.from(startTime, tz.local),
-      end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)), tz.local),
+      start: tz.TZDateTime.from(startTime, AppTime.notificationLocation()),
+      end: tz.TZDateTime.from(startTime.add(const Duration(minutes: 15)),
+          AppTime.notificationLocation()),
       reminders: [
         Reminder(minutes: 0), // 事件开始时提醒
       ],
     );
-    
+
     final result = await _createOrUpdateEvent(event);
     return result?.isSuccess ?? false;
   }

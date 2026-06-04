@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/core/utils/recurrence_utils.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
@@ -78,7 +78,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       _saveAllEdits();
     }
   }
@@ -93,30 +94,39 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   void _saveAllEdits() {
     final taskState = ref.read(taskProvider);
-    final task = taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    final task =
+        taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
     if (task == null) return;
 
     // Save title if changed
-    if (_titleController.text.trim().isNotEmpty && _titleController.text.trim() != task.title) {
-      ref.read(taskProvider.notifier).updateTask(widget.taskId, {'title': _titleController.text.trim()});
+    if (_titleController.text.trim().isNotEmpty &&
+        _titleController.text.trim() != task.title) {
+      ref
+          .read(taskProvider.notifier)
+          .updateTask(widget.taskId, {'title': _titleController.text.trim()});
     }
 
     // Save notes if changed
     if (_notesController.text.trim() != (task.notes ?? '')) {
-      ref.read(taskProvider.notifier).updateTask(widget.taskId, {'notes': _notesController.text.trim()});
+      ref
+          .read(taskProvider.notifier)
+          .updateTask(widget.taskId, {'notes': _notesController.text.trim()});
     }
 
     // Save expected minutes if changed
     final mins = int.tryParse(_expectedMinutesController.text);
     if (mins != null && mins != task.expectedMinutes) {
-      ref.read(taskProvider.notifier).updateTask(widget.taskId, {'expectedMinutes': mins});
+      ref
+          .read(taskProvider.notifier)
+          .updateTask(widget.taskId, {'expectedMinutes': mins});
     }
   }
 
   void _loadTaskData() async {
     final taskState = ref.read(taskProvider);
-    TaskItem? task = taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
-    
+    TaskItem? task =
+        taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+
     // 如果在当前视图状态中找不到任务（可能是切换了列表），则从数据库加载
     if (task == null) {
       final dbTask = await AppDatabase.getTaskById(widget.taskId);
@@ -149,7 +159,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         _cachedTask = currentTask;
         _titleController.text = currentTask.title;
         _notesController.text = currentTask.notes ?? '';
-        _expectedMinutesController.text = currentTask.expectedMinutes?.toString() ?? '';
+        _expectedMinutesController.text =
+            currentTask.expectedMinutes?.toString() ?? '';
         _dueDate = currentTask.dueDate;
         _dueTime = currentTask.dueTime;
         _dueDateController.text = currentTask.dueDate ?? '';
@@ -159,11 +170,13 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
       // Load recurrence completion
       if (_recurrenceConfig != null) {
-        final today = DateTime.now().toIso8601String().split('T')[0];
-        final completions = await AppDatabase.getRecurrenceCompletions(widget.taskId);
+        final today = AppTime.formatDate(AppTime.now());
+        final completions =
+            await AppDatabase.getRecurrenceCompletions(widget.taskId);
         if (mounted) {
           setState(() {
-            _todayCompleted = completions.any((c) => c['completionDate'] == today);
+            _todayCompleted =
+                completions.any((c) => c['completionDate'] == today);
           });
         }
       }
@@ -182,7 +195,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   Widget build(BuildContext context) {
     final taskState = ref.watch(taskProvider);
     // 优先从当前 state.tasks 中获取最新数据，如果没有则使用缓存的数据
-    final task = taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull ?? _cachedTask;
+    final task =
+        taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull ??
+            _cachedTask;
     final taskNotifier = ref.read(taskProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -200,7 +215,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       _loadTaskData();
     });
 
-    final currentList = taskState.lists.where((l) => l.id == task.listId).firstOrNull;
+    final currentList =
+        taskState.lists.where((l) => l.id == task.listId).firstOrNull;
 
     return Container(
       width: 320,
@@ -245,15 +261,20 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                           width: 24,
                           height: 24,
                           decoration: BoxDecoration(
-                            color: task.completed ? const Color(0xFF7C3AED) : Colors.transparent,
+                            color: task.completed
+                                ? const Color(0xFF7C3AED)
+                                : Colors.transparent,
                             border: Border.all(
-                              color: task.completed ? const Color(0xFF7C3AED) : AppColors.darkBorder,
+                              color: task.completed
+                                  ? const Color(0xFF7C3AED)
+                                  : AppColors.darkBorder,
                               width: 2,
                             ),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: task.completed
-                              ? const Icon(Icons.check, size: 16, color: Colors.white)
+                              ? const Icon(Icons.check,
+                                  size: 16, color: Colors.white)
                               : null,
                         ),
                       ),
@@ -266,7 +287,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                             border: InputBorder.none,
                             enabledBorder: UnderlineInputBorder(
                               borderSide: BorderSide(
-                                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                                color: isDark
+                                    ? AppColors.darkBorder
+                                    : AppColors.lightBorder,
                               ),
                             ),
                             focusedBorder: UnderlineInputBorder(
@@ -276,15 +299,22 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                             ),
                             hintText: '任务标题',
                             isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            contentPadding:
+                                const EdgeInsets.symmetric(vertical: 8),
                           ),
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w500,
-                            decoration: task.completed ? TextDecoration.lineThrough : null,
+                            decoration: task.completed
+                                ? TextDecoration.lineThrough
+                                : null,
                             color: task.completed
-                                ? (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)
-                                : (isDark ? AppColors.darkText : AppColors.lightText),
+                                ? (isDark
+                                    ? AppColors.darkTextSecondary
+                                    : AppColors.lightTextSecondary)
+                                : (isDark
+                                    ? AppColors.darkText
+                                    : AppColors.lightText),
                           ),
                           maxLines: null,
                           onSubmitted: (_) => _saveTitle(task.id),
@@ -440,21 +470,26 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                     _buildRecurrenceDisplay(task.id, isDark),
 
                   // Recurrence picker (simplified)
-                  if (_showRecurrencePicker) _buildRecurrencePicker(task.id, isDark),
+                  if (_showRecurrencePicker)
+                    _buildRecurrencePicker(task.id, isDark),
 
                   const SizedBox(height: 16),
 
                   // Focus history
                   if (_focusSessions.isNotEmpty) ...[
                     _buildSectionLabel('专注记录', isDark),
-                    ..._focusSessions.take(5).map((s) => _buildSessionItem(s, isDark)),
+                    ..._focusSessions
+                        .take(5)
+                        .map((s) => _buildSessionItem(s, isDark)),
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         '累计 ${(_focusSessions.fold<int>(0, (sum, s) => sum + (s['durationSeconds'] as int)) / 60).floor()} 分钟 · ${_focusSessions.length} 次',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                     ),
@@ -462,7 +497,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   ],
 
                   // List info
-                  _buildSectionLabel('所属清单：${currentList?.name ?? '未知'}', isDark),
+                  _buildSectionLabel(
+                      '所属清单：${currentList?.name ?? '未知'}', isDark),
 
                   const SizedBox(height: 16),
 
@@ -532,15 +568,21 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   Widget _buildReminderRow(TaskItem task, bool isDark) {
     final hasReminder = task.reminderAt != null;
-    final isPast = hasReminder && task.reminderAt! < DateTime.now().millisecondsSinceEpoch;
+    final isPast =
+        hasReminder && task.reminderAt! < DateTime.now().millisecondsSinceEpoch;
     final reminderText = hasReminder
-        ? DateFormat('yyyy/MM/dd HH:mm').format(DateTime.fromMillisecondsSinceEpoch(task.reminderAt!))
+        ? AppTime.formatDateTimeFromMilliseconds(task.reminderAt!)
+            .replaceAll('-', '/')
         : '设置提醒时间';
-    
+
     // 如果过期且未完成，显示为红色；如果已设置但未过期，显示为紫色(Accent)以提供视觉反馈
     final textColor = (isPast && !task.completed)
         ? Colors.red
-        : (hasReminder ? (isDark ? AppColors.darkAccent : AppColors.lightAccent) : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary));
+        : (hasReminder
+            ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
+            : (isDark
+                ? AppColors.darkTextSecondary
+                : AppColors.lightTextSecondary));
 
     return InkWell(
       onTap: () => _showReminderPresets(task),
@@ -556,9 +598,15 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         child: Row(
           children: [
             Icon(
-              hasReminder ? Icons.notifications_active : Icons.notifications_none,
+              hasReminder
+                  ? Icons.notifications_active
+                  : Icons.notifications_none,
               size: 18,
-              color: hasReminder ? const Color(0xFF7C3AED) : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+              color: hasReminder
+                  ? const Color(0xFF7C3AED)
+                  : (isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -575,7 +623,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                 icon: const Icon(Icons.close, size: 16),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                onPressed: () => ref.read(taskProvider.notifier).setReminder(task.id, null),
+                onPressed: () =>
+                    ref.read(taskProvider.notifier).setReminder(task.id, null),
               ),
           ],
         ),
@@ -588,9 +637,16 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
-        title: Text('未开启提醒权限', style: TextStyle(color: isDark ? AppColors.darkText : AppColors.lightText)),
-        content: Text('为了确保提醒能正常送达，请至少开启系统通知或日历同步权限中的一项。', style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)),
+        backgroundColor:
+            isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        title: Text('未开启提醒权限',
+            style: TextStyle(
+                color: isDark ? AppColors.darkText : AppColors.lightText)),
+        content: Text('为了确保提醒能正常送达，请至少开启系统通知或日历同步权限中的一项。',
+            style: TextStyle(
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary)),
         actions: [
           TextButton(
             onPressed: () async {
@@ -623,17 +679,18 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       return;
     }
 
-    final now = DateTime.now();
+    final now = AppTime.now();
     // 捕获页面级的 context 和 Navigator，避免在异步操作或弹窗关闭后 context 失效
     final pageContext = context;
     final taskNotifier = ref.read(taskProvider.notifier);
     final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-    
+
     if (!mounted) return;
-    
+
     showModalBottomSheet(
       context: pageContext,
-      backgroundColor: isDarkTheme ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor:
+          isDarkTheme ? AppColors.darkBackground : AppColors.lightBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -643,7 +700,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           children: [
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text('设置提醒', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              child: Text('设置提醒',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ),
             _buildPresetItem(
               sheetContext,
@@ -651,11 +709,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               label: '今天晚些时候',
               time: '18:00',
               onTap: () {
-                final target = DateTime(now.year, now.month, now.day, 18);
+                final target = AppTime.create(now.year, now.month, now.day, 18);
                 if (target.isAfter(now)) {
                   taskNotifier.setReminder(task.id, target);
                 } else {
-                  taskNotifier.setReminder(task.id, now.add(const Duration(hours: 1)));
+                  taskNotifier.setReminder(
+                      task.id, now.add(const Duration(hours: 1)));
                 }
                 Navigator.pop(sheetContext);
               },
@@ -666,7 +725,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               label: '明天上午',
               time: '09:00',
               onTap: () {
-                final target = DateTime(now.year, now.month, now.day + 1, 9);
+                final target =
+                    AppTime.create(now.year, now.month, now.day + 1, 9);
                 taskNotifier.setReminder(task.id, target);
                 Navigator.pop(sheetContext);
               },
@@ -679,7 +739,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               onTap: () {
                 int daysUntilMonday = (DateTime.monday - now.weekday + 7) % 7;
                 if (daysUntilMonday == 0) daysUntilMonday = 7;
-                final target = DateTime(now.year, now.month, now.day + daysUntilMonday, 9);
+                final target = AppTime.create(
+                    now.year, now.month, now.day + daysUntilMonday, 9);
                 taskNotifier.setReminder(task.id, target);
                 Navigator.pop(sheetContext);
               },
@@ -692,7 +753,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               onTap: () async {
                 // 先关闭底部菜单
                 Navigator.pop(sheetContext);
-                
+
                 // 使用页面级的 context 弹出日期选择器
                 final date = await showDatePicker(
                   context: pageContext,
@@ -700,16 +761,18 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   firstDate: now,
                   lastDate: now.add(const Duration(days: 365)),
                 );
-                
+
                 if (date != null && pageContext.mounted) {
                   // 使用页面级的 context 弹出时间选择器
                   final time = await showTimePicker(
                     context: pageContext,
-                    initialTime: TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+                    initialTime: TimeOfDay.fromDateTime(
+                        now.add(const Duration(hours: 1))),
                   );
-                  
+
                   if (time != null) {
-                    final target = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                    final target = AppTime.create(date.year, date.month,
+                        date.day, time.hour, time.minute);
                     taskNotifier.setReminder(task.id, target);
                   }
                 }
@@ -722,12 +785,22 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     );
   }
 
-  Widget _buildPresetItem(BuildContext context, {required IconData icon, required String label, String? time, required VoidCallback onTap}) {
+  Widget _buildPresetItem(BuildContext context,
+      {required IconData icon,
+      required String label,
+      String? time,
+      required VoidCallback onTap}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
       leading: Icon(icon, color: const Color(0xFF7C3AED)),
       title: Text(label),
-      trailing: time != null ? Text(time, style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)) : null,
+      trailing: time != null
+          ? Text(time,
+              style: TextStyle(
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary))
+          : null,
       onTap: onTap,
     );
   }
@@ -739,7 +812,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         label,
         style: TextStyle(
           fontSize: 12,
-          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+          color: isDark
+              ? AppColors.darkTextSecondary
+              : AppColors.lightTextSecondary,
         ),
       ),
     );
@@ -747,18 +822,15 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   /// 格式化 Unix 毫秒时间戳为可读日期时间字符串
   String _formatTimestamp(int milliseconds) {
-    final dt = DateTime.fromMillisecondsSinceEpoch(milliseconds);
-    final month = dt.month.toString().padLeft(2, '0');
-    final day = dt.day.toString().padLeft(2, '0');
-    final hour = dt.hour.toString().padLeft(2, '0');
-    final minute = dt.minute.toString().padLeft(2, '0');
-    return '${dt.year}/$month/$day $hour:$minute';
+    return AppTime.formatDateTimeFromMilliseconds(milliseconds)
+        .replaceAll('-', '/');
   }
 
   Widget _buildTimestampInfo(TaskItem task, bool isDark) {
     final textStyle = TextStyle(
       fontSize: 11,
-      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+      color:
+          isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -796,7 +868,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -811,10 +884,14 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           Wrap(
             spacing: 8,
             children: [
-              _buildRecurrenceChip('每天', () => _setRecurrence(taskId, RecurrenceFrequency.daily)),
-              _buildRecurrenceChip('每周', () => _setRecurrence(taskId, RecurrenceFrequency.weekly)),
-              _buildRecurrenceChip('每月', () => _setRecurrence(taskId, RecurrenceFrequency.monthly)),
-              _buildRecurrenceChip('每年', () => _setRecurrence(taskId, RecurrenceFrequency.yearly)),
+              _buildRecurrenceChip('每天',
+                  () => _setRecurrence(taskId, RecurrenceFrequency.daily)),
+              _buildRecurrenceChip('每周',
+                  () => _setRecurrence(taskId, RecurrenceFrequency.weekly)),
+              _buildRecurrenceChip('每月',
+                  () => _setRecurrence(taskId, RecurrenceFrequency.monthly)),
+              _buildRecurrenceChip('每年',
+                  () => _setRecurrence(taskId, RecurrenceFrequency.yearly)),
             ],
           ),
           const SizedBox(height: 16),
@@ -863,9 +940,11 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   Widget _buildSessionItem(Map<String, dynamic> session, bool isDark) {
-    final startedAt = DateTime.fromMillisecondsSinceEpoch(session['startedAt'] as int);
+    final startedAt =
+        AppTime.fromMillisecondsSinceEpoch(session['startedAt'] as int);
     final dateStr = '${startedAt.month}/${startedAt.day}';
-    final timeStr = '${startedAt.hour.toString().padLeft(2, '0')}:${startedAt.minute.toString().padLeft(2, '0')}';
+    final timeStr =
+        '${startedAt.hour.toString().padLeft(2, '0')}:${startedAt.minute.toString().padLeft(2, '0')}';
     final mins = ((session['durationSeconds'] as int) / 60).floor();
 
     return Padding(
@@ -877,7 +956,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             '$dateStr $timeStr',
             style: TextStyle(
               fontSize: 12,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
           const SizedBox(width: 12),
@@ -898,7 +979,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               fontSize: 12,
               color: (session['completed'] == true)
                   ? AppColors.darkSuccess
-                  : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                  : (isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
             ),
           ),
         ],
@@ -909,17 +992,19 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   void _selectDueDate(BuildContext context) async {
     final date = await showDatePicker(
       context: context,
-      initialDate: _dueDate != null ? DateTime.parse(_dueDate!) : DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
+      initialDate: _dueDate != null ? DateTime.parse(_dueDate!) : AppTime.now(),
+      firstDate: AppTime.now().subtract(const Duration(days: 365)),
+      lastDate: AppTime.now().add(const Duration(days: 365 * 5)),
     );
     if (date != null) {
-      final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+      final dateStr = AppTime.formatDate(date);
       setState(() {
         _dueDate = dateStr;
         _dueDateController.text = dateStr;
       });
-      ref.read(taskProvider.notifier).updateTask(widget.taskId, {'dueDate': _dueDate});
+      ref
+          .read(taskProvider.notifier)
+          .updateTask(widget.taskId, {'dueDate': _dueDate});
     }
   }
 
@@ -927,31 +1012,42 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     final time = await showTimePicker(
       context: context,
       initialTime: _dueTime != null
-          ? TimeOfDay(hour: int.parse(_dueTime!.split(':')[0]), minute: int.parse(_dueTime!.split(':')[1]))
-          : TimeOfDay.now(),
+          ? TimeOfDay(
+              hour: int.parse(_dueTime!.split(':')[0]),
+              minute: int.parse(_dueTime!.split(':')[1]))
+          : TimeOfDay.fromDateTime(AppTime.now()),
     );
     if (time != null) {
-      final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+      final timeStr =
+          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
       setState(() {
         _dueTime = timeStr;
         _dueTimeController.text = timeStr;
       });
-      ref.read(taskProvider.notifier).updateTask(widget.taskId, {'dueTime': _dueTime});
+      ref
+          .read(taskProvider.notifier)
+          .updateTask(widget.taskId, {'dueTime': _dueTime});
     }
   }
 
   void _saveTitle(String taskId) {
     if (_titleController.text.trim().isNotEmpty) {
-      ref.read(taskProvider.notifier).updateTask(taskId, {'title': _titleController.text.trim()});
+      ref
+          .read(taskProvider.notifier)
+          .updateTask(taskId, {'title': _titleController.text.trim()});
     }
   }
 
   void _saveNotes(String taskId) {
-    ref.read(taskProvider.notifier).updateTask(taskId, {'notes': _notesController.text.trim()});
+    ref
+        .read(taskProvider.notifier)
+        .updateTask(taskId, {'notes': _notesController.text.trim()});
   }
 
   void _saveExpectedMinutes(String taskId) {
     final mins = int.tryParse(_expectedMinutesController.text);
-    ref.read(taskProvider.notifier).updateTask(taskId, {'expectedMinutes': mins});
+    ref
+        .read(taskProvider.notifier)
+        .updateTask(taskId, {'expectedMinutes': mins});
   }
 }

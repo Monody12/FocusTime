@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../providers/task_provider.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 
 class TaskItemWidget extends ConsumerStatefulWidget {
   final TaskItem task;
@@ -38,7 +39,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     final Widget content = GestureDetector(
       // 拖拽状态时禁用点击，防止误触发（长按后即使没移动也会触发 drag）
       onTap: _isDragging ? null : widget.onTap,
-      onSecondaryTapDown: (details) => _showContextMenu(context, details.globalPosition),
+      onSecondaryTapDown: (details) =>
+          _showContextMenu(context, details.globalPosition),
       behavior: HitTestBehavior.opaque,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -64,7 +66,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   border: Border.all(
                     color: widget.task.completed
                         ? const Color(0xFF7C3AED)
-                        : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                        : (isDark
+                            ? AppColors.darkBorder
+                            : AppColors.lightBorder),
                     width: 2,
                   ),
                   borderRadius: BorderRadius.circular(4),
@@ -82,11 +86,14 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 style: TextStyle(
                   fontSize: 15,
                   color: widget.task.completed
-                      ? (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)
+                      ? (isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary)
                       : isOverdue && !widget.task.completed
                           ? Colors.red
                           : (isDark ? AppColors.darkText : AppColors.lightText),
-                  decoration: widget.task.completed ? TextDecoration.lineThrough : null,
+                  decoration:
+                      widget.task.completed ? TextDecoration.lineThrough : null,
                 ),
               ),
             ),
@@ -97,7 +104,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 child: Icon(
                   Icons.wb_sunny_outlined,
                   size: 16,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
               ),
             // 重要图标
@@ -122,7 +131,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                       size: 12,
                       color: isOverdue && !widget.task.completed
                           ? Colors.red
-                          : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                          : (isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary),
                     ),
                     const SizedBox(width: 2),
                     Text(
@@ -131,7 +142,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                         fontSize: 12,
                         color: isOverdue && !widget.task.completed
                             ? Colors.red
-                            : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                            : (isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary),
                       ),
                     ),
                   ],
@@ -144,7 +157,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 child: Icon(
                   Icons.notifications_active,
                   size: 14,
-                  color: (widget.task.reminderAt! < DateTime.now().millisecondsSinceEpoch && !widget.task.completed)
+                  color: (widget.task.reminderAt! <
+                              DateTime.now().millisecondsSinceEpoch &&
+                          !widget.task.completed)
                       ? Colors.red
                       : const Color(0xFF7C3AED),
                 ),
@@ -185,7 +200,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   border: Border.all(
                     color: widget.task.completed
                         ? const Color(0xFF7C3AED)
-                        : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                        : (isDark
+                            ? AppColors.darkBorder
+                            : AppColors.lightBorder),
                     width: 2,
                   ),
                   borderRadius: BorderRadius.circular(4),
@@ -228,9 +245,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     // 当在 ReorderableListView 中时，根据平台选择拖拽监听器。
     // 移动端 (Android/iOS) 使用长按触发 (Delayed)，防止与滑动翻页冲突；桌面端使用立即触发。
     if (widget.index != null) {
-      final isMobile = Theme.of(context).platform == TargetPlatform.android || 
-                       Theme.of(context).platform == TargetPlatform.iOS;
-      
+      final isMobile = Theme.of(context).platform == TargetPlatform.android ||
+          Theme.of(context).platform == TargetPlatform.iOS;
+
       if (isMobile) {
         return ReorderableDelayedDragStartListener(
           index: widget.index!,
@@ -250,19 +267,19 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
   bool _isOverdue(String? dueDate) {
     if (dueDate == null) return false;
     try {
-      final today = DateTime.now();
+      final today = AppTime.now();
       final due = DateTime.parse(dueDate);
-      return due.isBefore(DateTime(today.year, today.month, today.day));
+      return due.isBefore(AppTime.create(today.year, today.month, today.day));
     } catch (_) {
       return false;
     }
   }
 
   String _formatDueDate(String dueDate) {
-    final today = DateTime.now();
-    final todayStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final today = AppTime.now();
+    final todayStr = AppTime.formatDate(today);
     final tomorrow = today.add(const Duration(days: 1));
-    final tomorrowStr = '${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}';
+    final tomorrowStr = AppTime.formatDate(tomorrow);
 
     if (dueDate == todayStr) return '今天';
     if (dueDate == tomorrowStr) return '明天';
@@ -275,7 +292,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
 
     showMenu<dynamic>(
       context: context,
-      position: RelativeRect.fromLTRB(position.dx, position.dy, position.dx, position.dy),
+      position: RelativeRect.fromLTRB(
+          position.dx, position.dy, position.dx, position.dy),
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       color: isDark ? const Color(0xFF2D2D3F) : Colors.white,
@@ -310,7 +328,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           height: 38,
           onTap: () => taskNotifier.toggleTaskComplete(widget.task.id),
           child: _buildMenuItem(
-            widget.task.completed ? Icons.check_circle : Icons.radio_button_unchecked,
+            widget.task.completed
+                ? Icons.check_circle
+                : Icons.radio_button_unchecked,
             widget.task.completed ? '标记为未完成' : '标记为已完成',
             'Ctrl+D',
             isDark,
@@ -331,12 +351,12 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         ),
         PopupMenuItem<dynamic>(
           height: 38,
-          onTap: () => _setDueDate(DateTime.now()),
+          onTap: () => _setDueDate(AppTime.now()),
           child: _buildMenuItem(Icons.event, '今天', null, isDark),
         ),
         PopupMenuItem<dynamic>(
           height: 38,
-          onTap: () => _setDueDate(DateTime.now().add(const Duration(days: 1))),
+          onTap: () => _setDueDate(AppTime.now().add(const Duration(days: 1))),
           child: _buildMenuItem(Icons.event_note, '明天', null, isDark),
         ),
         PopupMenuItem<dynamic>(
@@ -347,13 +367,16 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         const PopupMenuDivider(height: 1),
         PopupMenuItem<dynamic>(
           height: 38,
-          onTap: () => Future.delayed(Duration.zero, () => _showMoveToDialog(context)),
+          onTap: () =>
+              Future.delayed(Duration.zero, () => _showMoveToDialog(context)),
           child: _buildMenuItem(Icons.move_to_inbox, '移动任务到...', null, isDark),
         ),
         PopupMenuItem<dynamic>(
           height: 38,
-          onTap: () => Future.delayed(Duration.zero, () => _confirmDelete(context)),
-          child: _buildMenuItem(Icons.delete_outline, '删除任务', 'Delete', isDark, isDanger: true),
+          onTap: () =>
+              Future.delayed(Duration.zero, () => _confirmDelete(context)),
+          child: _buildMenuItem(Icons.delete_outline, '删除任务', 'Delete', isDark,
+              isDanger: true),
         ),
       ],
     );
@@ -366,7 +389,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       builder: (context) => AlertDialog(
         title: const Text('删除任务', style: TextStyle(fontSize: 16)),
         content: Text('确定要删除任务 "${widget.task.title}" 吗？'),
-        backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        backgroundColor:
+            isDark ? AppColors.darkSurface : AppColors.lightSurface,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -391,7 +415,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 排除系统清单和当前清单
-    final otherLists = taskState.lists.where((l) => !l.isSystem && l.id != widget.task.listId).toList();
+    final otherLists = taskState.lists
+        .where((l) => !l.isSystem && l.id != widget.task.listId)
+        .toList();
 
     if (otherLists.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -433,8 +459,11 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     );
   }
 
-  Widget _buildMenuItem(IconData icon, String text, String? shortcut, bool isDark, {bool isDanger = false}) {
-    final color = isDanger ? Colors.red : (isDark ? Colors.white : Colors.black87);
+  Widget _buildMenuItem(
+      IconData icon, String text, String? shortcut, bool isDark,
+      {bool isDanger = false}) {
+    final color =
+        isDanger ? Colors.red : (isDark ? Colors.white : Colors.black87);
     return Row(
       children: [
         Icon(icon, size: 18, color: color),
@@ -458,14 +487,18 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
   }
 
   void _setDueDate(DateTime date) {
-    final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-    ref.read(taskProvider.notifier).updateTask(widget.task.id, {'dueDate': dateStr});
+    final dateStr = AppTime.formatDate(date);
+    ref
+        .read(taskProvider.notifier)
+        .updateTask(widget.task.id, {'dueDate': dateStr});
   }
 
   Future<void> _pickDate(BuildContext context) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: widget.task.dueDate != null ? DateTime.parse(widget.task.dueDate!) : DateTime.now(),
+      initialDate: widget.task.dueDate != null
+          ? DateTime.parse(widget.task.dueDate!)
+          : AppTime.now(),
       firstDate: DateTime(2000),
       lastDate: DateTime(2100),
     );

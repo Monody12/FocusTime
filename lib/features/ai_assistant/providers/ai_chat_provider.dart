@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_message.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
@@ -16,13 +17,17 @@ const _tools = [
     'type': 'function',
     'function': {
       'name': 'create_task',
-      'description': '创建一个新任务。dueDate/dueTime 是截止时间（结束时间），不能早于当前时间。如果用户指定了开始时间和时长，截止时间 = 开始时间 + 时长。',
+      'description':
+          '创建一个新任务。dueDate/dueTime 是截止时间（结束时间），不能早于当前时间。如果用户指定了开始时间和时长，截止时间 = 开始时间 + 时长。',
       'parameters': {
         'type': 'object',
         'properties': {
           'title': {'type': 'string', 'description': '任务标题'},
           'notes': {'type': 'string', 'description': '备注（可选）'},
-          'listId': {'type': 'string', 'description': '清单 ID，默认 system-all-tasks'},
+          'listId': {
+            'type': 'string',
+            'description': '清单 ID，默认 system-all-tasks'
+          },
           'dueDate': {
             'type': 'string',
             'description': '截止日期（任务结束日期），格式 YYYY-MM-DD。不是开始日期。',
@@ -31,12 +36,16 @@ const _tools = [
             'type': 'string',
             'description': '截止时间（任务结束时间），格式 HH:mm（24小时制）。不是开始时间。',
           },
-          'expectedMinutes': {'type': 'integer', 'description': '任务持续时长（分钟）。截止时间 = 开始时间 + 持续时长'},
+          'expectedMinutes': {
+            'type': 'integer',
+            'description': '任务持续时长（分钟）。截止时间 = 开始时间 + 持续时长'
+          },
           'isMyDay': {'type': 'boolean', 'description': '是否添加到"我的一天"'},
           'isImportant': {'type': 'boolean', 'description': '是否标记为重要'},
           'reminderAt': {
             'type': 'string',
-            'description': '任务开始时间/提醒时间，ISO 8601 格式（如 "2026-05-07T14:00:00"）。注意：这是开始时间，不是截止时间。',
+            'description':
+                '任务开始时间/提醒时间，ISO 8601 格式（如 "2026-05-07T14:00:00"）。注意：这是开始时间，不是截止时间。',
           },
         },
         'required': ['title'],
@@ -208,7 +217,8 @@ class AiChatState {
       AiChatState(
         messages: messages ?? this.messages,
         pendingOperations: pendingOperations ?? this.pendingOperations,
-        currentConversationId: currentConversationId ?? this.currentConversationId,
+        currentConversationId:
+            currentConversationId ?? this.currentConversationId,
         isStreaming: isStreaming ?? this.isStreaming,
         streamingText: streamingText ?? this.streamingText,
         errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -248,7 +258,8 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
       state = state.copyWith(
         customPrompt: prompt ?? '',
         datedListEnabled: datedEnabled == 'true',
-        datedListFormat: datedFormat?.isNotEmpty == true ? datedFormat! : 'yyyyMMdd',
+        datedListFormat:
+            datedFormat?.isNotEmpty == true ? datedFormat! : 'yyyyMMdd',
         reminderOnCreate: reminderOnCreate == 'true',
       );
     }
@@ -357,7 +368,7 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     final systemPrompt = AiContextBuilder.buildSystemPrompt(
       allTasks: taskState.tasks,
       lists: taskState.lists,
-      now: DateTime.now(),
+      now: AppTime.now(),
       customPrompt: state.customPrompt,
       datedListEnabled: state.datedListEnabled,
       datedListFormat: state.datedListFormat,
@@ -522,20 +533,24 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     final op = state.pendingOperations.firstWhere((o) => o.id == operationId);
 
     // Validate
-    final error = AiOperationEngine.validate(op, currentTasks: taskState.tasks, currentLists: taskState.lists);
+    final error = AiOperationEngine.validate(op,
+        currentTasks: taskState.tasks, currentLists: taskState.lists);
     if (error != null) {
       final failedOp = op.copyWith(
         status: AiOperationStatus.failed,
         errorMessage: error,
       );
-      final ops = state.pendingOperations.map((o) => o.id == operationId ? failedOp : o).toList();
+      final ops = state.pendingOperations
+          .map((o) => o.id == operationId ? failedOp : o)
+          .toList();
       state = state.copyWith(pendingOperations: ops, errorMessage: error);
       return;
     }
 
     // Mark as approved first (optimistic)
     var ops = state.pendingOperations.map((o) {
-      if (o.id == operationId) return o.copyWith(status: AiOperationStatus.approved);
+      if (o.id == operationId)
+        return o.copyWith(status: AiOperationStatus.approved);
       return o;
     }).toList();
     state = state.copyWith(pendingOperations: ops);
@@ -566,10 +581,13 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     // Validate all first
     for (final op in state.pendingOperations) {
       if (op.status == AiOperationStatus.rejected) continue;
-      final error = AiOperationEngine.validate(op, currentTasks: taskState.tasks, currentLists: taskState.lists);
+      final error = AiOperationEngine.validate(op,
+          currentTasks: taskState.tasks, currentLists: taskState.lists);
       if (error != null) {
         var ops = state.pendingOperations.map((o) {
-          if (o.id == op.id) return o.copyWith(status: AiOperationStatus.failed, errorMessage: error);
+          if (o.id == op.id)
+            return o.copyWith(
+                status: AiOperationStatus.failed, errorMessage: error);
           return o;
         }).toList();
         state = state.copyWith(pendingOperations: ops, errorMessage: error);
@@ -597,12 +615,14 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     state = state.copyWith(clearError: true);
   }
 
-  List<AiOperation> get activePendingOps =>
-      state.pendingOperations
-          .where((op) => op.status == AiOperationStatus.pending || op.status == AiOperationStatus.edited)
-          .toList();
+  List<AiOperation> get activePendingOps => state.pendingOperations
+      .where((op) =>
+          op.status == AiOperationStatus.pending ||
+          op.status == AiOperationStatus.edited)
+      .toList();
 }
 
-final aiChatProvider = StateNotifierProvider<AiChatNotifier, AiChatState>((ref) {
+final aiChatProvider =
+    StateNotifierProvider<AiChatNotifier, AiChatState>((ref) {
   return AiChatNotifier(ref);
 });
