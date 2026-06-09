@@ -55,7 +55,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                  color: context.appColors.text,
                 ),
               ),
               const SizedBox(width: 12),
@@ -63,9 +63,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                 '${incompleteTasks.length} 个未完成',
                 style: TextStyle(
                   fontSize: 14,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
               ),
             ],
@@ -77,11 +75,10 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
           margin: const EdgeInsets.symmetric(horizontal: 22),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color:
-                isDark ? AppColors.darkSurface : AppColors.lightSurfaceElevated,
+            color: context.appColors.surfaceElevated,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              color: context.appColors.border,
             ),
             boxShadow: [
               BoxShadow(
@@ -101,9 +98,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                   '+',
                   style: TextStyle(
                     fontSize: 18,
-                    color: isDark
-                        ? AppColors.darkAccentSecondary
-                        : AppColors.lightAccentSecondary,
+                    color: context.appColors.accentSecondary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -120,14 +115,12 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                     hintStyle: TextStyle(
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                   style: TextStyle(
                     fontSize: 14,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                   onSubmitted: (_) => _addTask(),
                 ),
@@ -192,9 +185,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
-                                    color: isDark
-                                        ? AppColors.darkTextSecondary
-                                        : AppColors.lightTextSecondary,
+                                    color: context.appColors.textSecondary,
                                   ),
                                 ),
                               ],
@@ -235,9 +226,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
             '还没有任务，添加一个吧',
             style: TextStyle(
               fontSize: 16,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
           ),
         ],

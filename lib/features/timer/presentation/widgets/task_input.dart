@@ -62,9 +62,7 @@ class _TaskInputState extends ConsumerState<TaskInput> {
           Text(
             '当前专注：',
             style: TextStyle(
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
               fontSize: 12,
             ),
           ),
@@ -82,30 +80,22 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                         horizontal: 12, vertical: 10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                          color: isDark
-                              ? AppColors.darkBorder
-                              : AppColors.lightBorder),
+                      borderSide: BorderSide(color: context.appColors.border),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(
-                          color: isDark
-                              ? AppColors.darkBorder
-                              : AppColors.lightBorder),
+                      borderSide: BorderSide(color: context.appColors.border),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide(
-                        color: isDark
-                            ? AppColors.darkAccent
-                            : AppColors.lightAccent,
+                        color: context.appColors.accent,
                         width: 2,
                       ),
                     ),
                   ),
                   style: TextStyle(
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                   onTap: () => setState(() => _showHistory = true),
                   onSubmitted: (_) => _handleSubmit(),
@@ -114,9 +104,7 @@ class _TaskInputState extends ConsumerState<TaskInput> {
               IconButton(
                 icon: Icon(
                   _showHistory ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
                 onPressed: () => setState(() => _showHistory = !_showHistory),
               ),
@@ -129,11 +117,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
               margin: const EdgeInsets.only(top: 4),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                color: context.appColors.surface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                    color:
-                        isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                border: Border.all(color: context.appColors.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,19 +133,14 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                         '☀ 我的一天',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
+                          color: context.appColors.textSecondary,
                         ),
                       ),
                     ),
                     ...myDayTasks.map(
                         (task) => _buildHistoryItem(task.title, '📋', isDark)),
                     if (displayHistory.isNotEmpty)
-                      Divider(
-                          color: isDark
-                              ? AppColors.darkBorder
-                              : AppColors.lightBorder),
+                      Divider(color: context.appColors.border),
                   ],
 
                   // History section
@@ -171,9 +152,7 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                         '🕐 最近使用',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
+                          color: context.appColors.textSecondary,
                         ),
                       ),
                     ),
@@ -201,7 +180,7 @@ class _TaskInputState extends ConsumerState<TaskInput> {
               child: Text(
                 title,
                 style: TextStyle(
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                  color: context.appColors.text,
                   fontSize: 14,
                 ),
                 overflow: TextOverflow.ellipsis,

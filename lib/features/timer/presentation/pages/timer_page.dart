@@ -52,10 +52,10 @@ class TimerPage extends ConsumerWidget {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                color: context.appColors.surface,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                  color: context.appColors.border,
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -83,8 +83,7 @@ class TimerPage extends ConsumerWidget {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
+                          color: context.appColors.text,
                         ),
                       ),
                     ),
@@ -96,11 +95,11 @@ class TimerPage extends ConsumerWidget {
                   // 阶段/循环信息
                   if (timerState.timerMode == TimerMode.singleCore &&
                       timerState.targetTime != null)
-                    _buildSingleCoreInfo(timerState, isDark)
+                    _buildSingleCoreInfo(context, timerState)
                   else if (timerState.timerMode == TimerMode.pomodoro)
-                    _buildPomodoroInfo(timerState, isDark)
+                    _buildPomodoroInfo(context, timerState)
                   else if (timerState.timerMode == TimerMode.task)
-                    _buildTaskInfo(timerState, isDark),
+                    _buildTaskInfo(context, timerState),
 
                   const SizedBox(height: 16),
 
@@ -127,11 +126,11 @@ class TimerPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildSingleCoreInfo(TimerState timerState, bool isDark) {
+  Widget _buildSingleCoreInfo(BuildContext context, TimerState timerState) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(8),
       ),
       // Wrap 自动换行，防止长文本溢出
@@ -144,16 +143,14 @@ class TimerPage extends ConsumerWidget {
             '目标时间：${_formatTargetTime(timerState.targetTime!)}',
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
           Text(
             '最少 ${timerState.singleCoreConfig.minDuration} 分钟',
             style: TextStyle(
               fontSize: 13,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
           ),
         ],
@@ -161,7 +158,7 @@ class TimerPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildPomodoroInfo(TimerState timerState, bool isDark) {
+  Widget _buildPomodoroInfo(BuildContext context, TimerState timerState) {
     String phaseText;
     if (timerState.timerPhase == 'focus') {
       phaseText = '专注 ${timerState.pomodoroConfig.focusDuration} 分钟';
@@ -181,7 +178,7 @@ class TimerPage extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Wrap(
@@ -191,30 +188,25 @@ class TimerPage extends ConsumerWidget {
         children: [
           Text(
             phaseText,
-            style: TextStyle(
-                fontSize: 13,
-                color: isDark ? AppColors.darkText : AppColors.lightText),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
           ),
           if (cycleText.isNotEmpty)
             Text(
               cycleText,
               style: TextStyle(
-                  fontSize: 12,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary),
+                  fontSize: 12, color: context.appColors.textSecondary),
             ),
         ],
       ),
     );
   }
 
-  Widget _buildTaskInfo(TimerState timerState, bool isDark) {
+  Widget _buildTaskInfo(BuildContext context, TimerState timerState) {
     final remaining = timerState.remainingSeconds ~/ 60;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Wrap(
@@ -224,9 +216,7 @@ class TimerPage extends ConsumerWidget {
         children: [
           Text(
             '任务模式 · 剩余 $remaining 分钟',
-            style: TextStyle(
-                fontSize: 13,
-                color: isDark ? AppColors.darkText : AppColors.lightText),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
           ),
         ],
       ),
@@ -237,16 +227,14 @@ class TimerPage extends ConsumerWidget {
   Widget _buildBreakCompletePanel(
       BuildContext context, WidgetRef ref, TimerState timerState) {
     final timerNotifier = ref.read(timerProvider.notifier);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final phaseName = timerState.timerPhase == 'long-break' ? '长休息' : '短休息';
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        border: Border.all(color: context.appColors.border),
       ),
       child: Column(
         children: [
@@ -255,7 +243,7 @@ class TimerPage extends ConsumerWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
           const SizedBox(height: 10),
@@ -292,16 +280,14 @@ class TimerPage extends ConsumerWidget {
   Widget _buildFocusCompletePanel(
       BuildContext context, WidgetRef ref, TimerState timerState) {
     final timerNotifier = ref.read(timerProvider.notifier);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final breakName = timerState.timerPhase == 'long-break' ? '长' : '短';
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        border: Border.all(color: context.appColors.border),
       ),
       child: Column(
         children: [
@@ -310,7 +296,7 @@ class TimerPage extends ConsumerWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
           const SizedBox(height: 10),

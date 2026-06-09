@@ -24,7 +24,6 @@ class OperationPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDelete = operation.type.name == 'deleteTask';
     final isCompleted = operation.status == AiOperationStatus.approved ||
         operation.status == AiOperationStatus.rejected ||
@@ -33,12 +32,12 @@ class OperationPreviewCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDelete
               ? Colors.red.withOpacity(0.5)
-              : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+              : (context.appColors.border),
           width: isDelete ? 1.5 : 1,
         ),
       ),
@@ -52,9 +51,7 @@ class OperationPreviewCard extends StatelessWidget {
                 Icon(
                   _typeIcon(),
                   size: 20,
-                  color: isDelete
-                      ? Colors.red
-                      : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
+                  color: isDelete ? Colors.red : (context.appColors.accent),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -63,16 +60,16 @@ class OperationPreviewCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: isDark ? AppColors.darkText : AppColors.lightText,
+                      color: context.appColors.text,
                     ),
                   ),
                 ),
-                if (isCompleted) _statusChip(isDark),
+                if (isCompleted) _statusChip(context),
               ],
             ),
             if (_hasTimeInfo) ...[
               const SizedBox(height: 6),
-              _buildTimeDetail(isDark),
+              _buildTimeDetail(context),
             ],
             if (operation.reasoning != null &&
                 operation.reasoning!.isNotEmpty) ...[
@@ -81,9 +78,7 @@ class OperationPreviewCard extends StatelessWidget {
                 operation.reasoning!,
                 style: TextStyle(
                   fontSize: 12,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
               ),
             ],
@@ -101,17 +96,11 @@ class OperationPreviewCard extends StatelessWidget {
                 children: [
                   _actionButton('拒绝', Icons.close, Colors.grey, onReject),
                   const SizedBox(width: 8),
-                  _actionButton(
-                      '编辑',
-                      Icons.edit_outlined,
-                      isDark ? AppColors.darkAccent : AppColors.lightAccent,
-                      onEdit),
+                  _actionButton('编辑', Icons.edit_outlined,
+                      context.appColors.accent, onEdit),
                   const SizedBox(width: 8),
                   _actionButton(
-                      '批准',
-                      Icons.check,
-                      isDark ? AppColors.darkSuccess : AppColors.lightSuccess,
-                      onApprove),
+                      '批准', Icons.check, context.appColors.success, onApprove),
                 ],
               ),
             ],
@@ -121,7 +110,7 @@ class OperationPreviewCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeDetail(bool isDark) {
+  Widget _buildTimeDetail(BuildContext context) {
     final params = operation.params;
     final dueDate = params['dueDate'] as String?;
     final dueTime = params['dueTime'] as String?;
@@ -158,23 +147,21 @@ class OperationPreviewCard extends StatelessWidget {
             ? endDt.difference(startDt).inMinutes
             : null);
 
+    final colors = context.appColors;
     final chips = <Widget>[];
 
     if (startDt != null) {
       chips.add(_timeChip(
         Icons.notifications_outlined,
         '提醒 ${_fmtTime(startDt)}',
-        isDark,
+        colors,
         accent: Colors.orange,
       ));
       if (endDt != null) {
         chips.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Icon(Icons.arrow_forward,
-              size: 12,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary),
+          child:
+              Icon(Icons.arrow_forward, size: 12, color: colors.textSecondary),
         ));
       }
     }
@@ -184,16 +171,16 @@ class OperationPreviewCard extends StatelessWidget {
         startDt != null
             ? '截止 ${_fmtTime(endDt)}'
             : '截止 ${_fmtDate(endDt)} ${_fmtTime(endDt)}',
-        isDark,
+        colors,
       ));
     }
     if (duration != null && duration > 0) {
-      chips.add(_timeChip(Icons.timer_outlined, '$duration分钟', isDark));
+      chips.add(_timeChip(Icons.timer_outlined, '$duration分钟', colors));
     }
     if (dueDate != null && startDt == null && endDt == null) {
-      chips.add(_timeChip(Icons.calendar_today, dueDate, isDark));
+      chips.add(_timeChip(Icons.calendar_today, dueDate, colors));
     } else if (dueDate != null) {
-      chips.add(_timeChip(Icons.calendar_today, dueDate, isDark));
+      chips.add(_timeChip(Icons.calendar_today, dueDate, colors));
     }
 
     if (chips.isEmpty) return const SizedBox.shrink();
@@ -206,9 +193,9 @@ class OperationPreviewCard extends StatelessWidget {
     );
   }
 
-  Widget _timeChip(IconData icon, String label, bool isDark, {Color? accent}) {
-    final color = accent ??
-        (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary);
+  Widget _timeChip(IconData icon, String label, AppThemeColors colors,
+      {Color? accent}) {
+    final color = accent ?? colors.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -238,12 +225,13 @@ class OperationPreviewCard extends StatelessWidget {
     return AppTime.formatDate(dt);
   }
 
-  Widget _statusChip(bool isDark) {
+  Widget _statusChip(BuildContext context) {
+    final colors = context.appColors;
     final label = operation.statusLabel;
     Color color;
     switch (operation.status) {
       case AiOperationStatus.approved:
-        color = isDark ? AppColors.darkSuccess : AppColors.lightSuccess;
+        color = colors.success;
         break;
       case AiOperationStatus.rejected:
         color = Colors.grey;
@@ -252,7 +240,7 @@ class OperationPreviewCard extends StatelessWidget {
         color = Colors.red;
         break;
       default:
-        color = isDark ? AppColors.darkAccent : AppColors.lightAccent;
+        color = colors.accent;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

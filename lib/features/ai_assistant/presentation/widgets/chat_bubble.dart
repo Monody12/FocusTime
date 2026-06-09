@@ -29,7 +29,6 @@ class ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == AiMessageRole.user;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasContent = message.content.isNotEmpty;
 
     return GestureDetector(
@@ -43,7 +42,7 @@ class ChatBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!isUser) ...[
-              _buildAvatar(isDark, false),
+              _buildAvatar(context, false),
               const SizedBox(width: 8),
             ],
             Flexible(
@@ -59,12 +58,8 @@ class ChatBubble extends StatelessWidget {
                         horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: isUser
-                          ? (isDark
-                              ? AppColors.darkAccent
-                              : AppColors.lightAccent)
-                          : (isDark
-                              ? AppColors.darkSurface
-                              : AppColors.lightSurface),
+                          ? (context.appColors.accent)
+                          : (context.appColors.surface),
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -80,9 +75,7 @@ class ChatBubble extends StatelessWidget {
                             style: TextStyle(
                               color: isUser
                                   ? Colors.white
-                                  : (isDark
-                                      ? AppColors.darkText
-                                      : AppColors.lightText),
+                                  : (context.appColors.text),
                               fontSize: 14,
                               height: 1.5,
                             ),
@@ -92,9 +85,7 @@ class ChatBubble extends StatelessWidget {
                             style: TextStyle(
                               color: isUser
                                   ? Colors.white
-                                  : (isDark
-                                      ? AppColors.darkText
-                                      : AppColors.lightText),
+                                  : (context.appColors.text),
                               fontSize: 14,
                               height: 1.5,
                             ),
@@ -109,9 +100,7 @@ class ChatBubble extends StatelessWidget {
                         child: Icon(
                           Icons.copy,
                           size: 14,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
+                          color: context.appColors.textSecondary,
                         ),
                       ),
                     ),
@@ -120,7 +109,7 @@ class ChatBubble extends StatelessWidget {
             ),
             if (isUser) ...[
               const SizedBox(width: 8),
-              _buildAvatar(isDark, true),
+              _buildAvatar(context, true),
             ],
           ],
         ),
@@ -128,18 +117,15 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatar(bool isDark, bool isUser) {
+  Widget _buildAvatar(BuildContext context, bool isUser) {
     return CircleAvatar(
       radius: 16,
-      backgroundColor: isUser
-          ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
-          : (isDark ? AppColors.darkSurface : AppColors.lightSurface),
+      backgroundColor:
+          isUser ? (context.appColors.accent) : (context.appColors.surface),
       child: Icon(
         isUser ? Icons.person : Icons.smart_toy_outlined,
         size: 18,
-        color: isUser
-            ? Colors.white
-            : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
+        color: isUser ? Colors.white : (context.appColors.accent),
       ),
     );
   }

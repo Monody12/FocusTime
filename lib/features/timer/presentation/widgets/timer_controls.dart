@@ -10,7 +10,6 @@ class TimerControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final timerState = ref.watch(timerProvider);
     final timerNotifier = ref.read(timerProvider.notifier);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 紧凑布局：计时器面板宽度有限(280px)，使用较小的按钮和间距
     return Row(
@@ -29,8 +28,7 @@ class TimerControls extends ConsumerWidget {
             }
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor:
-                isDark ? AppColors.darkAccent : AppColors.lightAccent,
+            backgroundColor: context.appColors.accent,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             minimumSize: Size.zero,
@@ -75,10 +73,9 @@ class TimerControls extends ConsumerWidget {
             side: BorderSide(
               color: timerState.timerStatus == TimerStatus.idle
                   ? Colors.grey.withOpacity(0.3)
-                  : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
+                  : (context.appColors.accent),
             ),
-            foregroundColor:
-                isDark ? AppColors.darkAccent : AppColors.lightAccent,
+            foregroundColor: context.appColors.accent,
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,

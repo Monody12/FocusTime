@@ -217,7 +217,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      color: context.appColors.background,
       child: Column(
         children: [
           // Header
@@ -230,7 +230,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                 ),
                 const Spacer(),
@@ -451,9 +451,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       '启用后，选择模式时会记住您的选择，下次超时自动使用该模式',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   ),
@@ -466,14 +464,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkSurface
-                          : AppColors.lightSurface,
+                      color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder,
+                        color: context.appColors.border,
                       ),
                     ),
                     child: Column(
@@ -483,9 +477,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           '数据库：',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary,
+                            color: context.appColors.textSecondary,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -494,9 +486,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           style: TextStyle(
                             fontSize: 12,
                             fontFamily: 'monospace',
-                            color: isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary,
+                            color: context.appColors.textSecondary,
                           ),
                           softWrap: true,
                         ),
@@ -524,9 +514,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     '导入将覆盖当前数据，请先导出备份',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
 
@@ -539,9 +527,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     '如果您的日历出现重复事件或无法修改的问题，您可以使用此按钮强制清理系统中的所有相关日历并重新同步当前有效任务。',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -700,9 +686,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       '上次同步：${AppTime.formatDateTimeFromMilliseconds(_lastSyncTime!)}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   ],
@@ -720,9 +704,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     '多设备数据自动合并，最新修改优先',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -747,9 +729,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? AppColors.darkSurface
-                            : AppColors.lightSurface,
+                        color: context.appColors.surface,
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
@@ -766,9 +746,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               _syncStatus,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: isDark
-                                    ? AppColors.darkText
-                                    : AppColors.lightText,
+                                color: context.appColors.text,
                               ),
                             ),
                           ),
@@ -783,14 +761,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkSurface
-                          : AppColors.lightSurface,
+                      color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder,
+                        color: context.appColors.border,
                       ),
                     ),
                     child: Row(
@@ -800,9 +774,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           style: TextStyle(
                             fontWeight: FontWeight.w500,
                             fontSize: 13,
-                            color: isDark
-                                ? AppColors.darkText
-                                : AppColors.lightText,
+                            color: context.appColors.text,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -811,9 +783,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             _getConfigSummary(timerState),
                             style: TextStyle(
                               fontSize: 13,
-                              color: isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary,
+                              color: context.appColors.textSecondary,
                             ),
                           ),
                         ),
@@ -829,14 +799,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkSurface
-                          : AppColors.lightSurface,
+                      color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder,
+                        color: context.appColors.border,
                       ),
                     ),
                     child: Column(
@@ -851,9 +817,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                       '${e.key}:',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: isDark
-                                            ? AppColors.darkTextSecondary
-                                            : AppColors.lightTextSecondary,
+                                        color: context.appColors.textSecondary,
                                       ),
                                     ),
                                   ),
@@ -863,7 +827,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                       color: e.value.contains('granted')
-                                          ? Colors.green
+                                          ? context.appColors.success
                                           : Colors.orange,
                                     ),
                                   ),
@@ -1067,9 +1031,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       '启用后，有提醒时间的任务将自动同步到手机系统日历中，提供更可靠的提醒。',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   ),
@@ -1113,9 +1075,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       '获取密钥: platform.deepseek.com/api_keys',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   ),
@@ -1131,9 +1091,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 'v${info.version}',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isDark
-                                      ? AppColors.darkTextSecondary
-                                      : AppColors.lightTextSecondary,
+                                  color: context.appColors.textSecondary,
                                 ),
                               ),
                               loading: () => const SizedBox.shrink(),
@@ -1165,7 +1123,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       style: TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w600,
-        color: isDark ? AppColors.darkText : AppColors.lightText,
+        color: context.appColors.text,
       ),
     );
   }
@@ -1183,7 +1141,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             label,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
         ),
@@ -1222,7 +1180,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             label,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
         ),
@@ -1232,7 +1190,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+            activeColor: context.appColors.accent,
           ),
         ),
       ],
@@ -1251,7 +1209,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 '时区',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                  color: context.appColors.text,
                 ),
               ),
               const SizedBox(height: 4),
@@ -1259,9 +1217,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 AppTime.description(mode),
                 style: TextStyle(
                   fontSize: 11,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
               ),
             ],
@@ -1270,10 +1226,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            color: context.appColors.surface,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              color: context.appColors.border,
             ),
           ),
           child: DropdownButton<AppTimeZoneMode>(
@@ -1282,10 +1238,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             isDense: true,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
-            dropdownColor:
-                isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            dropdownColor: context.appColors.surface,
             items: AppTimeZoneMode.values.map((option) {
               return DropdownMenuItem(
                 value: option,
@@ -1326,17 +1281,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             label,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            color: context.appColors.surface,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              color: context.appColors.border,
             ),
           ),
           child: DropdownButton<String>(
@@ -1345,10 +1300,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             isDense: true,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
-            dropdownColor:
-                isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            dropdownColor: context.appColors.surface,
             items: options
                 .map((opt) => DropdownMenuItem(
                       value: opt['value'],
@@ -1388,7 +1342,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           label,
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? AppColors.darkText : AppColors.lightText,
+            color: context.appColors.text,
           ),
         ),
         const SizedBox(height: 6),
@@ -1421,9 +1375,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       child: Icon(
                         obscureText ? Icons.visibility_off : Icons.visibility,
                         size: 16,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   )
@@ -1463,7 +1415,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           label,
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? AppColors.darkText : AppColors.lightText,
+            color: context.appColors.text,
           ),
         ),
         const SizedBox(height: 6),
@@ -1490,17 +1442,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               '可用占位符：',
               style: TextStyle(
                 fontSize: 11,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
+                color: context.appColors.textSecondary,
               ),
             ),
             ...placeholderHints.map((p) => Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color:
-                        isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                    color: context.appColors.surface,
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -1508,9 +1457,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     style: TextStyle(
                       fontSize: 11,
                       fontFamily: 'monospace',
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                 )),
@@ -1559,7 +1506,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError ? Colors.red : context.appColors.success,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
       ),
@@ -1896,26 +1843,20 @@ class _SettingButton extends StatelessWidget {
     final bgColor = isDanger
         ? Colors.red
         : isAccent
-            ? (isDark
-                ? AppColors.darkAccentSecondary
-                : AppColors.lightAccentSecondary)
+            ? (context.appColors.accentSecondary)
             : isPrimary
-                ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
+                ? (context.appColors.accent)
                 : Colors.transparent;
 
     final textColor = isPrimary || isAccent || isDanger
         ? Colors.white
-        : isDark
-            ? AppColors.darkText
-            : AppColors.lightText;
+        : context.appColors.text;
 
     final borderColor = isDanger
         ? Colors.red
         : isPrimary || isAccent
             ? bgColor
-            : isDark
-                ? AppColors.darkBorder
-                : AppColors.lightBorder;
+            : context.appColors.border;
 
     return Material(
       color: bgColor,

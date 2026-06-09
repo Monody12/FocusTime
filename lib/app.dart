@@ -104,12 +104,12 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 18, vertical: 12),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF121B29) : Colors.white,
+                      color: isDark
+                          ? context.appColors.sidebar
+                          : context.appColors.surface,
                       border: Border(
                         bottom: BorderSide(
-                          color: isDark
-                              ? AppColors.darkBorder
-                              : AppColors.lightBorder,
+                          color: context.appColors.border,
                         ),
                       ),
                     ),
@@ -121,9 +121,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                               icon: const Icon(Icons.menu),
                               onPressed: () =>
                                   Scaffold.of(context).openDrawer(),
-                              color: isDark
-                                  ? AppColors.darkText
-                                  : AppColors.lightText,
+                              color: context.appColors.text,
                             ),
                           ),
                         // 应用标题
@@ -133,8 +131,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: isDark
-                                ? AppColors.darkAccentSecondary
-                                : AppColors.lightAccent,
+                                ? context.appColors.accentSecondary
+                                : context.appColors.accent,
                           ),
                         ),
                         const Spacer(),
@@ -145,8 +143,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                               size: 20),
                           onPressed: () => themeNotifier.toggleTheme(),
                           tooltip: '切换主题',
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
+                          color: context.appColors.text,
                         ),
                         const SizedBox(width: 4),
                         // AI Assistant button
@@ -155,9 +152,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                           icon: const Icon(Icons.smart_toy_outlined, size: 18),
                           label: isMobile ? const Text('') : const Text('AI'),
                           style: TextButton.styleFrom(
-                            foregroundColor: isDark
-                                ? AppColors.darkText
-                                : AppColors.lightText,
+                            foregroundColor: context.appColors.text,
                             minimumSize: Size.zero,
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                           ),
@@ -169,9 +164,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                           icon: const Icon(Icons.settings, size: 18),
                           label: isMobile ? const Text('') : const Text('设置'),
                           style: TextButton.styleFrom(
-                            foregroundColor: isDark
-                                ? AppColors.darkText
-                                : AppColors.lightText,
+                            foregroundColor: context.appColors.text,
                             minimumSize: Size.zero,
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                           ),
@@ -209,14 +202,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 16, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: isDark
-                                      ? AppColors.darkBackground
-                                      : AppColors.lightBackground,
+                                  color: context.appColors.background,
                                   border: Border(
                                     top: BorderSide(
-                                      color: isDark
-                                          ? AppColors.darkBorder
-                                          : AppColors.lightBorder,
+                                      color: context.appColors.border,
                                     ),
                                   ),
                                 ),
@@ -228,9 +217,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                           '⚠ 请先选择一个任务',
                                           style: TextStyle(
                                             fontSize: 14,
-                                            color: isDark
-                                                ? AppColors.darkTextSecondary
-                                                : AppColors.lightTextSecondary,
+                                            color:
+                                                context.appColors.textSecondary,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -265,9 +253,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                             horizontal: isMobile ? 8 : 16,
                                             vertical: 10),
                                         side: BorderSide(
-                                          color: isDark
-                                              ? AppColors.darkBorder
-                                              : AppColors.lightBorder,
+                                          color: context.appColors.border,
                                         ),
                                         shape: RoundedRectangleBorder(
                                           borderRadius:
@@ -283,9 +269,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                                       .darkAccentSecondary
                                                   : AppColors
                                                       .lightAccentSecondary)
-                                              : (isDark
-                                                  ? AppColors.darkText
-                                                  : AppColors.lightText),
+                                              : (context.appColors.text),
                                         ),
                                       ),
                                     ),
@@ -341,9 +325,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
           if (isMobile && taskState.selectedTaskId != null && !_showCalendar)
             Positioned.fill(
               child: Container(
-                color: isDark
-                    ? AppColors.darkBackground
-                    : AppColors.lightBackground,
+                color: context.appColors.background,
                 child: TaskDetailPage(
                   taskId: taskState.selectedTaskId!,
                   onClose: () {
@@ -363,9 +345,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                     width: isMobile ? size.width * 0.9 : 500,
                     height: size.height * 0.8,
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkBackground
-                          : AppColors.lightBackground,
+                      color: context.appColors.background,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: SettingsPage(
@@ -384,9 +364,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                     width: isMobile ? size.width * 0.95 : 700,
                     height: size.height * 0.85,
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkBackground
-                          : AppColors.lightBackground,
+                      color: context.appColors.background,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: AiChatPage(
@@ -439,14 +417,12 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
   }
 
   void _confirmDeleteTask(BuildContext context, TaskItem task) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除任务', style: TextStyle(fontSize: 16)),
         content: Text('确定要删除任务 "${task.title}" 吗？'),
-        backgroundColor:
-            isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        backgroundColor: context.appColors.surface,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -477,9 +453,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
             ),
             Positioned.fill(
               child: Container(
-                color: isDark
-                    ? AppColors.darkBackground
-                    : AppColors.lightBackground,
+                color: context.appColors.background,
                 child: Column(
                   children: [
                     Row(
@@ -513,13 +487,14 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
           ),
           Container(
             width: 1,
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            color: context.appColors.border,
           ),
           Container(
             width: 300,
             decoration: BoxDecoration(
-              color:
-                  isDark ? const Color(0xFF121B29) : AppColors.lightBackground,
+              color: isDark
+                  ? context.appColors.sidebar
+                  : context.appColors.background,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(isDark ? 0.16 : 0.06),
@@ -562,22 +537,20 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
               _buildFooterActionButton(
                 label: isMobile ? '☕ 休息' : '☕ 开始休息',
                 onTap: () => timerNotifier.startBreak(),
-                color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                color: context.appColors.accent,
                 isPrimary: true,
               )
             else
               _buildFooterActionButton(
                 label: isMobile ? '🎯 专注' : '🎯 开始专注',
                 onTap: () => timerNotifier.resetFocus(),
-                color: isDark
-                    ? AppColors.darkAccentSecondary
-                    : AppColors.lightAccentSecondary,
+                color: context.appColors.accentSecondary,
                 isPrimary: true,
               ),
             _buildFooterActionButton(
               label: isMobile ? '🎯 继续' : '🎯 继续专注',
               onTap: () => timerNotifier.startFocus(),
-              color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+              color: context.appColors.accent,
               isPrimary: false,
               isDark: isDark,
             ),
@@ -588,9 +561,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       final minutes = remaining ~/ 60;
       final seconds = remaining % 60;
       return Material(
-        color: isDark
-            ? AppColors.darkAccentSecondary
-            : AppColors.lightAccentSecondary,
+        color: context.appColors.accentSecondary,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
           onTap: () =>
@@ -610,9 +581,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       );
     }
     return Material(
-      color: isDark
-          ? AppColors.darkAccentSecondary
-          : AppColors.lightAccentSecondary,
+      color: context.appColors.accentSecondary,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         onTap: () => _handleFooterButton(timerState, timerNotifier, taskState),

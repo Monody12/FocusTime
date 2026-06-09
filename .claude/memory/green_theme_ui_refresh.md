@@ -11,6 +11,7 @@
 - 将全局主题从紫色系改为深海蓝绿系，主色为绿色，辅助强调色保留清亮蓝色。
 - 强化桌面三栏层次：侧边栏独立深色基底、任务列表选中态边框、添加任务输入框卡片化、右侧计时器面板增加独立背景和轻微阴影。
 - 清理组件中散落的旧紫色硬编码，改为通过 `AppColors` 管理。
+- 继续将主题颜色升级为 `AppThemeScheme` + `AppThemeColors` (`ThemeExtension`) 架构，组件通过 `context.appColors` 读取语义 token。后续新增主题配色时，优先在 `lib/core/theme/app_theme.dart` 增加一组 light/dark palette，并加入 `AppTheme.schemes`，避免在页面组件里新增硬编码颜色。
 - 覆盖范围包括主框架、侧边栏、任务列表、任务详情、计时器、日历、设置页、AI 聊天页、AI 操作预览和系统日历默认颜色。
 
 ## 注意事项

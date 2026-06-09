@@ -21,8 +21,6 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return AlertDialog(
       title: const Text('任务已超时'),
       content: Column(
@@ -33,9 +31,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
             '该任务已累计超过预期专注时间。请选择专注模式：',
             style: TextStyle(
               fontSize: 14,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
           ),
           const SizedBox(height: 16),
@@ -66,8 +62,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
                 onChanged: (value) {
                   setState(() => _rememberChoice = value ?? false);
                 },
-                activeColor:
-                    isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                activeColor: context.appColors.accent,
               ),
               Expanded(
                 child: GestureDetector(
@@ -78,7 +73,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
                     '记住选择',
                     style: TextStyle(
                       fontSize: 13,
-                      color: isDark ? AppColors.darkText : AppColors.lightText,
+                      color: context.appColors.text,
                     ),
                   ),
                 ),
@@ -124,10 +119,8 @@ class _ModeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Material(
-      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      color: context.appColors.surface,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
@@ -137,7 +130,7 @@ class _ModeButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              color: context.appColors.border,
             ),
           ),
           child: Column(
@@ -149,7 +142,7 @@ class _ModeButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                  color: context.appColors.text,
                 ),
               ),
             ],

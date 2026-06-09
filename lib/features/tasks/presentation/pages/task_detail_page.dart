@@ -203,7 +203,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
     if (task == null) {
       return Container(
-        color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        color: context.appColors.background,
         child: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -220,7 +220,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
     return Container(
       width: 320,
-      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      color: context.appColors.surface,
       child: Column(
         children: [
           // Header
@@ -262,16 +262,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                           height: 24,
                           decoration: BoxDecoration(
                             color: task.completed
-                                ? (isDark
-                                    ? AppColors.darkAccent
-                                    : AppColors.lightAccent)
+                                ? (context.appColors.accent)
                                 : Colors.transparent,
                             border: Border.all(
                               color: task.completed
-                                  ? (isDark
-                                      ? AppColors.darkAccent
-                                      : AppColors.lightAccent)
-                                  : AppColors.darkBorder,
+                                  ? (context.appColors.accent)
+                                  : context.appColors.border,
                               width: 2,
                             ),
                             borderRadius: BorderRadius.circular(4),
@@ -291,16 +287,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                             border: InputBorder.none,
                             enabledBorder: UnderlineInputBorder(
                               borderSide: BorderSide(
-                                color: isDark
-                                    ? AppColors.darkBorder
-                                    : AppColors.lightBorder,
+                                color: context.appColors.border,
                               ),
                             ),
                             focusedBorder: UnderlineInputBorder(
                               borderSide: BorderSide(
-                                color: isDark
-                                    ? AppColors.darkAccent
-                                    : AppColors.lightAccent,
+                                color: context.appColors.accent,
                               ),
                             ),
                             hintText: '任务标题',
@@ -315,12 +307,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                                 ? TextDecoration.lineThrough
                                 : null,
                             color: task.completed
-                                ? (isDark
-                                    ? AppColors.darkTextSecondary
-                                    : AppColors.lightTextSecondary)
-                                : (isDark
-                                    ? AppColors.darkText
-                                    : AppColors.lightText),
+                                ? (context.appColors.textSecondary)
+                                : (context.appColors.text),
                           ),
                           maxLines: null,
                           onSubmitted: (_) => _saveTitle(task.id),
@@ -493,9 +481,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                         '累计 ${(_focusSessions.fold<int>(0, (sum, s) => sum + (s['durationSeconds'] as int)) / 60).floor()} 分钟 · ${_focusSessions.length} 次',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
+                          color: context.appColors.textSecondary,
                         ),
                       ),
                     ),
@@ -544,9 +530,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     required bool isDark,
   }) {
     return Material(
-      color: isActive
-          ? (isDark ? AppColors.darkBackground : AppColors.lightBackground)
-          : Colors.transparent,
+      color: isActive ? (context.appColors.background) : Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
@@ -561,7 +545,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                 ),
               ),
@@ -585,20 +569,18 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     final textColor = (isPast && !task.completed)
         ? Colors.red
         : (hasReminder
-            ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
-            : (isDark
-                ? AppColors.darkTextSecondary
-                : AppColors.lightTextSecondary));
+            ? (context.appColors.accent)
+            : (context.appColors.textSecondary));
 
     return InkWell(
       onTap: () => _showReminderPresets(task),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          color: context.appColors.surface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            color: context.appColors.border,
           ),
         ),
         child: Row(
@@ -609,10 +591,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   : Icons.notifications_none,
               size: 18,
               color: hasReminder
-                  ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
-                  : (isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary),
+                  ? (context.appColors.accent)
+                  : (context.appColors.textSecondary),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -639,20 +619,13 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   void _showPermissionDialog() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor:
-            isDark ? AppColors.darkBackground : AppColors.lightBackground,
-        title: Text('未开启提醒权限',
-            style: TextStyle(
-                color: isDark ? AppColors.darkText : AppColors.lightText)),
+        backgroundColor: context.appColors.background,
+        title: Text('未开启提醒权限', style: TextStyle(color: context.appColors.text)),
         content: Text('为了确保提醒能正常送达，请至少开启系统通知或日历同步权限中的一项。',
-            style: TextStyle(
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary)),
+            style: TextStyle(color: context.appColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () async {
@@ -689,14 +662,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     // 捕获页面级的 context 和 Navigator，避免在异步操作或弹窗关闭后 context 失效
     final pageContext = context;
     final taskNotifier = ref.read(taskProvider.notifier);
-    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
 
     if (!mounted) return;
 
     showModalBottomSheet(
       context: pageContext,
-      backgroundColor:
-          isDarkTheme ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor: context.appColors.background,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -796,19 +767,14 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       required String label,
       String? time,
       required VoidCallback onTap}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
       leading: Icon(
         icon,
-        color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+        color: context.appColors.accent,
       ),
       title: Text(label),
       trailing: time != null
-          ? Text(time,
-              style: TextStyle(
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary))
+          ? Text(time, style: TextStyle(color: context.appColors.textSecondary))
           : null,
       onTap: onTap,
     );
@@ -821,9 +787,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         label,
         style: TextStyle(
           fontSize: 12,
-          color: isDark
-              ? AppColors.darkTextSecondary
-              : AppColors.lightTextSecondary,
+          color: context.appColors.textSecondary,
         ),
       ),
     );
@@ -838,8 +802,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   Widget _buildTimestampInfo(TaskItem task, bool isDark) {
     final textStyle = TextStyle(
       fontSize: 11,
-      color:
-          isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+      color: context.appColors.textSecondary,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -859,7 +822,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           child: Text(
             '🔄 ${getRecurrenceSummary(config)}',
             style: TextStyle(
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
         ),
@@ -875,10 +838,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        border: Border.all(color: context.appColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -886,7 +848,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           Text(
             '设置重复',
             style: TextStyle(
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
           const SizedBox(height: 16),
@@ -965,9 +927,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             '$dateStr $timeStr',
             style: TextStyle(
               fontSize: 12,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
           ),
           const SizedBox(width: 12),
@@ -977,7 +937,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               '${mins}分钟',
               style: TextStyle(
                 fontSize: 12,
-                color: isDark ? AppColors.darkText : AppColors.lightText,
+                color: context.appColors.text,
               ),
             ),
           ),
@@ -987,10 +947,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             style: TextStyle(
               fontSize: 12,
               color: (session['completed'] == true)
-                  ? AppColors.darkSuccess
-                  : (isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary),
+                  ? context.appColors.success
+                  : (context.appColors.textSecondary),
             ),
           ),
         ],

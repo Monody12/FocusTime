@@ -12,12 +12,10 @@ class TimerDisplay extends ConsumerWidget {
     const size = 160.0;
     const strokeWidth = 8.0;
 
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final progressColor = timerState.timerStatus == TimerStatus.completed
-        ? (isDark ? AppColors.darkSuccess : AppColors.lightSuccess)
-        : (isDark ? AppColors.darkAccent : AppColors.lightAccent);
-    final borderColor = isDark ? AppColors.darkBorder : AppColors.lightBorder;
+        ? (context.appColors.success)
+        : (context.appColors.accent);
+    final borderColor = context.appColors.border;
 
     return SizedBox(
       width: size,
@@ -55,7 +53,7 @@ class TimerDisplay extends ConsumerWidget {
                   fontFamily: 'monospace',
                   color: timerState.timerStatus == TimerStatus.completed
                       ? progressColor
-                      : (isDark ? AppColors.darkText : AppColors.lightText),
+                      : (context.appColors.text),
                 ),
               ),
               if (timerState.timerStatus == TimerStatus.completed)

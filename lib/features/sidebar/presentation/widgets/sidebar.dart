@@ -67,10 +67,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
     return Container(
       width: 220,
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSidebar : AppColors.lightSidebar,
+        color: context.appColors.sidebar,
         border: Border(
           right: BorderSide(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            color: context.appColors.border,
           ),
         ),
       ),
@@ -125,9 +125,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     '清单',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                 ),
@@ -245,9 +243,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
       onLongPress: onLongPress,
       child: Material(
         color: isSelected
-            ? (isDark
-                ? AppColors.darkSurfaceElevated
-                : AppColors.lightSurfaceElevated)
+            ? (context.appColors.surfaceElevated)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
@@ -260,8 +256,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 ? BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color:
-                          isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      color: context.appColors.border,
                     ),
                   )
                 : null,
@@ -274,10 +269,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     label,
                     style: TextStyle(
                       color: isSelected
-                          ? (isDark ? AppColors.darkText : AppColors.lightText)
-                          : (isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary),
+                          ? (context.appColors.text)
+                          : (context.appColors.textSecondary),
                       fontWeight:
                           isSelected ? FontWeight.w600 : FontWeight.normal,
                     ),
@@ -320,13 +313,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
               context, details.globalPosition, list.id, list.name),
           child: Material(
             color: isHovering
-                ? (isDark
-                    ? AppColors.darkSurfaceElevated
-                    : AppColors.lightSurfaceElevated)
+                ? (context.appColors.surfaceElevated)
                 : isSelected
-                    ? (isDark
-                        ? AppColors.darkSurfaceElevated
-                        : AppColors.lightSurfaceElevated)
+                    ? (context.appColors.surfaceElevated)
                     : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             child: InkWell(
@@ -340,9 +329,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     ? BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isDark
-                              ? AppColors.darkBorder
-                              : AppColors.lightBorder,
+                          color: context.appColors.border,
                         ),
                       )
                     : null,
@@ -355,12 +342,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                         list.name,
                         style: TextStyle(
                           color: isSelected
-                              ? (isDark
-                                  ? AppColors.darkText
-                                  : AppColors.lightText)
-                              : (isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary),
+                              ? (context.appColors.text)
+                              : (context.appColors.textSecondary),
                           fontWeight:
                               isSelected ? FontWeight.w600 : FontWeight.normal,
                         ),
@@ -370,9 +353,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       Icon(
                         Icons.add_circle,
                         size: 18,
-                        color: isDark
-                            ? AppColors.darkAccent
-                            : AppColors.lightAccent,
+                        color: context.appColors.accent,
                       ),
                   ],
                 ),
@@ -407,8 +388,6 @@ class _SidebarState extends ConsumerState<Sidebar> {
   /// 显示右键菜单（适用于桌面端）
   void _showContextMenu(BuildContext context, Offset globalPosition,
       String listId, String listName) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     // 获取 Overlay 的 RenderBox 以计算相对位置
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
@@ -419,7 +398,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
         globalPosition & const Size(40, 40), // 在点击位置周围创建一个小的矩形区域
         Offset.zero & overlay.size,
       ),
-      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      color: context.appColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       elevation: 8,
       items: [
@@ -429,14 +408,11 @@ class _SidebarState extends ConsumerState<Sidebar> {
           child: Row(
             children: [
               Icon(Icons.edit_outlined,
-                  size: 16,
-                  color: isDark ? AppColors.darkText : AppColors.lightText),
+                  size: 16, color: context.appColors.text),
               const SizedBox(width: 12),
               Text('重命名',
-                  style: TextStyle(
-                      fontSize: 13,
-                      color:
-                          isDark ? AppColors.darkText : AppColors.lightText)),
+                  style:
+                      TextStyle(fontSize: 13, color: context.appColors.text)),
             ],
           ),
         ),
@@ -475,17 +451,13 @@ class _SidebarState extends ConsumerState<Sidebar> {
               Icon(
                 Icons.add,
                 size: 20,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
+                color: context.appColors.textSecondary,
               ),
               const SizedBox(width: 12),
               Text(
                 '新建清单',
                 style: TextStyle(
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
               ),
             ],
@@ -496,10 +468,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
   }
 
   void _showListMenu(BuildContext context, String listId, String listName) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
-      backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      backgroundColor: context.appColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -515,7 +486,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                 ),
               ),
@@ -546,24 +517,18 @@ class _SidebarState extends ConsumerState<Sidebar> {
 
   void _confirmDeleteList(
       BuildContext context, String listId, String listName) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor:
-              isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          backgroundColor: context.appColors.surface,
           title: Text(
             '删除清单',
-            style: TextStyle(
-                color: isDark ? AppColors.darkText : AppColors.lightText),
+            style: TextStyle(color: context.appColors.text),
           ),
           content: Text(
             '确定要删除 "$listName" 吗？该清单下的所有任务也会被删除。',
-            style: TextStyle(
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary),
+            style: TextStyle(color: context.appColors.textSecondary),
           ),
           actions: [
             TextButton(

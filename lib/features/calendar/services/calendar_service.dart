@@ -69,7 +69,7 @@ class CalendarService {
 
     return _deviceCalendarPlugin.createCalendar(
       name,
-      calendarColor: AppColors.lightAccent,
+      calendarColor: AppTheme.greenScheme.light.accent,
       localAccountName: 'FocusMyTime',
     );
   }

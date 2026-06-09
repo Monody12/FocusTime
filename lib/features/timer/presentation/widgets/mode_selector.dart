@@ -14,10 +14,10 @@ class ModeSelector extends ConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurfaceElevated,
+        color: context.appColors.surfaceElevated,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          color: context.appColors.border,
         ),
       ),
       padding: const EdgeInsets.all(4),
@@ -77,18 +77,14 @@ class _ModeButton extends StatelessWidget {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected
-              ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
-              : Colors.transparent,
+          color: isSelected ? (context.appColors.accent) : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: isSelected
-                ? Colors.white
-                : (isDark ? AppColors.darkText : AppColors.lightText),
+            color: isSelected ? Colors.white : (context.appColors.text),
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),
         ),
