@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 
@@ -83,7 +84,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
               children: [
                 _buildListItem(
                   context,
-                  icon: '☀',
+                  icon: AppIcons.myDay,
                   label: '我的一天',
                   isSelected: taskState.currentListId == 'system-my-day',
                   onTap: () {
@@ -94,7 +95,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 ),
                 _buildListItem(
                   context,
-                  icon: '⭐',
+                  icon: AppIcons.important,
                   label: '重要',
                   isSelected: taskState.currentListId == 'system-important',
                   onTap: () {
@@ -106,7 +107,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 ),
                 _buildListItem(
                   context,
-                  icon: '📋',
+                  icon: AppIcons.tasks,
                   label: '任务',
                   isSelected: taskState.currentListId == 'system-all-tasks',
                   onTap: () {
@@ -232,7 +233,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
   // 系统清单项（不可作为拖拽目标）
   Widget _buildListItem(
     BuildContext context, {
-    required String icon,
+    required IconData icon,
     required String label,
     required bool isSelected,
     required VoidCallback onTap,
@@ -262,8 +263,14 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 : null,
             child: Row(
               children: [
-                Text(icon, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 12),
+                AppIcon(
+                  icon,
+                  size: AppIconSizes.nav,
+                  color: isSelected
+                      ? context.appColors.text
+                      : context.appColors.textSecondary,
+                ),
+                const SizedBox(width: AppIconSpacing.labelGap),
                 Expanded(
                   child: Text(
                     label,
@@ -335,8 +342,14 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     : null,
                 child: Row(
                   children: [
-                    const Text('📁', style: TextStyle(fontSize: 16)),
-                    const SizedBox(width: 12),
+                    AppIcon(
+                      AppIcons.list,
+                      size: AppIconSizes.nav,
+                      color: isSelected
+                          ? context.appColors.text
+                          : context.appColors.textSecondary,
+                    ),
+                    const SizedBox(width: AppIconSpacing.labelGap),
                     Expanded(
                       child: Text(
                         list.name,
@@ -351,8 +364,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     ),
                     if (isHovering)
                       Icon(
-                        Icons.add_circle,
-                        size: 18,
+                        AppIcons.listReceive,
+                        size: AppIconSizes.nav,
                         color: context.appColors.accent,
                       ),
                   ],
@@ -407,9 +420,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
           height: 36,
           child: Row(
             children: [
-              Icon(Icons.edit_outlined,
-                  size: 16, color: context.appColors.text),
-              const SizedBox(width: 12),
+              AppIcon(AppIcons.edit,
+                  size: AppIconSizes.compact, color: context.appColors.text),
+              const SizedBox(width: AppIconSpacing.labelGap),
               Text('重命名',
                   style:
                       TextStyle(fontSize: 13, color: context.appColors.text)),
@@ -421,8 +434,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
           height: 36,
           child: Row(
             children: [
-              Icon(Icons.delete_outline, size: 16, color: Colors.red),
-              SizedBox(width: 12),
+              AppIcon(AppIcons.delete,
+                  size: AppIconSizes.compact, color: Colors.red),
+              SizedBox(width: AppIconSpacing.labelGap),
               Text('删除', style: TextStyle(fontSize: 13, color: Colors.red)),
             ],
           ),
@@ -449,11 +463,11 @@ class _SidebarState extends ConsumerState<Sidebar> {
           child: Row(
             children: [
               Icon(
-                Icons.add,
-                size: 20,
+                AppIcons.listAdd,
+                size: AppIconSizes.nav,
                 color: context.appColors.textSecondary,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppIconSpacing.labelGap),
               Text(
                 '新建清单',
                 style: TextStyle(
@@ -492,7 +506,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
               ),
               const Divider(height: 1),
               ListTile(
-                leading: const Icon(Icons.edit),
+                leading: const Icon(AppIcons.edit),
                 title: const Text('重命名'),
                 onTap: () {
                   Navigator.pop(context);
@@ -500,7 +514,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red),
+                leading: const Icon(AppIcons.delete, color: Colors.red),
                 title: const Text('删除', style: TextStyle(color: Colors.red)),
                 onTap: () {
                   Navigator.pop(context);

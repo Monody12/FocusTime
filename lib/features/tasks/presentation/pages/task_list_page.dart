@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/tasks/presentation/widgets/task_item.dart';
@@ -91,24 +92,23 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
           child: Row(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                width: AppIconSizes.action,
+                height: AppIconSizes.action,
                 alignment: Alignment.center,
-                child: Text(
-                  '+',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: context.appColors.accentSecondary,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: AppIcon(
+                  AppIcons.addTask,
+                  size: AppIconSizes.action,
+                  color: context.appColors.accentSecondary,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppIconSpacing.labelGap),
               Expanded(
                 child: TextField(
                   controller: _newTaskController,
                   decoration: InputDecoration(
                     hintText: '添加任务...',
+                    filled: false,
+                    fillColor: Colors.transparent,
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
@@ -217,9 +217,10 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            '📝',
-            style: TextStyle(fontSize: 48),
+          AppIcon(
+            AppIcons.emptyTasks,
+            size: AppIconSizes.empty,
+            color: context.appColors.textSecondary,
           ),
           const SizedBox(height: 16),
           Text(

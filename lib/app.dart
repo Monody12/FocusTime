@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
 import 'package:focus_my_time/core/providers/theme_provider.dart';
@@ -118,7 +119,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                         if (isMobile)
                           Builder(
                             builder: (context) => IconButton(
-                              icon: const Icon(Icons.menu),
+                              icon: const Icon(AppIcons.menu),
                               onPressed: () =>
                                   Scaffold.of(context).openDrawer(),
                               color: context.appColors.text,
@@ -139,8 +140,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                         // Theme toggle
                         IconButton(
                           icon: Icon(
-                              isDark ? Icons.light_mode : Icons.dark_mode,
-                              size: 20),
+                              isDark ? AppIcons.lightMode : AppIcons.darkMode,
+                              size: AppIconSizes.nav),
                           onPressed: () => themeNotifier.toggleTheme(),
                           tooltip: '切换主题',
                           color: context.appColors.text,
@@ -149,7 +150,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                         // AI Assistant button
                         TextButton.icon(
                           onPressed: () => setState(() => _showAiChat = true),
-                          icon: const Icon(Icons.smart_toy_outlined, size: 18),
+                          icon: const Icon(AppIcons.ai, size: AppIconSizes.nav),
                           label: isMobile ? const Text('') : const Text('AI'),
                           style: TextButton.styleFrom(
                             foregroundColor: context.appColors.text,
@@ -161,7 +162,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                         // Settings button
                         TextButton.icon(
                           onPressed: () => setState(() => _showSettings = true),
-                          icon: const Icon(Icons.settings, size: 18),
+                          icon: const Icon(AppIcons.settings,
+                              size: AppIconSizes.nav),
                           label: isMobile ? const Text('') : const Text('设置'),
                           style: TextButton.styleFrom(
                             foregroundColor: context.appColors.text,
@@ -260,17 +262,32 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                               BorderRadius.circular(6),
                                         ),
                                       ),
-                                      child: Text(
-                                        isMobile ? '📅' : '📅 日历',
-                                        style: TextStyle(
-                                          color: _showCalendar
-                                              ? (isDark
-                                                  ? AppColors
-                                                      .darkAccentSecondary
-                                                  : AppColors
-                                                      .lightAccentSecondary)
-                                              : (context.appColors.text),
-                                        ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          AppIcon(
+                                            AppIcons.calendar,
+                                            size: AppIconSizes.compact,
+                                            color: _showCalendar
+                                                ? context
+                                                    .appColors.accentSecondary
+                                                : context.appColors.text,
+                                          ),
+                                          if (!isMobile) ...[
+                                            const SizedBox(
+                                                width:
+                                                    AppIconSpacing.compactGap),
+                                            Text(
+                                              '日历',
+                                              style: TextStyle(
+                                                color: _showCalendar
+                                                    ? context.appColors
+                                                        .accentSecondary
+                                                    : context.appColors.text,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ),
                                     if (!isMobile) ...[
@@ -459,7 +476,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.arrow_back),
+                          icon: const Icon(AppIcons.back),
                           onPressed: () =>
                               setState(() => _showTimerPanel = false),
                         ),
@@ -490,7 +507,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
             color: context.appColors.border,
           ),
           Container(
-            width: 300,
+            width: 376,
             decoration: BoxDecoration(
               color: isDark
                   ? context.appColors.sidebar

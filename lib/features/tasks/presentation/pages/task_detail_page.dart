@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/core/utils/recurrence_utils.dart';
@@ -237,7 +238,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.close, size: 20),
+                  icon: const Icon(AppIcons.close, size: AppIconSizes.nav),
                   onPressed: widget.onClose,
                 ),
               ],
@@ -273,8 +274,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: task.completed
-                              ? const Icon(Icons.check,
-                                  size: 16, color: Colors.white)
+                              ? const Icon(AppIcons.taskDone,
+                                  size: AppIconSizes.compact,
+                                  color: Colors.white)
                               : null,
                         ),
                       ),
@@ -321,7 +323,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
                   // My Day button
                   _buildActionButton(
-                    icon: '☀',
+                    icon: AppIcons.myDay,
                     label: task.isMyDay ? '已添加到"我的一天"' : '添加到"我的一天"',
                     isActive: task.isMyDay,
                     onTap: () {
@@ -338,7 +340,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
                   // Start focus button
                   _buildActionButton(
-                    icon: '🎯',
+                    icon: AppIcons.focus,
                     label: '开始专注',
                     isActive: false,
                     onTap: () {
@@ -452,7 +454,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   _buildSectionLabel('重复', isDark),
                   if (_recurrenceConfig == null)
                     _buildActionButton(
-                      icon: '🔄',
+                      icon: AppIcons.reset,
                       label: '设置重复',
                       isActive: false,
                       onTap: () {
@@ -523,7 +525,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   Widget _buildActionButton({
-    required String icon,
+    required IconData icon,
     required String label,
     required bool isActive,
     required VoidCallback onTap,
@@ -539,8 +541,14 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              Text(icon, style: const TextStyle(fontSize: 16)),
-              const SizedBox(width: 12),
+              AppIcon(
+                icon,
+                size: AppIconSizes.nav,
+                color: isActive
+                    ? context.appColors.accent
+                    : context.appColors.textSecondary,
+              ),
+              const SizedBox(width: AppIconSpacing.labelGap),
               Expanded(
                 child: Text(
                   label,
@@ -585,16 +593,16 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         ),
         child: Row(
           children: [
-            Icon(
+            AppIcon(
               hasReminder
-                  ? Icons.notifications_active
-                  : Icons.notifications_none,
-              size: 18,
+                  ? AppIcons.reminderActive
+                  : AppIcons.reminder,
+              size: AppIconSizes.action,
               color: hasReminder
                   ? (context.appColors.accent)
                   : (context.appColors.textSecondary),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppIconSpacing.compactGap),
             Expanded(
               child: Text(
                 reminderText,
@@ -606,7 +614,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             ),
             if (hasReminder)
               IconButton(
-                icon: const Icon(Icons.close, size: 16),
+                icon: const Icon(AppIcons.close, size: AppIconSizes.compact),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
                 onPressed: () =>
@@ -682,7 +690,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             ),
             _buildPresetItem(
               sheetContext,
-              icon: Icons.access_time,
+              icon: AppIcons.schedule,
               label: '今天晚些时候',
               time: '18:00',
               onTap: () {
@@ -698,7 +706,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             ),
             _buildPresetItem(
               sheetContext,
-              icon: Icons.wb_sunny_outlined,
+              icon: AppIcons.myDay,
               label: '明天上午',
               time: '09:00',
               onTap: () {
@@ -710,7 +718,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             ),
             _buildPresetItem(
               sheetContext,
-              icon: Icons.next_week_outlined,
+              icon: AppIcons.tomorrow,
               label: '下周一',
               time: '09:00',
               onTap: () {
@@ -725,7 +733,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             const Divider(),
             _buildPresetItem(
               sheetContext,
-              icon: Icons.calendar_today,
+              icon: AppIcons.calendar,
               label: '选择日期和时间',
               onTap: () async {
                 // 先关闭底部菜单
