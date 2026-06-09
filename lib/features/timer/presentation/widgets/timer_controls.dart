@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/timer_provider.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 class TimerControls extends ConsumerWidget {
   const TimerControls({super.key});
@@ -9,6 +10,7 @@ class TimerControls extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final timerState = ref.watch(timerProvider);
     final timerNotifier = ref.read(timerProvider.notifier);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 紧凑布局：计时器面板宽度有限(280px)，使用较小的按钮和间距
     return Row(
@@ -27,7 +29,8 @@ class TimerControls extends ConsumerWidget {
             }
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF7C3AED),
+            backgroundColor:
+                isDark ? AppColors.darkAccent : AppColors.lightAccent,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             minimumSize: Size.zero,
@@ -72,9 +75,10 @@ class TimerControls extends ConsumerWidget {
             side: BorderSide(
               color: timerState.timerStatus == TimerStatus.idle
                   ? Colors.grey.withOpacity(0.3)
-                  : const Color(0xFF7C3AED),
+                  : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
             ),
-            foregroundColor: const Color(0xFF7C3AED),
+            foregroundColor:
+                isDark ? AppColors.darkAccent : AppColors.lightAccent,
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,

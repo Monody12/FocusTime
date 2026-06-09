@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../../tasks/providers/task_provider.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 
 class Sidebar extends ConsumerStatefulWidget {
   final VoidCallback? onListChanged;
@@ -66,7 +66,14 @@ class _SidebarState extends ConsumerState<Sidebar> {
 
     return Container(
       width: 220,
-      color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSidebar : AppColors.lightSidebar,
+        border: Border(
+          right: BorderSide(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          ),
+        ),
+      ),
       child: Column(
         children: [
           const SizedBox(height: 8),
@@ -91,7 +98,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                   label: '重要',
                   isSelected: taskState.currentListId == 'system-important',
                   onTap: () {
-                    taskNotifier.setCurrentList('system-important', 'important');
+                    taskNotifier.setCurrentList(
+                        'system-important', 'important');
                     widget.onListChanged?.call();
                   },
                   isDark: isDark,
@@ -102,7 +110,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                   label: '任务',
                   isSelected: taskState.currentListId == 'system-all-tasks',
                   onTap: () {
-                    taskNotifier.setCurrentList('system-all-tasks', 'all-tasks');
+                    taskNotifier.setCurrentList(
+                        'system-all-tasks', 'all-tasks');
                     widget.onListChanged?.call();
                   },
                   isDark: isDark,
@@ -110,12 +119,15 @@ class _SidebarState extends ConsumerState<Sidebar> {
 
                 const SizedBox(height: 16),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: Text(
                     '清单',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      color: isDark
+                          ? AppColors.darkTextSecondary
+                          : AppColors.lightTextSecondary,
                     ),
                   ),
                 ),
@@ -129,7 +141,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     final listIds = customLists.map((l) => l.id).toList();
                     final item = listIds.removeAt(oldIndex);
                     listIds.insert(newIndex, item);
-                    taskNotifier.reorderLists(listIds, offset: systemLists.length);
+                    taskNotifier.reorderLists(listIds,
+                        offset: systemLists.length);
                   },
                   // buildDefaultDragHandles: false，由 ReorderableDragStartListener 接管
                   buildDefaultDragHandles: false,
@@ -144,29 +157,31 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     }
                     // 用 ReorderableDragStartListener 包裹整个项目，鼠标按住即可拖动排序
                     // 根据平台选择拖拽监听器：移动端使用长按触发，防止干扰滑动翻页；桌面端使用立即触发。
-                    final isMobile = Theme.of(context).platform == TargetPlatform.android || 
-                                     Theme.of(context).platform == TargetPlatform.iOS;
-                    
+                    final isMobile =
+                        Theme.of(context).platform == TargetPlatform.android ||
+                            Theme.of(context).platform == TargetPlatform.iOS;
+
                     final Widget listItem = _buildDraggableListItem(
-                        context,
-                        list: list,
-                        isSelected: taskState.currentListId == list.id,
-                        isHovering: _dragHoverListId == list.id,
-                        onTap: () {
-                          taskNotifier.setCurrentList(list.id, 'custom');
-                          widget.onListChanged?.call();
-                        },
-                        onHover: (hovering) {
-                          setState(() {
-                            _dragHoverListId = hovering ? list.id : null;
-                          });
-                        },
-                        onAccept: (taskId) async {
-                          await taskNotifier.updateTask(taskId, {'listId': list.id});
-                          widget.onListChanged?.call();
-                        },
-                        isDark: isDark,
-                      );
+                      context,
+                      list: list,
+                      isSelected: taskState.currentListId == list.id,
+                      isHovering: _dragHoverListId == list.id,
+                      onTap: () {
+                        taskNotifier.setCurrentList(list.id, 'custom');
+                        widget.onListChanged?.call();
+                      },
+                      onHover: (hovering) {
+                        setState(() {
+                          _dragHoverListId = hovering ? list.id : null;
+                        });
+                      },
+                      onAccept: (taskId) async {
+                        await taskNotifier
+                            .updateTask(taskId, {'listId': list.id});
+                        widget.onListChanged?.call();
+                      },
+                      isDark: isDark,
+                    );
 
                     if (isMobile) {
                       return ReorderableDelayedDragStartListener(
@@ -187,7 +202,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 // New list input
                 if (_showNewList)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: TextField(
                       controller: _newListController,
                       focusNode: _newListFocusNode,
@@ -195,7 +211,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
                       decoration: InputDecoration(
                         hintText: '清单名称...',
                         isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -228,12 +245,26 @@ class _SidebarState extends ConsumerState<Sidebar> {
       onLongPress: onLongPress,
       child: Material(
         color: isSelected
-            ? (isDark ? AppColors.darkSurface : AppColors.lightSurface)
+            ? (isDark
+                ? AppColors.darkSurfaceElevated
+                : AppColors.lightSurfaceElevated)
             : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: isSelected
+                ? BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color:
+                          isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    ),
+                  )
+                : null,
             child: Row(
               children: [
                 Text(icon, style: const TextStyle(fontSize: 16)),
@@ -244,8 +275,11 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     style: TextStyle(
                       color: isSelected
                           ? (isDark ? AppColors.darkText : AppColors.lightText)
-                          : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                          : (isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary),
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.normal,
                     ),
                   ),
                 ),
@@ -282,39 +316,63 @@ class _SidebarState extends ConsumerState<Sidebar> {
       },
       builder: (context, candidateData, rejectedData) {
         return GestureDetector(
-          onSecondaryTapDown: (details) => _showContextMenu(context, details.globalPosition, list.id, list.name),
+          onSecondaryTapDown: (details) => _showContextMenu(
+              context, details.globalPosition, list.id, list.name),
           child: Material(
             color: isHovering
-                ? (isDark ? const Color(0xFF3D3D5C) : const Color(0xFFE5E7EB))
+                ? (isDark
+                    ? AppColors.darkSurfaceElevated
+                    : AppColors.lightSurfaceElevated)
                 : isSelected
-                    ? (isDark ? AppColors.darkSurface : AppColors.lightSurface)
+                    ? (isDark
+                        ? AppColors.darkSurfaceElevated
+                        : AppColors.lightSurfaceElevated)
                     : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             child: InkWell(
               onTap: onTap,
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: isSelected || isHovering
+                    ? BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isDark
+                              ? AppColors.darkBorder
+                              : AppColors.lightBorder,
+                        ),
+                      )
+                    : null,
                 child: Row(
                   children: [
-                    Text('📁', style: const TextStyle(fontSize: 16)),
+                    const Text('📁', style: TextStyle(fontSize: 16)),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         list.name,
                         style: TextStyle(
                           color: isSelected
-                              ? (isDark ? AppColors.darkText : AppColors.lightText)
-                              : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                              ? (isDark
+                                  ? AppColors.darkText
+                                  : AppColors.lightText)
+                              : (isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary),
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                     ),
                     if (isHovering)
-                      const Icon(
+                      Icon(
                         Icons.add_circle,
                         size: 18,
-                        color: Color(0xFF7C3AED),
+                        color: isDark
+                            ? AppColors.darkAccent
+                            : AppColors.lightAccent,
                       ),
                   ],
                 ),
@@ -335,7 +393,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
         autofocus: true,
         decoration: InputDecoration(
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(8),
           ),
@@ -346,12 +405,14 @@ class _SidebarState extends ConsumerState<Sidebar> {
   }
 
   /// 显示右键菜单（适用于桌面端）
-  void _showContextMenu(BuildContext context, Offset globalPosition, String listId, String listName) {
+  void _showContextMenu(BuildContext context, Offset globalPosition,
+      String listId, String listName) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     // 获取 Overlay 的 RenderBox 以计算相对位置
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
     showMenu(
       context: context,
       position: RelativeRect.fromRect(
@@ -367,20 +428,26 @@ class _SidebarState extends ConsumerState<Sidebar> {
           height: 36,
           child: Row(
             children: [
-              Icon(Icons.edit_outlined, size: 16, color: isDark ? AppColors.darkText : AppColors.lightText),
+              Icon(Icons.edit_outlined,
+                  size: 16,
+                  color: isDark ? AppColors.darkText : AppColors.lightText),
               const SizedBox(width: 12),
-              Text('重命名', style: TextStyle(fontSize: 13, color: isDark ? AppColors.darkText : AppColors.lightText)),
+              Text('重命名',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color:
+                          isDark ? AppColors.darkText : AppColors.lightText)),
             ],
           ),
         ),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'delete',
           height: 36,
           child: Row(
             children: [
-              const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-              const SizedBox(width: 12),
-              const Text('删除', style: TextStyle(fontSize: 13, color: Colors.red)),
+              Icon(Icons.delete_outline, size: 16, color: Colors.red),
+              SizedBox(width: 12),
+              Text('删除', style: TextStyle(fontSize: 13, color: Colors.red)),
             ],
           ),
         ),
@@ -408,13 +475,17 @@ class _SidebarState extends ConsumerState<Sidebar> {
               Icon(
                 Icons.add,
                 size: 20,
-                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
               ),
               const SizedBox(width: 12),
               Text(
                 '新建清单',
                 style: TextStyle(
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
               ),
             ],
@@ -473,20 +544,26 @@ class _SidebarState extends ConsumerState<Sidebar> {
     );
   }
 
-  void _confirmDeleteList(BuildContext context, String listId, String listName) {
+  void _confirmDeleteList(
+      BuildContext context, String listId, String listName) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          backgroundColor:
+              isDark ? AppColors.darkSurface : AppColors.lightSurface,
           title: Text(
             '删除清单',
-            style: TextStyle(color: isDark ? AppColors.darkText : AppColors.lightText),
+            style: TextStyle(
+                color: isDark ? AppColors.darkText : AppColors.lightText),
           ),
           content: Text(
             '确定要删除 "$listName" 吗？该清单下的所有任务也会被删除。',
-            style: TextStyle(color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+            style: TextStyle(
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary),
           ),
           actions: [
             TextButton(
@@ -516,7 +593,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
 
   void _renameList(String listId) async {
     if (_editController.text.trim().isNotEmpty) {
-      await ref.read(taskProvider.notifier).updateList(listId, _editController.text.trim());
+      await ref
+          .read(taskProvider.notifier)
+          .updateList(listId, _editController.text.trim());
     }
     setState(() {
       _editingListId = null;
@@ -528,7 +607,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
     await ref.read(taskProvider.notifier).deleteList(listId);
     final taskState = ref.read(taskProvider);
     if (taskState.currentListId == listId) {
-      await ref.read(taskProvider.notifier).setCurrentList('system-my-day', 'my-day');
+      await ref
+          .read(taskProvider.notifier)
+          .setCurrentList('system-my-day', 'my-day');
     }
     widget.onListChanged?.call();
   }

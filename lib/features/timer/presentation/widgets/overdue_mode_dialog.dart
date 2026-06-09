@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../providers/timer_provider.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 class OverdueModeDialog extends ConsumerStatefulWidget {
   const OverdueModeDialog({super.key});
@@ -33,7 +33,9 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
             '该任务已累计超过预期专注时间。请选择专注模式：',
             style: TextStyle(
               fontSize: 14,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
           const SizedBox(height: 16),
@@ -64,7 +66,8 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
                 onChanged: (value) {
                   setState(() => _rememberChoice = value ?? false);
                 },
-                activeColor: const Color(0xFF7C3AED),
+                activeColor:
+                    isDark ? AppColors.darkAccent : AppColors.lightAccent,
               ),
               Expanded(
                 child: GestureDetector(

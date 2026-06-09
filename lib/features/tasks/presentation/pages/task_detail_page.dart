@@ -262,11 +262,15 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                           height: 24,
                           decoration: BoxDecoration(
                             color: task.completed
-                                ? const Color(0xFF7C3AED)
+                                ? (isDark
+                                    ? AppColors.darkAccent
+                                    : AppColors.lightAccent)
                                 : Colors.transparent,
                             border: Border.all(
                               color: task.completed
-                                  ? const Color(0xFF7C3AED)
+                                  ? (isDark
+                                      ? AppColors.darkAccent
+                                      : AppColors.lightAccent)
                                   : AppColors.darkBorder,
                               width: 2,
                             ),
@@ -294,7 +298,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                             ),
                             focusedBorder: UnderlineInputBorder(
                               borderSide: BorderSide(
-                                color: const Color(0xFF7C3AED),
+                                color: isDark
+                                    ? AppColors.darkAccent
+                                    : AppColors.lightAccent,
                               ),
                             ),
                             hintText: '任务标题',
@@ -603,7 +609,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   : Icons.notifications_none,
               size: 18,
               color: hasReminder
-                  ? const Color(0xFF7C3AED)
+                  ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
                   : (isDark
                       ? AppColors.darkTextSecondary
                       : AppColors.lightTextSecondary),
@@ -792,7 +798,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       required VoidCallback onTap}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return ListTile(
-      leading: Icon(icon, color: const Color(0xFF7C3AED)),
+      leading: Icon(
+        icon,
+        color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+      ),
       title: Text(label),
       trailing: time != null
           ? Text(time,

@@ -108,7 +108,10 @@ class OperationPreviewCard extends StatelessWidget {
                       onEdit),
                   const SizedBox(width: 8),
                   _actionButton(
-                      '批准', Icons.check, const Color(0xFF10B981), onApprove),
+                      '批准',
+                      Icons.check,
+                      isDark ? AppColors.darkSuccess : AppColors.lightSuccess,
+                      onApprove),
                 ],
               ),
             ],
@@ -240,7 +243,7 @@ class OperationPreviewCard extends StatelessWidget {
     Color color;
     switch (operation.status) {
       case AiOperationStatus.approved:
-        color = const Color(0xFF10B981);
+        color = isDark ? AppColors.darkSuccess : AppColors.lightSuccess;
         break;
       case AiOperationStatus.rejected:
         color = Colors.grey;

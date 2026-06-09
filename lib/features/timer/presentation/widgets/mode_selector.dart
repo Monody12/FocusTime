@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../providers/timer_provider.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 class ModeSelector extends ConsumerWidget {
   const ModeSelector({super.key});
@@ -14,7 +14,7 @@ class ModeSelector extends ConsumerWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurfaceElevated,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
@@ -77,7 +77,9 @@ class _ModeButton extends StatelessWidget {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF7C3AED) : Colors.transparent,
+          color: isSelected
+              ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(

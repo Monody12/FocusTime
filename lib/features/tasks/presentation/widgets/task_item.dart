@@ -43,13 +43,20 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           _showContextMenu(context, details.globalPosition),
       behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: widget.isSelected
-              ? (isDark ? const Color(0xFF3D3D5C) : const Color(0xFFE5E7EB))
+              ? (isDark
+                  ? AppColors.darkSurfaceElevated
+                  : AppColors.lightSurfaceElevated)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
+          border: widget.isSelected
+              ? Border.all(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                )
+              : null,
         ),
         child: Row(
           children: [
@@ -61,11 +68,13 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 height: 22,
                 decoration: BoxDecoration(
                   color: widget.task.completed
-                      ? const Color(0xFF7C3AED)
+                      ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
                       : Colors.transparent,
                   border: Border.all(
                     color: widget.task.completed
-                        ? const Color(0xFF7C3AED)
+                        ? (isDark
+                            ? AppColors.darkAccent
+                            : AppColors.lightAccent)
                         : (isDark
                             ? AppColors.darkBorder
                             : AppColors.lightBorder),
@@ -113,10 +122,11 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
             if (widget.task.isImportant)
               Padding(
                 padding: const EdgeInsets.only(left: 8),
-                child: const Icon(
+                child: Icon(
                   Icons.star,
                   size: 16,
-                  color: Color(0xFF7C3AED),
+                  color:
+                      isDark ? AppColors.darkWarning : AppColors.lightWarning,
                 ),
               ),
             // 截止日期
@@ -161,7 +171,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                               DateTime.now().millisecondsSinceEpoch &&
                           !widget.task.completed)
                       ? Colors.red
-                      : const Color(0xFF7C3AED),
+                      : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
                 ),
               ),
           ],
@@ -183,7 +193,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
             color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: const Color(0xFF7C3AED),
+              color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
               width: 2,
             ),
           ),
@@ -195,11 +205,13 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 height: 22,
                 decoration: BoxDecoration(
                   color: widget.task.completed
-                      ? const Color(0xFF7C3AED)
+                      ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
                       : Colors.transparent,
                   border: Border.all(
                     color: widget.task.completed
-                        ? const Color(0xFF7C3AED)
+                        ? (isDark
+                            ? AppColors.darkAccent
+                            : AppColors.lightAccent)
                         : (isDark
                             ? AppColors.darkBorder
                             : AppColors.lightBorder),
@@ -296,7 +308,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           position.dx, position.dy, position.dx, position.dy),
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      color: isDark ? const Color(0xFF2D2D3F) : Colors.white,
+      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
       items: <PopupMenuEntry<dynamic>>[
         PopupMenuItem<dynamic>(
           height: 38,
@@ -430,7 +442,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('移动任务到', style: TextStyle(fontSize: 16)),
-        backgroundColor: isDark ? const Color(0xFF2D2D3F) : Colors.white,
+        backgroundColor:
+            isDark ? AppColors.darkSurface : AppColors.lightSurface,
         content: SizedBox(
           width: 300,
           child: ListView.builder(

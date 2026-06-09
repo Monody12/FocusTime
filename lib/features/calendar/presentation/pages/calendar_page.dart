@@ -253,7 +253,9 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   margin: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? const Color(0xFF7C3AED)
+                        ? (isDark
+                            ? AppColors.darkAccent
+                            : AppColors.lightAccent)
                         : isToday
                             ? (isDark
                                 ? AppColors.darkSurface
@@ -261,7 +263,11 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                             : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     border: isToday && !isSelected
-                        ? Border.all(color: const Color(0xFF7C3AED))
+                        ? Border.all(
+                            color: isDark
+                                ? AppColors.darkAccent
+                                : AppColors.lightAccent,
+                          )
                         : null,
                   ),
                   child: Column(

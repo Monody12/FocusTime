@@ -11,3 +11,4 @@
 - [AI 模型选择：Chat 优于 Reasoner](ai_model_selection.md) — 任务管理需要秒级响应，不用推理模型
 - [软件更新机制设计](update_mechanism_design.md) — 推荐自建更新服务器，复用现有公网 IP
 - [数据丢失预防](data_loss_prevention.md) — 绝不能在初始化/恢复流程中自动删除用户数据，refreshAll 语义是恢复不是清理
+- [绿色沉浸主题重构](green_theme_ui_refresh.md) — 2026-06-09 将 Flutter 紫色主题改为深海蓝绿主题；保留任务选择、开始专注、番茄钟展开、详情、日历、AI 等功能逻辑，只调整 UI 主题和层次

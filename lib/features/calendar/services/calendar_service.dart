@@ -4,7 +4,7 @@ import 'package:device_calendar/device_calendar.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/material.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/features/calendar/services/macos_calendar_plugin.dart';
@@ -69,7 +69,7 @@ class CalendarService {
 
     return _deviceCalendarPlugin.createCalendar(
       name,
-      calendarColor: const Color(0xFF7C3AED),
+      calendarColor: AppColors.lightAccent,
       localAccountName: 'FocusMyTime',
     );
   }

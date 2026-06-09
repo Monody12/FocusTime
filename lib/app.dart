@@ -101,12 +101,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                 children: [
                   // Header (Top-level, spans full width)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 12),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkBackground
-                          : AppColors.lightBackground,
+                      color: isDark ? const Color(0xFF121B29) : Colors.white,
                       border: Border(
                         bottom: BorderSide(
                           color: isDark
@@ -135,7 +133,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: isDark
-                                ? AppColors.darkAccent
+                                ? AppColors.darkAccentSecondary
                                 : AppColors.lightAccent,
                           ),
                         ),
@@ -280,7 +278,11 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                         isMobile ? '📅' : '📅 日历',
                                         style: TextStyle(
                                           color: _showCalendar
-                                              ? const Color(0xFF4FC3F7)
+                                              ? (isDark
+                                                  ? AppColors
+                                                      .darkAccentSecondary
+                                                  : AppColors
+                                                      .lightAccentSecondary)
                                               : (isDark
                                                   ? AppColors.darkText
                                                   : AppColors.lightText),
@@ -513,8 +515,19 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
             width: 1,
             color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
           ),
-          SizedBox(
-            width: 280,
+          Container(
+            width: 300,
+            decoration: BoxDecoration(
+              color:
+                  isDark ? const Color(0xFF121B29) : AppColors.lightBackground,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.16 : 0.06),
+                  blurRadius: 18,
+                  offset: const Offset(-8, 0),
+                ),
+              ],
+            ),
             child: const TimerPage(),
           ),
         ],
@@ -549,20 +562,22 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
               _buildFooterActionButton(
                 label: isMobile ? '☕ 休息' : '☕ 开始休息',
                 onTap: () => timerNotifier.startBreak(),
-                color: const Color(0xFF7C3AED),
+                color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
                 isPrimary: true,
               )
             else
               _buildFooterActionButton(
                 label: isMobile ? '🎯 专注' : '🎯 开始专注',
                 onTap: () => timerNotifier.resetFocus(),
-                color: const Color(0xFF4FC3F7),
+                color: isDark
+                    ? AppColors.darkAccentSecondary
+                    : AppColors.lightAccentSecondary,
                 isPrimary: true,
               ),
             _buildFooterActionButton(
               label: isMobile ? '🎯 继续' : '🎯 继续专注',
               onTap: () => timerNotifier.startFocus(),
-              color: const Color(0xFF7C3AED),
+              color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
               isPrimary: false,
               isDark: isDark,
             ),
@@ -573,7 +588,9 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       final minutes = remaining ~/ 60;
       final seconds = remaining % 60;
       return Material(
-        color: const Color(0xFF4FC3F7),
+        color: isDark
+            ? AppColors.darkAccentSecondary
+            : AppColors.lightAccentSecondary,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
           onTap: () =>
@@ -593,7 +610,9 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       );
     }
     return Material(
-      color: const Color(0xFF4FC3F7),
+      color: isDark
+          ? AppColors.darkAccentSecondary
+          : AppColors.lightAccentSecondary,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         onTap: () => _handleFooterButton(timerState, timerNotifier, taskState),

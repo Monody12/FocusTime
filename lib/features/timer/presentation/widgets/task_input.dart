@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../../tasks/providers/task_provider.dart';
-import '../../providers/timer_provider.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 class TaskInput extends ConsumerStatefulWidget {
   const TaskInput({super.key});
@@ -42,7 +42,8 @@ class _TaskInputState extends ConsumerState<TaskInput> {
     final timerState = ref.watch(timerProvider);
 
     // Get my day tasks
-    final myDayTasks = taskState.tasks.where((t) => t.isMyDay && !t.completed).toList();
+    final myDayTasks =
+        taskState.tasks.where((t) => t.isMyDay && !t.completed).toList();
 
     // Sync local history with timer state history
     final displayHistory = timerState.taskHistory.isNotEmpty
@@ -50,7 +51,8 @@ class _TaskInputState extends ConsumerState<TaskInput> {
         : _localHistory;
 
     // Combine my day tasks with history
-    final showDropdown = _showHistory && (myDayTasks.isNotEmpty || displayHistory.isNotEmpty);
+    final showDropdown =
+        _showHistory && (myDayTasks.isNotEmpty || displayHistory.isNotEmpty);
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
@@ -60,7 +62,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
           Text(
             '当前专注：',
             style: TextStyle(
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
               fontSize: 12,
             ),
           ),
@@ -74,18 +78,30 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                   decoration: InputDecoration(
                     hintText: '输入你正在专注的内容...',
                     isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                      borderSide: BorderSide(
+                          color: isDark
+                              ? AppColors.darkBorder
+                              : AppColors.lightBorder),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                      borderSide: BorderSide(
+                          color: isDark
+                              ? AppColors.darkBorder
+                              : AppColors.lightBorder),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFF7C3AED), width: 2),
+                      borderSide: BorderSide(
+                        color: isDark
+                            ? AppColors.darkAccent
+                            : AppColors.lightAccent,
+                        width: 2,
+                      ),
                     ),
                   ),
                   style: TextStyle(
@@ -98,7 +114,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
               IconButton(
                 icon: Icon(
                   _showHistory ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary,
                 ),
                 onPressed: () => setState(() => _showHistory = !_showHistory),
               ),
@@ -113,7 +131,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
               decoration: BoxDecoration(
                 color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                border: Border.all(
+                    color:
+                        isDark ? AppColors.darkBorder : AppColors.lightBorder),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -121,34 +141,44 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                   // My day section
                   if (myDayTasks.isNotEmpty) ...[
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       child: Text(
                         '☀ 我的一天',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                     ),
-                    ...myDayTasks.map((task) => _buildHistoryItem(task.title, '📋', isDark)),
-
+                    ...myDayTasks.map(
+                        (task) => _buildHistoryItem(task.title, '📋', isDark)),
                     if (displayHistory.isNotEmpty)
-                      Divider(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                      Divider(
+                          color: isDark
+                              ? AppColors.darkBorder
+                              : AppColors.lightBorder),
                   ],
 
                   // History section
                   if (displayHistory.isNotEmpty) ...[
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       child: Text(
                         '🕐 最近使用',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary,
                         ),
                       ),
                     ),
-                    ...displayHistory.map((task) => _buildHistoryItem(task, '🕐', isDark)),
+                    ...displayHistory
+                        .map((task) => _buildHistoryItem(task, '🕐', isDark)),
                   ],
                 ],
               ),

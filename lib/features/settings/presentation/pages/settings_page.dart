@@ -1232,7 +1232,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF7C3AED),
+            activeColor: isDark ? AppColors.darkAccent : AppColors.lightAccent,
           ),
         ),
       ],
@@ -1896,9 +1896,11 @@ class _SettingButton extends StatelessWidget {
     final bgColor = isDanger
         ? Colors.red
         : isAccent
-            ? const Color(0xFF4FC3F7)
+            ? (isDark
+                ? AppColors.darkAccentSecondary
+                : AppColors.lightAccentSecondary)
             : isPrimary
-                ? const Color(0xFF7C3AED)
+                ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
                 : Colors.transparent;
 
     final textColor = isPrimary || isAccent || isDanger

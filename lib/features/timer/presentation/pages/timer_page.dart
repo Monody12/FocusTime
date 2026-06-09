@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../providers/timer_provider.dart';
-import '../widgets/timer_display.dart';
-import '../widgets/timer_controls.dart';
-import '../widgets/mode_selector.dart';
-import '../widgets/overdue_mode_dialog.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
+import 'package:focus_my_time/features/timer/presentation/widgets/timer_display.dart';
+import 'package:focus_my_time/features/timer/presentation/widgets/timer_controls.dart';
+import 'package:focus_my_time/features/timer/presentation/widgets/mode_selector.dart';
+import 'package:focus_my_time/features/timer/presentation/widgets/overdue_mode_dialog.dart';
 
 class TimerPage extends ConsumerWidget {
   const TimerPage({super.key});
@@ -23,7 +23,8 @@ class TimerPage extends ConsumerWidget {
     });
 
     final isInBreakPhase = timerState.timerMode == TimerMode.pomodoro &&
-        (timerState.timerPhase == 'break' || timerState.timerPhase == 'long-break');
+        (timerState.timerPhase == 'break' ||
+            timerState.timerPhase == 'long-break');
 
     // Bug 修复：两个完成面板条件之前几乎相同，导致同时显示。
     // 现在分开判断：
@@ -32,7 +33,8 @@ class TimerPage extends ConsumerWidget {
     final isCompleted = timerState.timerStatus == TimerStatus.completed;
     final focusDone = isCompleted &&
         timerState.timerMode == TimerMode.pomodoro &&
-        (timerState.timerPhase == 'break' || timerState.timerPhase == 'long-break') &&
+        (timerState.timerPhase == 'break' ||
+            timerState.timerPhase == 'long-break') &&
         !timerState.pomodoroConfig.autoStartBreak;
     final breakDone = isCompleted &&
         isInBreakPhase &&
@@ -45,58 +47,79 @@ class TimerPage extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           child: ConstrainedBox(
             // 确保内容宽度不超过父容器宽度
-            constraints: BoxConstraints(minWidth: 0, maxWidth: constraints.maxWidth),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // 模式选择器
-                const ModeSelector(),
-                const SizedBox(height: 20),
+            constraints:
+                BoxConstraints(minWidth: 0, maxWidth: constraints.maxWidth),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.18 : 0.05),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 模式选择器
+                  const ModeSelector(),
+                  const SizedBox(height: 20),
 
-                // 当前任务名称
-                if (timerState.currentTask.isNotEmpty && timerState.timerPhase == 'focus')
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      timerState.currentTask,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                  // 当前任务名称
+                  if (timerState.currentTask.isNotEmpty &&
+                      timerState.timerPhase == 'focus')
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        timerState.currentTask,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color:
+                              isDark ? AppColors.darkText : AppColors.lightText,
+                        ),
                       ),
                     ),
-                  ),
 
-                // 计时器圆环
-                const Center(child: TimerDisplay()),
-                const SizedBox(height: 12),
+                  // 计时器圆环
+                  const Center(child: TimerDisplay()),
+                  const SizedBox(height: 12),
 
-                // 阶段/循环信息
-                if (timerState.timerMode == TimerMode.singleCore && timerState.targetTime != null)
-                  _buildSingleCoreInfo(timerState, isDark)
-                else if (timerState.timerMode == TimerMode.pomodoro)
-                  _buildPomodoroInfo(timerState, isDark)
-                else if (timerState.timerMode == TimerMode.task)
-                  _buildTaskInfo(timerState, isDark),
+                  // 阶段/循环信息
+                  if (timerState.timerMode == TimerMode.singleCore &&
+                      timerState.targetTime != null)
+                    _buildSingleCoreInfo(timerState, isDark)
+                  else if (timerState.timerMode == TimerMode.pomodoro)
+                    _buildPomodoroInfo(timerState, isDark)
+                  else if (timerState.timerMode == TimerMode.task)
+                    _buildTaskInfo(timerState, isDark),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                // 专注完成面板（等待用户点击开始休息）
-                if (focusDone) ...[
-                  _buildFocusCompletePanel(context, ref, timerState),
-                  const SizedBox(height: 8),
+                  // 专注完成面板（等待用户点击开始休息）
+                  if (focusDone) ...[
+                    _buildFocusCompletePanel(context, ref, timerState),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // 休息完成面板（等待用户点击开始专注）
+                  if (breakDone) ...[
+                    _buildBreakCompletePanel(context, ref, timerState),
+                    const SizedBox(height: 8),
+                  ],
+
+                  // 计时器控制按钮（开始/暂停/重置）
+                  const TimerControls(),
                 ],
-
-                // 休息完成面板（等待用户点击开始专注）
-                if (breakDone) ...[
-                  _buildBreakCompletePanel(context, ref, timerState),
-                  const SizedBox(height: 8),
-                ],
-
-                // 计时器控制按钮（开始/暂停/重置）
-                const TimerControls(),
-              ],
+              ),
             ),
           ),
         );
@@ -128,7 +151,9 @@ class TimerPage extends ConsumerWidget {
             '最少 ${timerState.singleCoreConfig.minDuration} 分钟',
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: isDark
+                  ? AppColors.darkTextSecondary
+                  : AppColors.lightTextSecondary,
             ),
           ),
         ],
@@ -166,14 +191,18 @@ class TimerPage extends ConsumerWidget {
         children: [
           Text(
             phaseText,
-            style: TextStyle(fontSize: 13, color: isDark ? AppColors.darkText : AppColors.lightText),
+            style: TextStyle(
+                fontSize: 13,
+                color: isDark ? AppColors.darkText : AppColors.lightText),
           ),
           if (cycleText.isNotEmpty)
             Text(
               cycleText,
               style: TextStyle(
                   fontSize: 12,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                  color: isDark
+                      ? AppColors.darkTextSecondary
+                      : AppColors.lightTextSecondary),
             ),
         ],
       ),
@@ -195,7 +224,9 @@ class TimerPage extends ConsumerWidget {
         children: [
           Text(
             '任务模式 · 剩余 $remaining 分钟',
-            style: TextStyle(fontSize: 13, color: isDark ? AppColors.darkText : AppColors.lightText),
+            style: TextStyle(
+                fontSize: 13,
+                color: isDark ? AppColors.darkText : AppColors.lightText),
           ),
         ],
       ),
@@ -203,7 +234,8 @@ class TimerPage extends ConsumerWidget {
   }
 
   /// 休息结束面板：点击"开始专注"或"跳过"
-  Widget _buildBreakCompletePanel(BuildContext context, WidgetRef ref, TimerState timerState) {
+  Widget _buildBreakCompletePanel(
+      BuildContext context, WidgetRef ref, TimerState timerState) {
     final timerNotifier = ref.read(timerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final phaseName = timerState.timerPhase == 'long-break' ? '长休息' : '短休息';
@@ -213,7 +245,8 @@ class TimerPage extends ConsumerWidget {
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         children: [
@@ -256,7 +289,8 @@ class TimerPage extends ConsumerWidget {
   }
 
   /// 专注结束面板：点击"开始休息"
-  Widget _buildFocusCompletePanel(BuildContext context, WidgetRef ref, TimerState timerState) {
+  Widget _buildFocusCompletePanel(
+      BuildContext context, WidgetRef ref, TimerState timerState) {
     final timerNotifier = ref.read(timerProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final breakName = timerState.timerPhase == 'long-break' ? '长' : '短';
@@ -266,7 +300,8 @@ class TimerPage extends ConsumerWidget {
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+        border: Border.all(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
       ),
       child: Column(
         children: [
