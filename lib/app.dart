@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +28,9 @@ class FocusMyTimeApp extends ConsumerStatefulWidget {
 }
 
 class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
+  static const MethodChannel _androidBackChannel =
+      MethodChannel('focus_my_time/android_back');
+
   bool _showTimerPanel = false; // 默认不显示计时器，开始专注后才显示
   bool _showSettings = false;
   bool _showCalendar = false;
@@ -395,42 +400,94 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       ),
     );
 
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyT, control: true): () {
-          if (taskState.selectedTaskId != null) {
-            final taskNotifier = ref.read(taskProvider.notifier);
-            final task = taskState.tasks
-                .where((t) => t.id == taskState.selectedTaskId)
-                .firstOrNull;
-            if (task != null) {
-              if (task.isMyDay)
-                taskNotifier.removeFromMyDay(task.id);
-              else
-                taskNotifier.addToMyDay(task.id);
-            }
-          }
-        },
-        const SingleActivator(LogicalKeyboardKey.keyD, control: true): () {
-          if (taskState.selectedTaskId != null) {
-            ref
-                .read(taskProvider.notifier)
-                .toggleTaskComplete(taskState.selectedTaskId!);
-          }
-        },
-        const SingleActivator(LogicalKeyboardKey.delete): () {
-          if (taskState.selectedTaskId != null) {
-            final task = taskState.tasks
-                .where((t) => t.id == taskState.selectedTaskId)
-                .firstOrNull;
-            if (task != null) {
-              _confirmDeleteTask(context, task);
-            }
-          }
-        },
+    return PopScope(
+      canPop: !Platform.isAndroid,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        _handleSystemBack(isMobile);
       },
-      child: mainContent,
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyT, control: true): () {
+            if (taskState.selectedTaskId != null) {
+              final taskNotifier = ref.read(taskProvider.notifier);
+              final task = taskState.tasks
+                  .where((t) => t.id == taskState.selectedTaskId)
+                  .firstOrNull;
+              if (task != null) {
+                if (task.isMyDay)
+                  taskNotifier.removeFromMyDay(task.id);
+                else
+                  taskNotifier.addToMyDay(task.id);
+              }
+            }
+          },
+          const SingleActivator(LogicalKeyboardKey.keyD, control: true): () {
+            if (taskState.selectedTaskId != null) {
+              ref
+                  .read(taskProvider.notifier)
+                  .toggleTaskComplete(taskState.selectedTaskId!);
+            }
+          },
+          const SingleActivator(LogicalKeyboardKey.delete): () {
+            if (taskState.selectedTaskId != null) {
+              final task = taskState.tasks
+                  .where((t) => t.id == taskState.selectedTaskId)
+                  .firstOrNull;
+              if (task != null) {
+                _confirmDeleteTask(context, task);
+              }
+            }
+          },
+        },
+        child: mainContent,
+      ),
     );
+  }
+
+  Future<bool> _handleSystemBack(bool isMobile) async {
+    if (_scaffoldKey.currentState?.isDrawerOpen == true) {
+      Navigator.of(context).pop();
+      return false;
+    }
+
+    if (_showSettings) {
+      setState(() => _showSettings = false);
+      return false;
+    }
+
+    if (_showAiChat) {
+      setState(() => _showAiChat = false);
+      return false;
+    }
+
+    final taskNotifier = ref.read(taskProvider.notifier);
+    final taskState = ref.read(taskProvider);
+    if (taskState.selectedTaskId != null) {
+      taskNotifier.setSelectedTask(null);
+      return false;
+    }
+
+    if (_showCalendar) {
+      setState(() => _showCalendar = false);
+      return false;
+    }
+
+    if (isMobile && _showTimerPanel) {
+      setState(() => _showTimerPanel = false);
+      return false;
+    }
+
+    if (Platform.isAndroid) {
+      try {
+        await _androidBackChannel.invokeMethod<void>('moveTaskToBack');
+      } catch (_) {
+        await SystemNavigator.pop();
+      }
+      return false;
+    }
+
+    return true;
   }
 
   void _confirmDeleteTask(BuildContext context, TaskItem task) {

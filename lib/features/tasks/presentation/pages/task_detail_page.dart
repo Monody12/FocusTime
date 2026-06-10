@@ -41,6 +41,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   // FocusNode 用于监听焦点变化，实现鼠标离开自动保存
   late FocusNode _titleFocusNode;
+  late FocusNode _notesFocusNode;
+  late FocusNode _expectedMinutesFocusNode;
 
   @override
   void initState() {
@@ -52,16 +54,25 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     _dueDateController = TextEditingController();
     _dueTimeController = TextEditingController();
     _titleFocusNode = FocusNode();
+    _notesFocusNode = FocusNode();
+    _expectedMinutesFocusNode = FocusNode();
     // 监听标题输入框焦点丢失事件，触发自动保存
     _titleFocusNode.addListener(_onTitleFocusChange);
+    _notesFocusNode.addListener(_onNotesFocusChange);
+    _expectedMinutesFocusNode.addListener(_onExpectedMinutesFocusChange);
     _loadTaskData();
   }
 
   @override
   void dispose() {
+    _saveAllEdits();
     WidgetsBinding.instance.removeObserver(this);
     _titleFocusNode.removeListener(_onTitleFocusChange);
+    _notesFocusNode.removeListener(_onNotesFocusChange);
+    _expectedMinutesFocusNode.removeListener(_onExpectedMinutesFocusChange);
     _titleFocusNode.dispose();
+    _notesFocusNode.dispose();
+    _expectedMinutesFocusNode.dispose();
     _titleController.dispose();
     _notesController.dispose();
     _expectedMinutesController.dispose();
@@ -74,6 +85,18 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   void _onTitleFocusChange() {
     if (!_titleFocusNode.hasFocus) {
       _saveTitle(widget.taskId);
+    }
+  }
+
+  void _onNotesFocusChange() {
+    if (!_notesFocusNode.hasFocus) {
+      _saveNotes(widget.taskId);
+    }
+  }
+
+  void _onExpectedMinutesFocusChange() {
+    if (!_expectedMinutesFocusNode.hasFocus) {
+      _saveExpectedMinutes(widget.taskId);
     }
   }
 
@@ -423,6 +446,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   _buildSectionLabel('预期时间（分钟）', isDark),
                   TextField(
                     controller: _expectedMinutesController,
+                    focusNode: _expectedMinutesFocusNode,
                     decoration: InputDecoration(
                       hintText: '预计需要的专注时间',
                       isDense: true,
@@ -441,6 +465,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   _buildSectionLabel('备注', isDark),
                   TextField(
                     controller: _notesController,
+                    focusNode: _notesFocusNode,
                     decoration: InputDecoration(
                       hintText: '添加备注...',
                       isDense: true,
