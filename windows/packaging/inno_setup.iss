@@ -1,7 +1,7 @@
 [Setup]
 AppId={{E6F7C8A9-9B8D-4C7E-B3A2-1F4D5E6C7B8A}
 AppName=FocusMyTime
-AppVersion=1.0.14
+AppVersion=1.1.1
 AppPublisher=Monody12
 AppPublisherURL=https://github.com/Monody12/FocusTime
 DefaultDirName={autopf}\FocusMyTime
