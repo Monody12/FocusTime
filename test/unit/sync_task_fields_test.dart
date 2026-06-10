@@ -48,7 +48,7 @@ void main() {
     expect(data['expectedMinutes'], 90);
     expect(data['isImportant'], true);
     expect(data['reminderAt'], reminderAt);
-    expect(data['calendarEventId'], 'calendar-event-1');
+    expect(data.containsKey('calendarEventId'), false);
     expect(data['createdAt'], isA<int>());
     expect(data['updatedAt'], isA<int>());
     expect(data['archived'], false);
@@ -64,6 +64,7 @@ void main() {
           'data': {
             ...data,
             'notes': 'Android 应看到的备注',
+            'calendarEventId': 'remote-calendar-event',
           },
         }
       ],
@@ -71,6 +72,7 @@ void main() {
 
     final updatedTask = await AppDatabase.getTaskById(taskId);
     expect(updatedTask!['notes'], 'Android 应看到的备注');
+    expect(updatedTask['calendarEventId'], 'calendar-event-1');
 
     await AppDatabase.archiveTask(taskId);
     expect(await AppDatabase.getTaskById(taskId), isNull);

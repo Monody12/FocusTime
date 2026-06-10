@@ -119,6 +119,7 @@ class TaskItem {
     bool clearDueDate = false,
     bool clearDueTime = false,
     bool clearReminder = false,
+    bool clearCalendarEventId = false,
   }) =>
       TaskItem(
         id: id ?? this.id,
@@ -136,7 +137,9 @@ class TaskItem {
         expectedMinutes: expectedMinutes ?? this.expectedMinutes,
         isImportant: isImportant ?? this.isImportant,
         reminderAt: clearReminder ? null : (reminderAt ?? this.reminderAt),
-        calendarEventId: calendarEventId ?? this.calendarEventId,
+        calendarEventId: clearCalendarEventId
+            ? null
+            : (calendarEventId ?? this.calendarEventId),
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         archived: archived ?? this.archived,
@@ -182,14 +185,23 @@ class TaskState {
 }
 
 class TaskNotifier extends StateNotifier<TaskState> {
+  final Map<String, TaskItem> _knownReminderTasks = {};
+  late final Future<void> Function() _syncCompletedListener;
+
   TaskNotifier() : super(TaskState()) {
+    _syncCompletedListener = _handleExternalSyncCompleted;
+    SyncService.addSyncCompletedListener(_syncCompletedListener);
     loadLists();
     loadTasks().then((_) async {
       // 从数据库加载所有有提醒的未完成任务（不受当前视图过滤限制），确保每个提醒都被恢复
-      final allDbTasks = await AppDatabase.getAllTasks();
-      final allTasks = allDbTasks.map(_taskFromMap).toList();
-      ReminderService.refreshAll(allTasks);
+      await _refreshRemindersAndCalendarFromDatabase();
     });
+  }
+
+  @override
+  void dispose() {
+    SyncService.removeSyncCompletedListener(_syncCompletedListener);
+    super.dispose();
   }
 
   static TaskList _listFromMap(Map<String, dynamic> m) {
@@ -373,37 +385,12 @@ class TaskNotifier extends StateNotifier<TaskState> {
       state = state.copyWith(isLoading: true);
     }
     try {
-      final result = await SyncService.fullSync();
+      final result = await SyncService.fullSync(notifyListeners: false);
       if (result.success) {
         await loadLists();
         await loadTasks();
         // 同步完成后刷新所有提醒和日历（必须使用完整数据集，不受当前视图过滤影响）
-        final allDbTasks = await AppDatabase.getAllTasks();
-        final allTasks = allDbTasks
-            .map((m) => TaskItem(
-                  id: m['id'] as String,
-                  listId: m['listId'] as String,
-                  title: m['title'] as String,
-                  notes: m['notes'] as String?,
-                  completed: m['completed'] == true,
-                  completedAt: m['completedAt'] as int?,
-                  dueDate: m['dueDate'] as String?,
-                  dueTime: m['dueTime'] as String?,
-                  sortOrder: m['sortOrder'] as int,
-                  isMyDay: m['isMyDay'] == true,
-                  myDayAddedAt: m['myDayAddedAt'] as int?,
-                  recurrenceConfig:
-                      m['recurrenceConfig'] as Map<String, dynamic>?,
-                  expectedMinutes: m['expectedMinutes'] as int?,
-                  isImportant: m['isImportant'] == true,
-                  reminderAt: m['reminderAt'] as int?,
-                  calendarEventId: m['calendarEventId'] as String?,
-                  createdAt: m['createdAt'] as int,
-                  updatedAt: m['updatedAt'] as int,
-                ))
-            .toList();
-        ReminderService.refreshAll(allTasks);
-        CalendarService.refreshAll(allTasks);
+        await _refreshRemindersAndCalendarFromDatabase();
       }
       if (!background) state = state.copyWith(isLoading: false);
       return result;
@@ -414,7 +401,14 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   void _triggerSync() {
-    sync(background: true);
+    SyncService.triggerBackgroundSync();
+  }
+
+  Future<void> _handleExternalSyncCompleted() async {
+    if (!mounted) return;
+    await loadLists();
+    await loadTasks(showLoading: false);
+    await _refreshRemindersAndCalendarFromDatabase();
   }
 
   Future<void> _cancelTaskIntegrations(List<TaskItem> tasks) async {
@@ -435,10 +429,53 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> _refreshRemindersAndCalendarFromDatabase() async {
-    final allTasks =
-        (await AppDatabase.getAllTasks()).map(_taskFromMap).toList();
+    final previousTasks = Map<String, TaskItem>.from(_knownReminderTasks);
+    final allTasks = await _loadAllTaskItems();
+    await _reconcileRemovedIntegrations(previousTasks, allTasks);
     await ReminderService.refreshAll(allTasks);
-    await CalendarService.refreshAll(allTasks);
+    final refreshedTasks = await _loadAllTaskItems();
+    _replaceKnownReminderTasks(refreshedTasks);
+  }
+
+  Future<List<TaskItem>> _loadAllTaskItems() async {
+    final allDbTasks = await AppDatabase.getAllTasks();
+    return allDbTasks.map(_taskFromMap).toList();
+  }
+
+  Future<void> _reconcileRemovedIntegrations(
+    Map<String, TaskItem> previousTasks,
+    List<TaskItem> currentTasks,
+  ) async {
+    final currentById = {for (final task in currentTasks) task.id: task};
+    for (final previousTask in previousTasks.values) {
+      final currentTask = currentById[previousTask.id];
+      final removed = currentTask == null;
+      final reminderDisabled = currentTask != null &&
+          (currentTask.reminderAt == null || currentTask.completed);
+      if (!removed && !reminderDisabled) continue;
+
+      await ReminderService.cancelReminder(previousTask.id);
+      if (previousTask.calendarEventId != null) {
+        await CalendarService.removeTask(previousTask.calendarEventId!);
+      }
+    }
+  }
+
+  void _replaceKnownReminderTasks(List<TaskItem> tasks) {
+    _knownReminderTasks
+      ..clear()
+      ..addEntries(tasks
+          .where(
+              (task) => task.reminderAt != null || task.calendarEventId != null)
+          .map((task) => MapEntry(task.id, task)));
+  }
+
+  void _rememberTaskIntegration(TaskItem task) {
+    if (task.reminderAt != null || task.calendarEventId != null) {
+      _knownReminderTasks[task.id] = task;
+    } else {
+      _knownReminderTasks.remove(task.id);
+    }
   }
 
   Future<TaskItem> createTask(String title,
@@ -485,6 +522,10 @@ class TaskNotifier extends StateNotifier<TaskState> {
       if (eventId != null && eventId != task.calendarEventId) {
         await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
       }
+      _rememberTaskIntegration(task.copyWith(
+        calendarEventId: eventId,
+        clearCalendarEventId: eventId == null,
+      ));
     }
 
     _triggerSync();
@@ -532,9 +573,18 @@ class TaskNotifier extends StateNotifier<TaskState> {
       }
       state = state.copyWith(
         tasks: state.tasks
-            .map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t)
+            .map((t) => t.id == id
+                ? t.copyWith(
+                    calendarEventId: eventId,
+                    clearCalendarEventId: eventId == null,
+                  )
+                : t)
             .toList(),
       );
+      _rememberTaskIntegration(updatedTask.copyWith(
+        calendarEventId: eventId,
+        clearCalendarEventId: eventId == null,
+      ));
     }
 
     _triggerSync();
@@ -574,6 +624,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
         // Android 14+ 可能拒绝删除日历事件，降级方案已在 CalendarService 内部处理
       }
     }
+    _knownReminderTasks.remove(id);
   }
 
   Future<void> toggleTaskComplete(String id) async {
@@ -648,6 +699,10 @@ class TaskNotifier extends StateNotifier<TaskState> {
           await AppDatabase.updateTask(
               newTask.id, {'calendarEventId': newEventId});
         }
+        _rememberTaskIntegration(newTask.copyWith(
+          calendarEventId: newEventId,
+          clearCalendarEventId: newEventId == null,
+        ));
       }
     } else {
       await AppDatabase.toggleTaskComplete(id);
@@ -665,9 +720,18 @@ class TaskNotifier extends StateNotifier<TaskState> {
       }
       state = state.copyWith(
         tasks: state.tasks
-            .map((t) => t.id == id ? t.copyWith(calendarEventId: eventId) : t)
+            .map((t) => t.id == id
+                ? t.copyWith(
+                    calendarEventId: eventId,
+                    clearCalendarEventId: eventId == null,
+                  )
+                : t)
             .toList(),
       );
+      _rememberTaskIntegration(updatedTask.copyWith(
+        calendarEventId: eventId,
+        clearCalendarEventId: eventId == null,
+      ));
     }
 
     _triggerSync();

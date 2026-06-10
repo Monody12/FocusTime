@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ import 'package:focus_my_time/features/ai_assistant/presentation/pages/ai_chat_p
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/core/providers/package_info_provider.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/update/services/update_service.dart';
 import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
 
@@ -27,7 +29,8 @@ class FocusMyTimeApp extends ConsumerStatefulWidget {
   ConsumerState<FocusMyTimeApp> createState() => _FocusMyTimeAppState();
 }
 
-class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
+class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
+    with WidgetsBindingObserver {
   static const MethodChannel _androidBackChannel =
       MethodChannel('focus_my_time/android_back');
 
@@ -36,14 +39,40 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
   bool _showCalendar = false;
   bool _showAiChat = false;
   bool _showNoTaskToast = false;
+  Timer? _foregroundSyncDebounce;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleAndroidForegroundSync();
     // 延迟检查更新，避免阻塞首屏
     Future.delayed(const Duration(seconds: 2), _checkUpdate);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _foregroundSyncDebounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _scheduleAndroidForegroundSync();
+    }
+  }
+
+  void _scheduleAndroidForegroundSync() {
+    if (!Platform.isAndroid || !SyncService.isLoggedIn) return;
+    _foregroundSyncDebounce?.cancel();
+    _foregroundSyncDebounce = Timer(const Duration(seconds: 1), () {
+      if (!mounted) return;
+      ref.read(taskProvider.notifier).sync(background: true);
+    });
   }
 
   Future<void> _checkUpdate() async {

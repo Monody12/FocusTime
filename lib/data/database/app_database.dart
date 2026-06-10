@@ -1181,6 +1181,12 @@ class AppDatabase {
         where: 'updated_at > ? OR deleted = 1', whereArgs: [lastSyncTime]);
     return records.map((r) {
       final mapped = mapper(r);
+      // 系统日历事件 ID 是本机外部集成状态，不能跨设备同步。
+      // Windows/macOS/Android 的日历事件 ID 不通用，远端覆盖会导致 Android
+      // 失去本机旧事件引用，下一次刷新时新建事件并留下旧提醒。
+      if (table == 'tasks') {
+        mapped.remove('calendarEventId');
+      }
       return {
         'id': r['id'],
         'updatedAt': r['updated_at'],
@@ -1241,6 +1247,17 @@ class AppDatabase {
         final row = unmapper(data);
         row['updated_at'] = item['updatedAt'];
         row['deleted'] = 0;
+        if (table == 'tasks') {
+          final localTaskRows = await txn.query(
+            table,
+            where: 'id = ?',
+            whereArgs: [id],
+            columns: ['calendar_event_id'],
+          );
+          row['calendar_event_id'] = localTaskRows.isNotEmpty
+              ? localTaskRows.first['calendar_event_id']
+              : null;
+        }
         await txn.insert(table, row,
             conflictAlgorithm: ConflictAlgorithm.replace);
       }

@@ -191,12 +191,18 @@ class CalendarService {
       return result.data;
     }
 
-    dev.log(
-        '[CalendarService] createOrUpdateEvent 失败，尝试回退方案: ${result?.errors.map((e) => e.errorMessage).join(', ') ?? 'unknown'}');
-    // 如果 UPDATE 失败（如事件被手动删除），回退到 DELETE+CREATE
-    if (task.calendarEventId != null) {
-      await _deleteEvent(_calendarId, task.calendarEventId!);
+    final errorMessage =
+        result?.errors.map((e) => e.errorMessage).join(', ') ?? 'unknown';
+    dev.log('[CalendarService] createOrUpdateEvent 失败: $errorMessage');
+
+    // Android 14+ / 16 对 deleteEvent 权限更严格。修改提醒时间时不能
+    // DELETE+CREATE，否则旧事件可能删不掉并造成重复日历提醒。
+    // 有旧 eventId 的 Android 更新失败时直接交给上层回退系统通知。
+    if (Platform.isAndroid && task.calendarEventId != null) {
+      throw Exception('更新 Android 日历事件失败: $errorMessage');
     }
+
+    // 非 Android 或首次创建失败时，保守尝试新建一次。
     final newEvent = Event(
       _calendarId,
       title: '任务提醒: ${task.title}',
@@ -216,7 +222,7 @@ class CalendarService {
     }
 
     dev.log('[CalendarService] 同步日历完全失败，保留旧 eventId');
-    return task.calendarEventId;
+    throw Exception('同步日历失败: $errorMessage');
   }
 
   /// 从日历移除任务提醒
@@ -310,7 +316,11 @@ class CalendarService {
     try {
       if (!(await isEnabled())) return;
       for (final task in tasks) {
-        await syncTask(task);
+        try {
+          await syncTask(task);
+        } catch (e) {
+          dev.log('[CalendarService] 刷新任务日历失败: ${task.title}, $e');
+        }
       }
     } finally {
       _refreshInProgress = false;

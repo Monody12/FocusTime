@@ -591,6 +591,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       );
 
                       if (confirm == true) {
+                        if (!context.mounted) return;
                         try {
                           // 展示一个全局 Loading
                           showDialog(
@@ -600,17 +601,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 child: CircularProgressIndicator()),
                           );
 
-                          final tasks = ref.read(taskProvider).tasks;
+                          final tasks = await _loadAllTaskItems();
                           await CalendarService.forceRebuildCalendar(tasks);
 
-                          if (mounted) {
+                          if (context.mounted) {
                             Navigator.of(context).pop(); // 关闭 loading
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('日历系统已清理并重新同步完成！')),
                             );
                           }
                         } catch (e) {
-                          if (mounted) {
+                          if (context.mounted) {
                             Navigator.of(context).pop(); // 关闭 loading
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('清理失败: $e')),
@@ -979,6 +980,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         );
 
                         if (confirm == true) {
+                          if (!context.mounted) return;
                           try {
                             showDialog(
                               context: context,
@@ -987,15 +989,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                   child: CircularProgressIndicator()),
                             );
 
-                            final tasks = ref.read(taskProvider).tasks;
+                            final tasks = await _loadAllTaskItems();
                             await CalendarService.forceRebuildCalendar(tasks);
 
-                            if (mounted) {
+                            if (context.mounted) {
                               Navigator.of(context).pop(); // 关闭 loading
                               _showSnackBar('日历系统已清理并重新同步完成！');
                             }
                           } catch (e) {
-                            if (mounted) {
+                            if (context.mounted) {
                               Navigator.of(context).pop(); // 关闭 loading
                               _showSnackBar('清理失败: $e', isError: true);
                             }
@@ -1051,11 +1053,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     onChanged: (value) async {
                       await CalendarService.setEnabled(value);
                       setState(() => _calendarSyncEnabled = value);
-                      if (value) {
-                        // 立即同步所有现有任务
-                        final taskState = ref.read(taskProvider);
-                        CalendarService.refreshAll(taskState.tasks);
-                      }
+                      // 立即按“日历优先、通知兜底”的统一规则刷新所有任务。
+                      // 启用日历且权限正常时会创建/更新日历并取消系统通知；
+                      // 关闭日历时会回到系统通知并清理本机日历事件。
+                      final allTasks = await _loadAllTaskItems();
+                      await ReminderService.refreshAll(allTasks);
                     },
                     isDark: isDark,
                   ),
