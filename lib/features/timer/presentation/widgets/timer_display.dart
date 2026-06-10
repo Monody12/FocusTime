@@ -12,6 +12,9 @@ class TimerDisplay extends ConsumerWidget {
     const size = 160.0;
     const strokeWidth = 8.0;
 
+    final remainingProgress = timerState.totalSeconds > 0
+        ? timerState.remainingSeconds / timerState.totalSeconds
+        : 0.0;
     final progressColor = timerState.timerStatus == TimerStatus.completed
         ? (context.appColors.success)
         : (context.appColors.accent);
@@ -36,7 +39,7 @@ class TimerDisplay extends ConsumerWidget {
           CustomPaint(
             size: const Size(size, size),
             painter: CircleProgressPainter(
-              progress: timerState.progress,
+              progress: remainingProgress.clamp(0.0, 1.0),
               color: progressColor,
               strokeWidth: strokeWidth,
             ),
@@ -94,7 +97,7 @@ class CircleProgressPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    final sweepAngle = 2 * 3.14159 * progress;
+    final sweepAngle = -2 * 3.14159 * progress;
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       -3.14159 / 2, // Start from top

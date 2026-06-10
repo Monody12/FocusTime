@@ -13,7 +13,6 @@ class TimerPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final timerState = ref.watch(timerProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 监听超时模式对话框触发
     ref.listen(overdueModeDialogProvider, (_, timestamp) {
@@ -40,89 +39,80 @@ class TimerPage extends ConsumerWidget {
         isInBreakPhase &&
         !timerState.pomodoroConfig.autoStartNext;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // 使用 LayoutBuilder 获知实际可用宽度，防止内容溢出
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: ConstrainedBox(
-            // 确保内容宽度不超过父容器宽度
-            constraints:
-                BoxConstraints(minWidth: 0, maxWidth: constraints.maxWidth),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: context.appColors.surface,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: context.appColors.border,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(isDark ? 0.18 : 0.05),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: context.appColors.background,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight - 32,
+                maxWidth: constraints.maxWidth,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 模式选择器
-                  const ModeSelector(),
-                  const SizedBox(height: 20),
+              child: IntrinsicHeight(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 模式选择器
+                    const ModeSelector(),
+                    const SizedBox(height: 20),
 
-                  // 当前任务名称
-                  if (timerState.currentTask.isNotEmpty &&
-                      timerState.timerPhase == 'focus')
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        timerState.currentTask,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: context.appColors.text,
+                    // 当前任务名称
+                    if (timerState.currentTask.isNotEmpty &&
+                        timerState.timerPhase == 'focus')
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          timerState.currentTask,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: context.appColors.text,
+                          ),
                         ),
                       ),
-                    ),
 
-                  // 计时器圆环
-                  const Center(child: TimerDisplay()),
-                  const SizedBox(height: 12),
+                    // 计时器圆环
+                    const Center(child: TimerDisplay()),
+                    const SizedBox(height: 12),
 
-                  // 阶段/循环信息
-                  if (timerState.timerMode == TimerMode.singleCore &&
-                      timerState.targetTime != null)
-                    _buildSingleCoreInfo(context, timerState)
-                  else if (timerState.timerMode == TimerMode.pomodoro)
-                    _buildPomodoroInfo(context, timerState)
-                  else if (timerState.timerMode == TimerMode.task)
-                    _buildTaskInfo(context, timerState),
+                    // 阶段/循环信息
+                    if (timerState.timerMode == TimerMode.singleCore &&
+                        timerState.targetTime != null)
+                      _buildSingleCoreInfo(context, timerState)
+                    else if (timerState.timerMode == TimerMode.pomodoro)
+                      _buildPomodoroInfo(context, timerState)
+                    else if (timerState.timerMode == TimerMode.task)
+                      _buildTaskInfo(context, timerState),
 
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
 
-                  // 专注完成面板（等待用户点击开始休息）
-                  if (focusDone) ...[
-                    _buildFocusCompletePanel(context, ref, timerState),
-                    const SizedBox(height: 8),
+                    // 专注完成面板（等待用户点击开始休息）
+                    if (focusDone) ...[
+                      _buildFocusCompletePanel(context, ref, timerState),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // 休息完成面板（等待用户点击开始专注）
+                    if (breakDone) ...[
+                      _buildBreakCompletePanel(context, ref, timerState),
+                      const SizedBox(height: 8),
+                    ],
+
+                    // 计时器控制按钮（开始/暂停/重置）
+                    const TimerControls(),
+                    const Spacer(),
                   ],
-
-                  // 休息完成面板（等待用户点击开始专注）
-                  if (breakDone) ...[
-                    _buildBreakCompletePanel(context, ref, timerState),
-                    const SizedBox(height: 8),
-                  ],
-
-                  // 计时器控制按钮（开始/暂停/重置）
-                  const TimerControls(),
-                ],
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 

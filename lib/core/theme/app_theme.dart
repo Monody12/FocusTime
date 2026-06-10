@@ -159,6 +159,40 @@ extension AppThemeContext on BuildContext {
 class AppTheme {
   // 使用 Noto Sans SC (思源黑体) 作为全局字体，确保中英文粗细一致且美观
   // 该字体由 Google 提供，完美支持中文各种字重。
+  static const blueAmberLightColors = AppThemeColors(
+    background: Color(0xFFF3F7FB),
+    sidebar: Color(0xFFE8F1F8),
+    surface: Color(0xFFFFFFFF),
+    surfaceElevated: Color(0xFFEAF4FB),
+    border: Color(0xFFB8CEE0),
+    accent: Color(0xFF2563EB),
+    accentSecondary: Color(0xFFF59E0B),
+    success: Color(0xFF16A34A),
+    warning: Color(0xFFD97706),
+    text: Color(0xFF102436),
+    textSecondary: Color(0xFF5B7184),
+  );
+
+  static const blueAmberDarkColors = AppThemeColors(
+    background: Color(0xFF0B1220),
+    sidebar: Color(0xFF101C2E),
+    surface: Color(0xFF16243A),
+    surfaceElevated: Color(0xFF1E3350),
+    border: Color(0xFF34506D),
+    accent: Color(0xFF38BDF8),
+    accentSecondary: Color(0xFFF59E0B),
+    success: Color(0xFF4ADE80),
+    warning: Color(0xFFFBBF24),
+    text: Color(0xFFEAF2FA),
+    textSecondary: Color(0xFFA7B7C8),
+  );
+
+  static const blueAmberScheme = AppThemeScheme(
+    id: 'blueAmber',
+    label: '蓝琥珀',
+    light: blueAmberLightColors,
+    dark: blueAmberDarkColors,
+  );
 
   static const greenScheme = AppThemeScheme(
     id: 'greenImmersive',
@@ -167,17 +201,33 @@ class AppTheme {
     dark: AppColors.darkThemeColors,
   );
 
-  static const List<AppThemeScheme> schemes = [greenScheme];
+  static const defaultScheme = blueAmberScheme;
 
-  static ThemeData darkTheme = buildTheme(
-    colors: greenScheme.dark,
-    brightness: Brightness.dark,
-  );
+  static const List<AppThemeScheme> schemes = [
+    blueAmberScheme,
+    greenScheme,
+  ];
 
-  static ThemeData lightTheme = buildTheme(
-    colors: greenScheme.light,
-    brightness: Brightness.light,
-  );
+  static AppThemeScheme schemeById(String id) {
+    return schemes.firstWhere(
+      (scheme) => scheme.id == id,
+      orElse: () => defaultScheme,
+    );
+  }
+
+  static ThemeData darkThemeFor(AppThemeScheme scheme) => buildTheme(
+        colors: scheme.dark,
+        brightness: Brightness.dark,
+      );
+
+  static ThemeData lightThemeFor(AppThemeScheme scheme) => buildTheme(
+        colors: scheme.light,
+        brightness: Brightness.light,
+      );
+
+  static ThemeData darkTheme = darkThemeFor(defaultScheme);
+
+  static ThemeData lightTheme = lightThemeFor(defaultScheme);
 
   static ThemeData buildTheme({
     required AppThemeColors colors,
@@ -194,9 +244,9 @@ class AppTheme {
       colorScheme: ColorScheme(
         brightness: brightness,
         primary: colors.accent,
-        onPrimary: Colors.white,
+        onPrimary: isDark ? colors.background : Colors.white,
         secondary: colors.accentSecondary,
-        onSecondary: Colors.white,
+        onSecondary: isDark ? colors.background : Colors.white,
         error: Colors.red,
         onError: Colors.white,
         surface: colors.surface,
@@ -236,7 +286,7 @@ class AppTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: colors.accent,
-          foregroundColor: Colors.white,
+          foregroundColor: isDark ? colors.background : Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
           ),

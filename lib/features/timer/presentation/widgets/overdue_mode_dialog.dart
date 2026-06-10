@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
@@ -40,7 +41,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
               Expanded(
                 child: _ModeButton(
                   label: '单核',
-                  emoji: '🎯',
+                  icon: AppIcons.focus,
                   onTap: () => _selectMode(TimerMode.singleCore),
                 ),
               ),
@@ -48,7 +49,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
               Expanded(
                 child: _ModeButton(
                   label: '番茄',
-                  emoji: '🍅',
+                  icon: AppIcons.timer,
                   onTap: () => _selectMode(TimerMode.pomodoro),
                 ),
               ),
@@ -86,6 +87,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
         TextButton(
           onPressed: () {
             ref.read(overdueModeDialogProvider.notifier).state = 0;
+            Navigator.of(context, rootNavigator: true).pop();
           },
           child: const Text('取消'),
         ),
@@ -100,20 +102,21 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
       notifier.setRememberModeChoice(true);
       notifier.setPreferredModeWhenOverdue(mode.name);
     }
+    ref.read(overdueModeDialogProvider.notifier).state = 0;
+    Navigator.of(context, rootNavigator: true).pop();
     // 确认选择并开始专注
     notifier.confirmOverdueMode(mode);
-    ref.read(overdueModeDialogProvider.notifier).state = 0;
   }
 }
 
 class _ModeButton extends StatelessWidget {
   final String label;
-  final String emoji;
+  final IconData icon;
   final VoidCallback onTap;
 
   const _ModeButton({
     required this.label,
-    required this.emoji,
+    required this.icon,
     required this.onTap,
   });
 
@@ -135,7 +138,11 @@ class _ModeButton extends StatelessWidget {
           ),
           child: Column(
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 24)),
+              AppIcon(
+                icon,
+                size: 24,
+                color: context.appColors.accent,
+              ),
               const SizedBox(height: 4),
               Text(
                 label,

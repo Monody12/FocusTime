@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_message.dart';
 import 'package:focus_my_time/features/ai_assistant/presentation/widgets/streaming_text.dart';
@@ -98,8 +99,8 @@ class ChatBubble extends StatelessWidget {
                         onTap: () => _copyContent(context),
                         borderRadius: BorderRadius.circular(4),
                         child: Icon(
-                          Icons.copy,
-                          size: 14,
+                          AppIcons.copy,
+                          size: AppIconSizes.status,
                           color: context.appColors.textSecondary,
                         ),
                       ),
@@ -123,8 +124,8 @@ class ChatBubble extends StatelessWidget {
       backgroundColor:
           isUser ? (context.appColors.accent) : (context.appColors.surface),
       child: Icon(
-        isUser ? Icons.person : Icons.smart_toy_outlined,
-        size: 18,
+        isUser ? AppIcons.user : AppIcons.ai,
+        size: AppIconSizes.action,
         color: isUser ? Colors.white : (context.appColors.accent),
       ),
     );

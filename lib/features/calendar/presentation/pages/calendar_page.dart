@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
@@ -170,7 +171,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.chevron_left),
+                  icon: const Icon(AppIcons.previous),
                   onPressed: () {
                     setState(() {
                       _currentMonth = DateTime(year, month - 1, 1);
@@ -187,7 +188,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.chevron_right),
+                  icon: const Icon(AppIcons.next),
                   onPressed: () {
                     setState(() {
                       _currentMonth = DateTime(year, month + 1, 1);
@@ -296,9 +297,12 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                                     ),
                                   ),
                                 if ((stat['recurringCount'] as int) > 0)
-                                  const Text(
-                                    '🔄',
-                                    style: TextStyle(fontSize: 8),
+                                  AppIcon(
+                                    AppIcons.repeat,
+                                    size: 8,
+                                    color: isSelected
+                                        ? Colors.white70
+                                        : context.appColors.textSecondary,
                                   ),
                               ],
                             ),

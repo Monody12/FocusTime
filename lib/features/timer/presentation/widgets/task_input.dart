@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
@@ -37,7 +38,6 @@ class _TaskInputState extends ConsumerState<TaskInput> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final taskState = ref.watch(taskProvider);
     final timerState = ref.watch(timerProvider);
 
@@ -103,7 +103,7 @@ class _TaskInputState extends ConsumerState<TaskInput> {
               ),
               IconButton(
                 icon: Icon(
-                  _showHistory ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                  _showHistory ? AppIcons.expandLess : AppIcons.expandMore,
                   color: context.appColors.textSecondary,
                 ),
                 onPressed: () => setState(() => _showHistory = !_showHistory),
@@ -129,16 +129,26 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
-                      child: Text(
-                        '☀ 我的一天',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.appColors.textSecondary,
-                        ),
+                      child: Row(
+                        children: [
+                          AppIcon(
+                            AppIcons.myDay,
+                            size: AppIconSizes.status,
+                            color: context.appColors.textSecondary,
+                          ),
+                          const SizedBox(width: AppIconSpacing.compactGap),
+                          Text(
+                            '我的一天',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.appColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    ...myDayTasks.map(
-                        (task) => _buildHistoryItem(task.title, '📋', isDark)),
+                    ...myDayTasks.map((task) =>
+                        _buildHistoryItem(task.title, AppIcons.tasks)),
                     if (displayHistory.isNotEmpty)
                       Divider(color: context.appColors.border),
                   ],
@@ -148,16 +158,26 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
-                      child: Text(
-                        '🕐 最近使用',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.appColors.textSecondary,
-                        ),
+                      child: Row(
+                        children: [
+                          AppIcon(
+                            AppIcons.recent,
+                            size: AppIconSizes.status,
+                            color: context.appColors.textSecondary,
+                          ),
+                          const SizedBox(width: AppIconSpacing.compactGap),
+                          Text(
+                            '最近使用',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: context.appColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    ...displayHistory
-                        .map((task) => _buildHistoryItem(task, '🕐', isDark)),
+                    ...displayHistory.map(
+                        (task) => _buildHistoryItem(task, AppIcons.recent)),
                   ],
                 ],
               ),
@@ -167,15 +187,19 @@ class _TaskInputState extends ConsumerState<TaskInput> {
     );
   }
 
-  Widget _buildHistoryItem(String title, String icon, bool isDark) {
+  Widget _buildHistoryItem(String title, IconData icon) {
     return InkWell(
       onTap: () => _handleSelect(title),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Row(
           children: [
-            Text(icon, style: const TextStyle(fontSize: 14)),
-            const SizedBox(width: 8),
+            AppIcon(
+              icon,
+              size: AppIconSizes.status,
+              color: context.appColors.textSecondary,
+            ),
+            const SizedBox(width: AppIconSpacing.compactGap),
             Expanded(
               child: Text(
                 title,

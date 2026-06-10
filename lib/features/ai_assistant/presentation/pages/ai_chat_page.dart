@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
@@ -106,7 +107,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
         children: [
           IconButton(
             onPressed: widget.onClose,
-            icon: const Icon(Icons.close, size: 20),
+            icon: const Icon(AppIcons.close, size: AppIconSizes.nav),
             color: context.appColors.text,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
@@ -123,7 +124,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
           const Spacer(),
           IconButton(
             onPressed: () => _showSettingsSheet(context, isDark),
-            icon: const Icon(Icons.tune, size: 20),
+            icon: const Icon(AppIcons.tune, size: AppIconSizes.nav),
             color: context.appColors.textSecondary,
             tooltip: '偏好设置',
           ),
@@ -131,7 +132,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
           TextButton.icon(
             onPressed: () =>
                 ref.read(aiChatProvider.notifier).newConversation(),
-            icon: const Icon(Icons.add, size: 18),
+            icon: const Icon(AppIcons.add, size: AppIconSizes.action),
             label: const Text('新对话'),
             style: TextButton.styleFrom(
               foregroundColor: context.appColors.textSecondary,
@@ -158,7 +159,9 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
-                Icon(Icons.preview, size: 16, color: context.appColors.accent),
+                AppIcon(AppIcons.preview,
+                    size: AppIconSizes.compact,
+                    color: context.appColors.accent),
                 const SizedBox(width: 6),
                 Text(
                   '操作预览 (${ops.length})',
@@ -266,7 +269,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.key, size: 48, color: context.appColors.textSecondary),
+          AppIcon(AppIcons.key,
+              size: AppIconSizes.empty, color: context.appColors.textSecondary),
           const SizedBox(height: 16),
           Text(
             '未配置 API 密钥',
@@ -291,8 +295,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.smart_toy_outlined,
-            size: 48, color: context.appColors.textSecondary),
+        AppIcon(AppIcons.ai,
+            size: AppIconSizes.empty, color: context.appColors.textSecondary),
         const SizedBox(height: 16),
         Text(
           'AI 任务助手',
@@ -427,7 +431,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Icon(
-                      Icons.send_rounded,
+                      AppIcons.send,
                       color: canSend ? (context.appColors.accent) : Colors.grey,
                     ),
               style: IconButton.styleFrom(

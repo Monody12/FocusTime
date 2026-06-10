@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
@@ -42,9 +43,9 @@ class TimerControls extends ConsumerWidget {
             children: [
               Icon(
                 timerState.timerStatus == TimerStatus.running
-                    ? Icons.pause
-                    : Icons.play_arrow,
-                size: 18,
+                    ? AppIcons.pause
+                    : AppIcons.play,
+                size: AppIconSizes.action,
               ),
               const SizedBox(width: 6),
               Text(
@@ -81,7 +82,7 @@ class TimerControls extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.refresh, size: 18),
+              Icon(AppIcons.reset, size: AppIconSizes.action),
               SizedBox(width: 6),
               Text('重置', style: TextStyle(fontSize: 14)),
             ],

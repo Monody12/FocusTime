@@ -21,6 +21,10 @@ class AppIcons {
   static const IconData settings = Icons.settings;
   static const IconData close = Icons.close;
   static const IconData back = Icons.arrow_back;
+  static const IconData previous = Icons.chevron_left;
+  static const IconData next = Icons.chevron_right;
+  static const IconData arrowForward = Icons.arrow_forward;
+  static const IconData add = Icons.add;
 
   static const IconData myDay = Icons.wb_sunny_outlined;
   static const IconData important = Icons.star_border;
@@ -43,6 +47,13 @@ class AppIcons {
   static const IconData move = Icons.move_to_inbox_outlined;
   static const IconData delete = Icons.delete_outline;
   static const IconData edit = Icons.edit_outlined;
+  static const IconData editNote = Icons.edit_note;
+  static const IconData repeat = Icons.repeat;
+  static const IconData reorder = Icons.reorder;
+  static const IconData playlistAdd = Icons.playlist_add;
+  static const IconData playlistRemove = Icons.playlist_remove;
+  static const IconData help = Icons.help_outline;
+  static const IconData flag = Icons.flag_outlined;
 
   static const IconData focus = Icons.track_changes;
   static const IconData timer = Icons.timer_outlined;
@@ -50,12 +61,18 @@ class AppIcons {
   static const IconData play = Icons.play_arrow;
   static const IconData reset = Icons.refresh;
   static const IconData breakTime = Icons.free_breakfast_outlined;
+  static const IconData expandMore = Icons.arrow_drop_down;
+  static const IconData expandLess = Icons.arrow_drop_up;
+  static const IconData recent = Icons.history;
 
   static const IconData copy = Icons.copy;
   static const IconData send = Icons.send_rounded;
   static const IconData tune = Icons.tune;
   static const IconData preview = Icons.preview;
   static const IconData key = Icons.key;
+  static const IconData user = Icons.person;
+  static const IconData visible = Icons.visibility;
+  static const IconData hidden = Icons.visibility_off;
   static const IconData emptyTasks = Icons.assignment_outlined;
 }
 

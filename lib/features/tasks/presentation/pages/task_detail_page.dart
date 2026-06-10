@@ -221,7 +221,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
     return Container(
       width: 320,
-      color: context.appColors.surface,
+      decoration: BoxDecoration(
+        color: context.appColors.surface,
+        border: Border(
+          left: BorderSide(color: context.appColors.border),
+        ),
+      ),
       child: Column(
         children: [
           // Header
@@ -594,9 +599,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         child: Row(
           children: [
             AppIcon(
-              hasReminder
-                  ? AppIcons.reminderActive
-                  : AppIcons.reminder,
+              hasReminder ? AppIcons.reminderActive : AppIcons.reminder,
               size: AppIconSizes.action,
               color: hasReminder
                   ? (context.appColors.accent)

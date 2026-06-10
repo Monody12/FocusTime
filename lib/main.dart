@@ -63,11 +63,12 @@ void main() {
           child: Consumer(
             builder: (context, ref, child) {
               final themeMode = ref.watch(themeProvider);
+              final themeScheme = ref.watch(themeSchemeProvider);
               return MaterialApp(
                 title: 'FocusMyTime',
                 debugShowCheckedModeBanner: false,
-                theme: AppTheme.lightTheme,
-                darkTheme: AppTheme.darkTheme,
+                theme: AppTheme.lightThemeFor(themeScheme),
+                darkTheme: AppTheme.darkThemeFor(themeScheme),
                 themeMode: themeMode,
                 home: const FocusMyTimeApp(),
               );

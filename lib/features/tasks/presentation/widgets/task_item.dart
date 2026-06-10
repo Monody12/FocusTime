@@ -202,7 +202,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: widget.task.completed
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                    ? const Icon(AppIcons.taskDone,
+                        size: AppIconSizes.status, color: Colors.white)
                     : null,
               ),
               const SizedBox(width: 12),

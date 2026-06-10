@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
@@ -311,7 +312,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         children: [
           Expanded(
             child: _pickerTile(
-              icon: Icons.calendar_today,
+              icon: AppIcons.calendar,
               label: _startDt != null ? _fmtDate(_startDt!) : '选择日期',
               isSet: _startDt != null,
               isDark: isDark,
@@ -321,7 +322,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
           const SizedBox(width: 8),
           Expanded(
             child: _pickerTile(
-              icon: Icons.access_time,
+              icon: AppIcons.schedule,
               label: _startDt != null ? _fmtTime(_startDt!) : '选择时间',
               isSet: _startDt != null,
               isDark: isDark,
@@ -347,7 +348,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         children: [
           Expanded(
             child: _pickerTile(
-              icon: Icons.calendar_today,
+              icon: AppIcons.calendar,
               label: _endDt != null ? _fmtDate(_endDt!) : '选择日期',
               isSet: _endDt != null,
               isDark: isDark,
@@ -357,7 +358,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
           const SizedBox(width: 8),
           Expanded(
             child: _pickerTile(
-              icon: Icons.access_time,
+              icon: AppIcons.schedule,
               label: _endDt != null ? _fmtTime(_endDt!) : '选择时间',
               isSet: _endDt != null,
               isDark: isDark,
@@ -395,7 +396,8 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
             ),
           ),
           const SizedBox(width: 8),
-          const Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+          const Icon(AppIcons.arrowForward,
+              size: AppIconSizes.compact, color: Colors.grey),
           const SizedBox(width: 8),
           Text(
             _startDt != null && _durationMinutes > 0

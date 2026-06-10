@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:focus_my_time/core/providers/theme_provider.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
@@ -200,6 +202,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final preferredModeWhenOverdue =
         ref.watch(timerProvider.select((s) => s.preferredModeWhenOverdue));
     final timeZoneMode = ref.watch(timeZoneProvider);
+    final themeScheme = ref.watch(themeSchemeProvider);
 
     // 构建一个不包含流逝时间的状态对象供当前页面使用，彻底避免计时器走字导致的页面每秒重绘
     final timerState = TimerState(
@@ -235,7 +238,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(AppIcons.close),
                   onPressed: widget.onClose,
                 ),
               ],
@@ -409,6 +412,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   _buildSectionTitle('⚙ 通用', isDark),
                   const SizedBox(height: 12),
                   _buildTimeZoneSetting(timeZoneMode, isDark),
+                  const SizedBox(height: 12),
+                  _buildSelectSetting(
+                    label: '主题配色',
+                    value: themeScheme.id,
+                    options: AppTheme.schemes
+                        .map((scheme) => {
+                              'value': scheme.id,
+                              'label': scheme.label,
+                            })
+                        .toList(),
+                    onChanged: (value) async {
+                      try {
+                        await ref
+                            .read(themeSchemeProvider.notifier)
+                            .setThemeScheme(value);
+                        _showSnackBar('主题配色已切换');
+                      } catch (e) {
+                        _showSnackBar('主题配色保存失败: $e', isError: true);
+                      }
+                    },
+                    isDark: isDark,
+                  ),
                   const SizedBox(height: 12),
                   _buildSwitchSetting(
                     label: '提示音',
@@ -1373,7 +1398,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Icon(
-                        obscureText ? Icons.visibility_off : Icons.visibility,
+                        obscureText ? AppIcons.hidden : AppIcons.visible,
                         size: 16,
                         color: context.appColors.textSecondary,
                       ),

@@ -95,12 +95,23 @@ class AiContextBuilder {
     buf.writeln('7. 使用中文与用户交流');
     buf.writeln(
         '8. 重要：reminderAt=任务开始时间，dueDate/dueTime=任务截止时间（结束时间），两者不是同一个时间。截止时间 = 开始时间 + expectedMinutes。');
+    buf.writeln(
+        '9. 当用户要求"安排今天/规划今天/排日程"时，必须输出可执行时间表：每个被安排的任务都要有开始时间 reminderAt、预计时长 expectedMinutes、结束时间 dueDate/dueTime。');
+    buf.writeln('10. 安排日程时必须避免重叠；任务之间默认保留 0-10 分钟间隔，并根据任务难度、脑力消耗和时间紧张程度调整。');
+    buf.writeln('11. 如果用户偏好中包含禁止时间段（如"不要在19到20点安排任务"），该时间段视为硬性不可用区间，不得安排任务。');
+    buf.writeln('12. 如果任务太大、太难或当天没有连续时间，应拆分成多个清晰的小任务，并分别安排开始时间和持续时长。');
 
     // Custom user preferences
     if (customPrompt.isNotEmpty) {
       buf.writeln();
       buf.writeln('## 用户偏好（请严格遵守）');
       buf.writeln(customPrompt);
+      buf.writeln();
+      buf.writeln('执行用户偏好时的优先级：');
+      buf.writeln('- 将用户偏好当作日程安排的硬约束和排序依据，除非与当前时间或任务截止时间冲突。');
+      buf.writeln('- 如果无法完全满足某条偏好，必须在回复中明确说明原因，不要静默违反。');
+      buf.writeln('- 优先把高挑战学习/工作安排在早上，把运动安排在用户偏好的时段，把复盘、放松、杂事安排在晚上。');
+      buf.writeln('- 中午到下午的安排应更松散，允许午睡或低强度任务，避免连续高脑力任务。');
     }
 
     // Dated list configuration
@@ -110,9 +121,12 @@ class AiContextBuilder {
       buf.writeln('## 日期清单模式（已启用）');
       buf.writeln('当前日期清单名称: $dateStr');
       buf.writeln('日期格式: $datedListFormat');
-      buf.writeln('规则: 创建任务时，请使用清单名 "$dateStr" 作为 listId。如果该清单不存在，系统会自动创建。');
+      buf.writeln('规则: 创建任务时，必须使用清单名 "$dateStr" 作为 listId。如果该清单不存在，系统会自动创建。');
       buf.writeln(
           '不要使用系统清单（system-my-day/system-all-tasks/system-important），请使用日期清单。');
+      buf.writeln(
+          '除非用户明确要求添加到"我的一天"，否则 create_task 时 isMyDay 必须为 false 或省略，且不要调用 add_to_my_day。');
+      buf.writeln('如果你需要先创建清单，请创建名为 "$dateStr" 的清单，然后继续把任务创建到该清单。');
     }
 
     // Reminder on create

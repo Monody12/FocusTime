@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
@@ -94,13 +95,13 @@ class OperationPreviewCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  _actionButton('拒绝', Icons.close, Colors.grey, onReject),
-                  const SizedBox(width: 8),
-                  _actionButton('编辑', Icons.edit_outlined,
-                      context.appColors.accent, onEdit),
+                  _actionButton('拒绝', AppIcons.close, Colors.grey, onReject),
                   const SizedBox(width: 8),
                   _actionButton(
-                      '批准', Icons.check, context.appColors.success, onApprove),
+                      '编辑', AppIcons.edit, context.appColors.accent, onEdit),
+                  const SizedBox(width: 8),
+                  _actionButton('批准', AppIcons.taskDone,
+                      context.appColors.success, onApprove),
                 ],
               ),
             ],
@@ -152,7 +153,7 @@ class OperationPreviewCard extends StatelessWidget {
 
     if (startDt != null) {
       chips.add(_timeChip(
-        Icons.notifications_outlined,
+        AppIcons.reminder,
         '提醒 ${_fmtTime(startDt)}',
         colors,
         accent: Colors.orange,
@@ -160,14 +161,14 @@ class OperationPreviewCard extends StatelessWidget {
       if (endDt != null) {
         chips.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2),
-          child:
-              Icon(Icons.arrow_forward, size: 12, color: colors.textSecondary),
+          child: Icon(AppIcons.arrowForward,
+              size: AppIconSizes.status, color: colors.textSecondary),
         ));
       }
     }
     if (endDt != null) {
       chips.add(_timeChip(
-        Icons.flag_outlined,
+        AppIcons.flag,
         startDt != null
             ? '截止 ${_fmtTime(endDt)}'
             : '截止 ${_fmtDate(endDt)} ${_fmtTime(endDt)}',
@@ -175,12 +176,12 @@ class OperationPreviewCard extends StatelessWidget {
       ));
     }
     if (duration != null && duration > 0) {
-      chips.add(_timeChip(Icons.timer_outlined, '$duration分钟', colors));
+      chips.add(_timeChip(AppIcons.timer, '$duration分钟', colors));
     }
     if (dueDate != null && startDt == null && endDt == null) {
-      chips.add(_timeChip(Icons.calendar_today, dueDate, colors));
+      chips.add(_timeChip(AppIcons.calendar, dueDate, colors));
     } else if (dueDate != null) {
-      chips.add(_timeChip(Icons.calendar_today, dueDate, colors));
+      chips.add(_timeChip(AppIcons.calendar, dueDate, colors));
     }
 
     if (chips.isEmpty) return const SizedBox.shrink();
@@ -205,7 +206,7 @@ class OperationPreviewCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color),
+          Icon(icon, size: AppIconSizes.status, color: color),
           const SizedBox(width: 3),
           Text(
             label,
@@ -266,7 +267,7 @@ class OperationPreviewCard extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: color),
+            Icon(icon, size: AppIconSizes.compact, color: color),
             const SizedBox(width: 4),
             Text(
               label,
@@ -282,33 +283,33 @@ class OperationPreviewCard extends StatelessWidget {
   IconData _typeIcon() {
     switch (operation.type.name) {
       case 'createTask':
-        return Icons.add_circle_outline;
+        return AppIcons.listReceive;
       case 'updateTask':
-        return Icons.edit_outlined;
+        return AppIcons.edit;
       case 'deleteTask':
-        return Icons.delete_outline;
+        return AppIcons.delete;
       case 'setDueDate':
-        return Icons.calendar_today;
+        return AppIcons.calendar;
       case 'setReminder':
-        return Icons.notifications_outlined;
+        return AppIcons.reminder;
       case 'setRecurrence':
-        return Icons.repeat;
+        return AppIcons.repeat;
       case 'addToMyDay':
-        return Icons.wb_sunny_outlined;
+        return AppIcons.myDay;
       case 'toggleImportant':
-        return Icons.star_outline;
+        return AppIcons.important;
       case 'moveToList':
-        return Icons.move_to_inbox;
+        return AppIcons.move;
       case 'reorderTasks':
-        return Icons.reorder;
+        return AppIcons.reorder;
       case 'createList':
-        return Icons.playlist_add;
+        return AppIcons.playlistAdd;
       case 'updateList':
-        return Icons.edit_note;
+        return AppIcons.editNote;
       case 'deleteList':
-        return Icons.playlist_remove;
+        return AppIcons.playlistRemove;
       default:
-        return Icons.help_outline;
+        return AppIcons.help;
     }
   }
 }
