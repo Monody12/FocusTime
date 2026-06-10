@@ -243,9 +243,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
     return GestureDetector(
       onLongPress: onLongPress,
       child: Material(
-        color: isSelected
-            ? (context.appColors.surfaceElevated)
-            : Colors.transparent,
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onTap,
@@ -255,6 +253,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: isSelected
                 ? BoxDecoration(
+                    color: context.appColors.surfaceElevated,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: context.appColors.border,
@@ -319,11 +318,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
           onSecondaryTapDown: (details) => _showContextMenu(
               context, details.globalPosition, list.id, list.name),
           child: Material(
-            color: isHovering
-                ? (context.appColors.surfaceElevated)
-                : isSelected
-                    ? (context.appColors.surfaceElevated)
-                    : Colors.transparent,
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             child: InkWell(
               onTap: onTap,
@@ -334,6 +329,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 decoration: isSelected || isHovering
                     ? BoxDecoration(
+                        color: context.appColors.surfaceElevated,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: context.appColors.border,
@@ -405,7 +401,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
 
-    showMenu(
+    showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
         globalPosition & const Size(40, 40), // 在点击位置周围创建一个小的矩形区域
@@ -415,7 +411,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       elevation: 8,
       items: [
-        PopupMenuItem(
+        PopupMenuItem<String>(
           value: 'rename',
           height: 36,
           child: Row(
@@ -429,7 +425,22 @@ class _SidebarState extends ConsumerState<Sidebar> {
             ],
           ),
         ),
-        const PopupMenuItem(
+        PopupMenuItem<String>(
+          value: 'archive',
+          height: 36,
+          child: Row(
+            children: [
+              AppIcon(AppIcons.archive,
+                  size: AppIconSizes.compact, color: context.appColors.text),
+              const SizedBox(width: AppIconSpacing.labelGap),
+              Text('归档',
+                  style:
+                      TextStyle(fontSize: 13, color: context.appColors.text)),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        const PopupMenuItem<String>(
           value: 'delete',
           height: 36,
           child: Row(
@@ -446,6 +457,8 @@ class _SidebarState extends ConsumerState<Sidebar> {
       if (!mounted) return;
       if (value == 'rename') {
         _startEditing(listId, listName);
+      } else if (value == 'archive') {
+        _confirmArchiveList(context, listId, listName);
       } else if (value == 'delete') {
         _confirmDeleteList(context, listId, listName);
       }
@@ -514,6 +527,14 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 },
               ),
               ListTile(
+                leading: const Icon(AppIcons.archive),
+                title: const Text('归档'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmArchiveList(context, listId, listName);
+                },
+              ),
+              ListTile(
                 leading: const Icon(AppIcons.delete, color: Colors.red),
                 title: const Text('删除', style: TextStyle(color: Colors.red)),
                 onTap: () {
@@ -524,6 +545,39 @@ class _SidebarState extends ConsumerState<Sidebar> {
               const SizedBox(height: 8),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  void _confirmArchiveList(
+      BuildContext context, String listId, String listName) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: context.appColors.surface,
+          title: Text(
+            '归档清单',
+            style: TextStyle(color: context.appColors.text),
+          ),
+          content: Text(
+            '归档 "$listName" 后，这个清单和其中的任务会从当前列表中隐藏。之后可在设置中恢复或删除。',
+            style: TextStyle(color: context.appColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _archiveList(listId);
+              },
+              child: const Text('归档'),
+            ),
+          ],
         );
       },
     );
@@ -591,6 +645,22 @@ class _SidebarState extends ConsumerState<Sidebar> {
           .setCurrentList('system-my-day', 'my-day');
     }
     widget.onListChanged?.call();
+  }
+
+  Future<void> _archiveList(String listId) async {
+    await ref.read(taskProvider.notifier).archiveList(listId);
+    if (!mounted) return;
+    final taskState = ref.read(taskProvider);
+    if (taskState.currentListId == listId) {
+      await ref
+          .read(taskProvider.notifier)
+          .setCurrentList('system-my-day', 'my-day');
+    }
+    widget.onListChanged?.call();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('清单已归档，可在设置中恢复')),
+    );
   }
 
   void _createList() async {

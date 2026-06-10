@@ -160,36 +160,36 @@ class AppTheme {
   // 使用 Noto Sans SC (思源黑体) 作为全局字体，确保中英文粗细一致且美观
   // 该字体由 Google 提供，完美支持中文各种字重。
   static const blueAmberLightColors = AppThemeColors(
-    background: Color(0xFFF3F7FB),
-    sidebar: Color(0xFFE8F1F8),
+    background: Color(0xFFF8FAFC),
+    sidebar: Color(0xFFEFF6FF),
     surface: Color(0xFFFFFFFF),
-    surfaceElevated: Color(0xFFEAF4FB),
-    border: Color(0xFFB8CEE0),
+    surfaceElevated: Color(0xFFF1F5F9),
+    border: Color(0xFFCBDDEB),
     accent: Color(0xFF2563EB),
-    accentSecondary: Color(0xFFF59E0B),
+    accentSecondary: Color(0xFF0D9488),
     success: Color(0xFF16A34A),
-    warning: Color(0xFFD97706),
-    text: Color(0xFF102436),
-    textSecondary: Color(0xFF5B7184),
+    warning: Color(0xFF7C3AED),
+    text: Color(0xFF0F172A),
+    textSecondary: Color(0xFF5B6B7D),
   );
 
   static const blueAmberDarkColors = AppThemeColors(
-    background: Color(0xFF0B1220),
-    sidebar: Color(0xFF101C2E),
-    surface: Color(0xFF16243A),
-    surfaceElevated: Color(0xFF1E3350),
-    border: Color(0xFF34506D),
-    accent: Color(0xFF38BDF8),
-    accentSecondary: Color(0xFFF59E0B),
+    background: Color(0xFF0F172A),
+    sidebar: Color(0xFF111D31),
+    surface: Color(0xFF172338),
+    surfaceElevated: Color(0xFF1D2E49),
+    border: Color(0xFF334A67),
+    accent: Color(0xFF60A5FA),
+    accentSecondary: Color(0xFF2DD4BF),
     success: Color(0xFF4ADE80),
-    warning: Color(0xFFFBBF24),
-    text: Color(0xFFEAF2FA),
-    textSecondary: Color(0xFFA7B7C8),
+    warning: Color(0xFFA78BFA),
+    text: Color(0xFFEFF6FF),
+    textSecondary: Color(0xFFAFC0D3),
   );
 
   static const blueAmberScheme = AppThemeScheme(
     id: 'blueAmber',
-    label: '蓝琥珀',
+    label: '蓝青',
     light: blueAmberLightColors,
     dark: blueAmberDarkColors,
   );

@@ -18,6 +18,7 @@ import 'package:focus_my_time/features/ai_assistant/services/deepseek_api_client
 import 'package:focus_my_time/core/providers/package_info_provider.dart';
 import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
 import 'package:focus_my_time/features/update/services/update_service.dart';
+import 'package:focus_my_time/features/settings/presentation/widgets/archived_items_dialog.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -485,6 +486,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
                   // Data Management Section
                   _buildSectionTitle('💾 数据管理', isDark),
+                  const SizedBox(height: 12),
+                  _SettingButton(
+                    label: '管理归档任务与清单',
+                    onPressed: () => ArchivedItemsDialog.show(context),
+                    isPrimary: false,
+                    isAccent: true,
+                    isDark: isDark,
+                  ),
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),

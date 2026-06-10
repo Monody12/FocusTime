@@ -51,6 +51,8 @@ void main() {
     expect(data['calendarEventId'], 'calendar-event-1');
     expect(data['createdAt'], isA<int>());
     expect(data['updatedAt'], isA<int>());
+    expect(data['archived'], false);
+    expect(data['archivedAt'], isNull);
     expect(data['deleted'], false);
 
     await AppDatabase.applySyncChanges({
@@ -69,6 +71,23 @@ void main() {
 
     final updatedTask = await AppDatabase.getTaskById(taskId);
     expect(updatedTask!['notes'], 'Android 应看到的备注');
+
+    await AppDatabase.archiveTask(taskId);
+    expect(await AppDatabase.getTaskById(taskId), isNull);
+
+    final archivedTasks = await AppDatabase.getArchivedTasks();
+    final archivedTask =
+        archivedTasks.firstWhere((record) => record['id'] == taskId);
+    expect(archivedTask['archived'], true);
+    expect(archivedTask['archivedAt'], isA<int>());
+
+    final archivePayload = await AppDatabase.getSyncPayload(0);
+    final syncedArchivedTask = archivePayload['tasks']!.firstWhere(
+      (record) => record['id'] == taskId,
+    );
+    final archivedData = syncedArchivedTask['data'] as Map<String, dynamic>;
+    expect(archivedData['archived'], true);
+    expect(archivedData['archivedAt'], isA<int>());
 
     await AppDatabase.deleteTask(taskId);
   });

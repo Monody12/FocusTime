@@ -370,12 +370,25 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         ),
         PopupMenuItem<dynamic>(
           height: 38,
+          onTap: () => _archiveTask(context),
+          child: _buildMenuItem(AppIcons.archive, '归档任务', null, isDark),
+        ),
+        PopupMenuItem<dynamic>(
+          height: 38,
           onTap: () =>
               Future.delayed(Duration.zero, () => _confirmDelete(context)),
           child: _buildMenuItem(AppIcons.delete, '删除任务', 'Delete', isDark,
               isDanger: true),
         ),
       ],
+    );
+  }
+
+  Future<void> _archiveTask(BuildContext context) async {
+    await ref.read(taskProvider.notifier).archiveTask(widget.task.id);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('任务已归档，可在设置中恢复')),
     );
   }
 

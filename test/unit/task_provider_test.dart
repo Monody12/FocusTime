@@ -19,6 +19,8 @@ void main() {
       expect(taskList.sortOrder, 0);
       expect(taskList.createdAt, 1000);
       expect(taskList.updatedAt, 1000);
+      expect(taskList.archived, false);
+      expect(taskList.archivedAt, null);
     });
 
     test('copyWith updates fields correctly', () {
@@ -81,6 +83,8 @@ void main() {
       expect(task.isMyDay, true);
       expect(task.myDayAddedAt, 1000);
       expect(task.expectedMinutes, 30);
+      expect(task.archived, false);
+      expect(task.archivedAt, null);
     });
 
     test('copyWith updates fields correctly', () {
@@ -170,7 +174,7 @@ void main() {
     });
 
     test('reminderAt can be set and preserved', () {
-      final reminderTime = 1715072400000;
+      const reminderTime = 1715072400000;
       final task = TaskItem(
         id: 'task-1',
         listId: 'list-1',

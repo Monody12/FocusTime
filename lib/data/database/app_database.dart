@@ -94,7 +94,7 @@ class AppDatabase {
       // 以只读模式打开备份文件进行校验，不修改原始备份
       backupDb = await openDatabase(backupPath, readOnly: true);
       final version = await backupDb.getVersion();
-      if (version > 9) {
+      if (version > 10) {
         throw Exception('备份数据库版本过高: $version');
       }
 
@@ -129,7 +129,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -144,6 +144,8 @@ class AppDatabase {
         sort_order INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0,
+        archived_at INTEGER,
         deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
@@ -168,6 +170,8 @@ class AppDatabase {
         calendar_event_id TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
+        archived INTEGER NOT NULL DEFAULT 0,
+        archived_at INTEGER,
         deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
@@ -386,6 +390,15 @@ class AppDatabase {
       await db.execute(
           'CREATE INDEX IF NOT EXISTS idx_tasks_reminders ON tasks(deleted, completed, reminder_at)');
     }
+
+    if (oldVersion < 10) {
+      await db.execute(
+          'ALTER TABLE lists ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE lists ADD COLUMN archived_at INTEGER');
+      await db.execute(
+          'ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE tasks ADD COLUMN archived_at INTEGER');
+    }
   }
 
   // ========== 设置 ==========
@@ -414,9 +427,29 @@ class AppDatabase {
 
   static Future<List<Map<String, dynamic>>> getLists() async {
     final db = await database;
-    final result =
-        await db.query('lists', where: 'deleted = 0', orderBy: 'sort_order');
+    final result = await db.query('lists',
+        where: 'deleted = 0 AND archived = 0', orderBy: 'sort_order');
     return result.map(_mapList).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> getArchivedLists() async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT l.*,
+        (
+          SELECT COUNT(*)
+          FROM tasks t
+          WHERE t.list_id = l.id AND t.deleted = 0 AND t.archived = 1
+        ) AS task_count
+      FROM lists l
+      WHERE l.deleted = 0 AND l.archived = 1
+      ORDER BY l.archived_at DESC, l.updated_at DESC
+    ''');
+    return result.map((row) {
+      final mapped = _mapList(row);
+      mapped['taskCount'] = row['task_count'] ?? 0;
+      return mapped;
+    }).toList();
   }
 
   /// 将数据库行映射为应用程序使用的 TaskList 对象，并处理命名格式转换（snake_case -> camelCase）
@@ -429,6 +462,8 @@ class AppDatabase {
       'sortOrder': row['sort_order'],
       'createdAt': row['created_at'],
       'updatedAt': row['updated_at'],
+      'archived': (row['archived'] as int? ?? 0) == 1,
+      'archivedAt': row['archived_at'],
       'deleted': (row['deleted'] as int) == 1,
     };
   }
@@ -436,8 +471,8 @@ class AppDatabase {
   static Future<Map<String, dynamic>> createList(String name) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final count = Sqflite.firstIntValue(
-            await db.rawQuery('SELECT COUNT(*) FROM lists')) ??
+    final count = Sqflite.firstIntValue(await db.rawQuery(
+            'SELECT COUNT(*) FROM lists WHERE deleted = 0 AND archived = 0')) ??
         0;
     final id = 'list-${DateTime.now().millisecondsSinceEpoch}';
 
@@ -457,6 +492,8 @@ class AppDatabase {
       'sortOrder': count,
       'createdAt': now,
       'updatedAt': now,
+      'archived': false,
+      'archivedAt': null,
     };
   }
 
@@ -464,7 +501,58 @@ class AppDatabase {
     final db = await database;
     await db.update('lists',
         {'name': name, 'updated_at': DateTime.now().millisecondsSinceEpoch},
-        where: 'id = ?', whereArgs: [id]);
+        where: 'id = ? AND deleted = 0 AND archived = 0', whereArgs: [id]);
+  }
+
+  static Future<void> archiveList(String id) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      final updatedLists = await txn.update(
+          'lists',
+          {
+            'archived': 1,
+            'archived_at': now,
+            'updated_at': now,
+          },
+          where: 'id = ? AND deleted = 0 AND is_system = 0',
+          whereArgs: [id]);
+      if (updatedLists == 0) return;
+      await txn.update(
+          'tasks',
+          {
+            'archived': 1,
+            'archived_at': now,
+            'updated_at': now,
+          },
+          where: 'list_id = ? AND deleted = 0',
+          whereArgs: [id]);
+    });
+  }
+
+  static Future<void> restoreList(String id) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      await txn.update(
+          'lists',
+          {
+            'archived': 0,
+            'archived_at': null,
+            'updated_at': now,
+          },
+          where: 'id = ? AND deleted = 0',
+          whereArgs: [id]);
+      await txn.update(
+          'tasks',
+          {
+            'archived': 0,
+            'archived_at': null,
+            'updated_at': now,
+          },
+          where: 'list_id = ? AND deleted = 0',
+          whereArgs: [id]);
+    });
   }
 
   /// 软删除清单及其下的所有任务
@@ -483,8 +571,8 @@ class AppDatabase {
   static Future<Map<String, dynamic>?> getTaskById(String id) async {
     final db = await database;
     // 过滤已删除任务，防止调用方操作已被软删除的僵尸任务
-    final result = await db
-        .query('tasks', where: 'id = ? AND deleted = 0', whereArgs: [id]);
+    final result = await db.query('tasks',
+        where: 'id = ? AND deleted = 0 AND archived = 0', whereArgs: [id]);
     if (result.isEmpty) return null;
     return _mapTask(result.first);
   }
@@ -493,7 +581,7 @@ class AppDatabase {
       String listId) async {
     final db = await database;
     final result = await db.query('tasks',
-        where: 'list_id = ? AND deleted = 0',
+        where: 'list_id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [listId],
         orderBy: 'sort_order');
     return result.map(_mapTask).toList();
@@ -502,22 +590,45 @@ class AppDatabase {
   static Future<List<Map<String, dynamic>>> getMyDayTasks() async {
     final db = await database;
     final result = await db.query('tasks',
-        where: 'is_my_day = 1 AND deleted = 0', orderBy: 'sort_order');
+        where: 'is_my_day = 1 AND deleted = 0 AND archived = 0',
+        orderBy: 'sort_order');
     return result.map(_mapTask).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getImportantTasks() async {
     final db = await database;
     final result = await db.query('tasks',
-        where: 'is_important = 1 AND deleted = 0', orderBy: 'sort_order');
+        where: 'is_important = 1 AND deleted = 0 AND archived = 0',
+        orderBy: 'sort_order');
     return result.map(_mapTask).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getAllTasks() async {
     final db = await database;
-    final result =
-        await db.query('tasks', where: 'deleted = 0', orderBy: 'sort_order');
+    final result = await db.query('tasks',
+        where: 'deleted = 0 AND archived = 0', orderBy: 'sort_order');
     return result.map(_mapTask).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> getArchivedTasks(
+      {bool excludeTasksInArchivedLists = true}) async {
+    final db = await database;
+    final listFilter = excludeTasksInArchivedLists
+        ? 'AND (l.id IS NULL OR l.deleted = 1 OR l.archived = 0)'
+        : '';
+    final result = await db.rawQuery('''
+      SELECT t.*, l.name AS list_name
+      FROM tasks t
+      LEFT JOIN lists l ON l.id = t.list_id
+      WHERE t.deleted = 0 AND t.archived = 1
+      $listFilter
+      ORDER BY t.archived_at DESC, t.updated_at DESC
+    ''');
+    return result.map((row) {
+      final mapped = _mapTask(row);
+      mapped['listName'] = row['list_name'];
+      return mapped;
+    }).toList();
   }
 
   /// 获取所有有待处理提醒的未完成任务（仅返回未来的提醒）
@@ -526,7 +637,7 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     final result = await db.query('tasks',
         where:
-            'deleted = 0 AND completed = 0 AND reminder_at IS NOT NULL AND reminder_at > ?',
+            'deleted = 0 AND archived = 0 AND completed = 0 AND reminder_at IS NOT NULL AND reminder_at > ?',
         whereArgs: [now],
         orderBy: 'reminder_at');
     return result.map(_mapTask).toList();
@@ -545,7 +656,8 @@ class AppDatabase {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     final count = Sqflite.firstIntValue(await db.rawQuery(
-            'SELECT COUNT(*) FROM tasks WHERE list_id = ?', [listId])) ??
+            'SELECT COUNT(*) FROM tasks WHERE list_id = ? AND deleted = 0 AND archived = 0',
+            [listId])) ??
         0;
     final id = 'task-${DateTime.now().millisecondsSinceEpoch}';
 
@@ -589,6 +701,8 @@ class AppDatabase {
       'calendarEventId': null,
       'createdAt': now,
       'updatedAt': now,
+      'archived': false,
+      'archivedAt': null,
     };
   }
 
@@ -646,6 +760,8 @@ class AppDatabase {
       'calendarEventId': null,
       'createdAt': now,
       'updatedAt': now,
+      'archived': false,
+      'archivedAt': null,
     };
   }
 
@@ -696,7 +812,36 @@ class AppDatabase {
 
     // 仅更新未删除的任务，防止操作已被软删除的僵尸记录
     await db.rawUpdate(
-        'UPDATE tasks SET $sets WHERE id = ? AND deleted = 0', [...values, id]);
+        'UPDATE tasks SET $sets WHERE id = ? AND deleted = 0 AND archived = 0',
+        [...values, id]);
+  }
+
+  static Future<void> archiveTask(String id) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+        'tasks',
+        {
+          'archived': 1,
+          'archived_at': now,
+          'updated_at': now,
+        },
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id]);
+  }
+
+  static Future<void> restoreTask(String id) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+        'tasks',
+        {
+          'archived': 0,
+          'archived_at': null,
+          'updated_at': now,
+        },
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id]);
   }
 
   /// 软删除任务及其下的所有会话
@@ -715,7 +860,7 @@ class AppDatabase {
     // 仅查询未删除的任务，避免对已删除的僵尸任务进行操作
     final result = await db.query('tasks',
         columns: ['completed'],
-        where: 'id = ? AND deleted = 0',
+        where: 'id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [id]);
     if (result.isEmpty) return;
 
@@ -730,7 +875,7 @@ class AppDatabase {
           'completed_at': newCompleted == 1 ? now : null,
           'updated_at': now,
         },
-        where: 'id = ? AND deleted = 0',
+        where: 'id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [id]);
   }
 
@@ -745,7 +890,7 @@ class AppDatabase {
           'my_day_added_at': now,
           'updated_at': now,
         },
-        where: 'id = ? AND deleted = 0',
+        where: 'id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [taskId]);
   }
 
@@ -760,7 +905,7 @@ class AppDatabase {
           'my_day_added_at': null,
           'updated_at': now,
         },
-        where: 'id = ? AND deleted = 0',
+        where: 'id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [taskId]);
   }
 
@@ -770,7 +915,8 @@ class AppDatabase {
     final batch = db.batch();
     for (var i = 0; i < taskIds.length; i++) {
       batch.update('tasks', {'sort_order': i, 'updated_at': now},
-          where: 'id = ?', whereArgs: [taskIds[i]]);
+          where: 'id = ? AND deleted = 0 AND archived = 0',
+          whereArgs: [taskIds[i]]);
     }
     await batch.commit(noResult: true);
   }
@@ -782,7 +928,8 @@ class AppDatabase {
     final batch = db.batch();
     for (var i = 0; i < listIds.length; i++) {
       batch.update('lists', {'sort_order': i + offset, 'updated_at': now},
-          where: 'id = ?', whereArgs: [listIds[i]]);
+          where: 'id = ? AND deleted = 0 AND archived = 0',
+          whereArgs: [listIds[i]]);
     }
     await batch.commit(noResult: true);
   }
@@ -940,6 +1087,8 @@ class AppDatabase {
       'calendarEventId': row['calendar_event_id'],
       'createdAt': row['created_at'],
       'updatedAt': row['updated_at'],
+      'archived': (row['archived'] as int? ?? 0) == 1,
+      'archivedAt': row['archived_at'],
       'deleted': (row['deleted'] as int) == 1,
     };
   }
@@ -1136,6 +1285,8 @@ class AppDatabase {
       'is_system': (data['isSystem'] ?? false) ? 1 : 0,
       'sort_order': data['sortOrder'] ?? 0,
       'created_at': data['createdAt'],
+      'archived': (data['archived'] ?? false) ? 1 : 0,
+      'archived_at': data['archivedAt'],
       // updated_at 由调用方在 _applyTableChanges 中统一设置
     };
   }
@@ -1161,6 +1312,8 @@ class AppDatabase {
       'reminder_at': data['reminderAt'],
       'calendar_event_id': data['calendarEventId'],
       'created_at': data['createdAt'],
+      'archived': (data['archived'] ?? false) ? 1 : 0,
+      'archived_at': data['archivedAt'],
     };
   }
 

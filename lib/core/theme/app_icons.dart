@@ -45,7 +45,10 @@ class AppIcons {
   static const IconData today = Icons.today_outlined;
   static const IconData tomorrow = Icons.next_week_outlined;
   static const IconData move = Icons.move_to_inbox_outlined;
+  static const IconData archive = Icons.archive_outlined;
+  static const IconData restore = Icons.unarchive_outlined;
   static const IconData delete = Icons.delete_outline;
+  static const IconData deleteForever = Icons.delete_forever_outlined;
   static const IconData edit = Icons.edit_outlined;
   static const IconData editNote = Icons.edit_note;
   static const IconData repeat = Icons.repeat;

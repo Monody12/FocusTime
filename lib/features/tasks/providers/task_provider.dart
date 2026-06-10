@@ -13,6 +13,8 @@ class TaskList {
   final int sortOrder;
   final int createdAt;
   final int updatedAt;
+  final bool archived;
+  final int? archivedAt;
 
   TaskList({
     required this.id,
@@ -21,6 +23,8 @@ class TaskList {
     required this.sortOrder,
     required this.createdAt,
     required this.updatedAt,
+    this.archived = false,
+    this.archivedAt,
   });
 
   TaskList copyWith({
@@ -30,6 +34,8 @@ class TaskList {
     int? sortOrder,
     int? createdAt,
     int? updatedAt,
+    bool? archived,
+    int? archivedAt,
   }) =>
       TaskList(
         id: id ?? this.id,
@@ -38,6 +44,8 @@ class TaskList {
         sortOrder: sortOrder ?? this.sortOrder,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        archived: archived ?? this.archived,
+        archivedAt: archivedAt ?? this.archivedAt,
       );
 }
 
@@ -60,6 +68,8 @@ class TaskItem {
   final String? calendarEventId;
   final int createdAt;
   final int updatedAt;
+  final bool archived;
+  final int? archivedAt;
 
   TaskItem({
     required this.id,
@@ -80,6 +90,8 @@ class TaskItem {
     this.calendarEventId,
     required this.createdAt,
     required this.updatedAt,
+    this.archived = false,
+    this.archivedAt,
   });
 
   TaskItem copyWith({
@@ -101,6 +113,8 @@ class TaskItem {
     String? calendarEventId,
     int? createdAt,
     int? updatedAt,
+    bool? archived,
+    int? archivedAt,
     bool clearNotes = false,
     bool clearDueDate = false,
     bool clearDueTime = false,
@@ -125,6 +139,8 @@ class TaskItem {
         calendarEventId: calendarEventId ?? this.calendarEventId,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        archived: archived ?? this.archived,
+        archivedAt: archivedAt ?? this.archivedAt,
       );
 }
 
@@ -171,46 +187,52 @@ class TaskNotifier extends StateNotifier<TaskState> {
     loadTasks().then((_) async {
       // 从数据库加载所有有提醒的未完成任务（不受当前视图过滤限制），确保每个提醒都被恢复
       final allDbTasks = await AppDatabase.getAllTasks();
-      final allTasks = allDbTasks
-          .map((m) => TaskItem(
-                id: m['id'] as String,
-                listId: m['listId'] as String,
-                title: m['title'] as String,
-                notes: m['notes'] as String?,
-                completed: m['completed'] == true,
-                completedAt: m['completedAt'] as int?,
-                dueDate: m['dueDate'] as String?,
-                dueTime: m['dueTime'] as String?,
-                sortOrder: m['sortOrder'] as int,
-                isMyDay: m['isMyDay'] == true,
-                myDayAddedAt: m['myDayAddedAt'] as int?,
-                recurrenceConfig:
-                    m['recurrenceConfig'] as Map<String, dynamic>?,
-                expectedMinutes: m['expectedMinutes'] as int?,
-                isImportant: m['isImportant'] == true,
-                reminderAt: m['reminderAt'] as int?,
-                calendarEventId: m['calendarEventId'] as String?,
-                createdAt: m['createdAt'] as int,
-                updatedAt: m['updatedAt'] as int,
-              ))
-          .toList();
+      final allTasks = allDbTasks.map(_taskFromMap).toList();
       ReminderService.refreshAll(allTasks);
     });
   }
 
+  static TaskList _listFromMap(Map<String, dynamic> m) {
+    return TaskList(
+      id: m['id'] as String,
+      name: m['name'] as String,
+      isSystem: m['isSystem'] == true,
+      sortOrder: m['sortOrder'] as int,
+      createdAt: m['createdAt'] as int,
+      updatedAt: m['updatedAt'] as int,
+      archived: m['archived'] == true,
+      archivedAt: m['archivedAt'] as int?,
+    );
+  }
+
+  static TaskItem _taskFromMap(Map<String, dynamic> m) {
+    return TaskItem(
+      id: m['id'] as String,
+      listId: m['listId'] as String,
+      title: m['title'] as String,
+      notes: m['notes'] as String?,
+      completed: m['completed'] == true,
+      completedAt: m['completedAt'] as int?,
+      dueDate: m['dueDate'] as String?,
+      dueTime: m['dueTime'] as String?,
+      sortOrder: m['sortOrder'] as int,
+      isMyDay: m['isMyDay'] == true,
+      myDayAddedAt: m['myDayAddedAt'] as int?,
+      recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
+      expectedMinutes: m['expectedMinutes'] as int?,
+      isImportant: m['isImportant'] == true,
+      reminderAt: m['reminderAt'] as int?,
+      calendarEventId: m['calendarEventId'] as String?,
+      createdAt: m['createdAt'] as int,
+      updatedAt: m['updatedAt'] as int,
+      archived: m['archived'] == true,
+      archivedAt: m['archivedAt'] as int?,
+    );
+  }
+
   Future<void> loadLists() async {
     final dbLists = await AppDatabase.getLists();
-    final lists = dbLists
-        .map((m) => TaskList(
-              id: m['id'] as String,
-              name: m['name'] as String,
-              // 使用 == true 进行健壮性判断，防止数据库返回 Null 或 0/1 时触发类型错误
-              isSystem: m['isSystem'] == true,
-              sortOrder: m['sortOrder'] as int,
-              createdAt: m['createdAt'] as int,
-              updatedAt: m['updatedAt'] as int,
-            ))
-        .toList();
+    final lists = dbLists.map(_listFromMap).toList();
     state = state.copyWith(lists: lists);
   }
 
@@ -228,30 +250,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
         dbTasks = await AppDatabase.getTasksByList(state.currentListId);
       }
 
-      final tasks = dbTasks
-          .map((m) => TaskItem(
-                id: m['id'] as String,
-                listId: m['listId'] as String,
-                title: m['title'] as String,
-                notes: m['notes'] as String?,
-                // 将数据库返回的动态值安全地转换为布尔值
-                completed: m['completed'] == true,
-                completedAt: m['completedAt'] as int?,
-                dueDate: m['dueDate'] as String?,
-                dueTime: m['dueTime'] as String?,
-                sortOrder: m['sortOrder'] as int,
-                isMyDay: m['isMyDay'] == true,
-                myDayAddedAt: m['myDayAddedAt'] as int?,
-                recurrenceConfig:
-                    m['recurrenceConfig'] as Map<String, dynamic>?,
-                expectedMinutes: m['expectedMinutes'] as int?,
-                isImportant: m['isImportant'] == true,
-                reminderAt: m['reminderAt'] as int?,
-                calendarEventId: m['calendarEventId'] as String?,
-                createdAt: m['createdAt'] as int,
-                updatedAt: m['updatedAt'] as int,
-              ))
-          .toList();
+      final tasks = dbTasks.map(_taskFromMap).toList();
 
       state = state.copyWith(tasks: tasks, isLoading: false);
     } catch (e) {
@@ -271,14 +270,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
   Future<TaskList> createList(String name) async {
     final result = await AppDatabase.createList(name);
-    final list = TaskList(
-      id: result['id'] as String,
-      name: result['name'] as String,
-      isSystem: result['isSystem'] == true,
-      sortOrder: result['sortOrder'] as int,
-      createdAt: result['createdAt'] as int,
-      updatedAt: result['updatedAt'] as int,
-    );
+    final list = _listFromMap(result);
     state = state.copyWith(lists: [...state.lists, list]);
     _triggerSync();
     return list;
@@ -298,6 +290,77 @@ class TaskNotifier extends StateNotifier<TaskState> {
     final lists = state.lists.where((l) => l.id != id).toList();
     state = state.copyWith(lists: lists);
     _triggerSync();
+  }
+
+  Future<void> archiveList(String id) async {
+    final tasksToArchive =
+        (await AppDatabase.getTasksByList(id)).map(_taskFromMap).toList();
+    final wasCurrentList = state.currentListId == id;
+    await AppDatabase.archiveList(id);
+
+    final lists = state.lists.where((l) => l.id != id).toList();
+    final tasks = state.tasks.where((t) => t.listId != id).toList();
+    state = state.copyWith(
+      lists: lists,
+      tasks: tasks,
+      currentListId: wasCurrentList ? 'system-my-day' : state.currentListId,
+      currentViewType: wasCurrentList ? 'my-day' : state.currentViewType,
+      clearSelectedTask: state.selectedTaskId != null &&
+          tasksToArchive.any((t) => t.id == state.selectedTaskId),
+    );
+    if (wasCurrentList) {
+      await loadTasks(showLoading: false);
+    }
+
+    _triggerSync();
+    await _cancelTaskIntegrations(tasksToArchive);
+  }
+
+  Future<void> archiveTask(String id) async {
+    final dbTask = await AppDatabase.getTaskById(id);
+    final task = state.tasks.where((t) => t.id == id).firstOrNull ??
+        (dbTask == null ? null : _taskFromMap(dbTask));
+    await AppDatabase.archiveTask(id);
+    state = state.copyWith(
+      tasks: state.tasks.where((t) => t.id != id).toList(),
+      clearSelectedTask: state.selectedTaskId == id,
+    );
+
+    _triggerSync();
+    if (task != null) {
+      await _cancelTaskIntegrations([task]);
+    }
+  }
+
+  Future<void> restoreArchivedList(String id) async {
+    await AppDatabase.restoreList(id);
+    await loadLists();
+    await loadTasks(showLoading: false);
+    _triggerSync();
+    await _refreshRemindersAndCalendarFromDatabase();
+  }
+
+  Future<void> restoreArchivedTask(String id) async {
+    await AppDatabase.restoreTask(id);
+    await loadLists();
+    await loadTasks(showLoading: false);
+    _triggerSync();
+    await _refreshRemindersAndCalendarFromDatabase();
+  }
+
+  Future<void> deleteArchivedList(String id) async {
+    await AppDatabase.deleteList(id);
+    await loadLists();
+    await loadTasks(showLoading: false);
+    _triggerSync();
+    await _refreshRemindersAndCalendarFromDatabase();
+  }
+
+  Future<void> deleteArchivedTask(String id) async {
+    await AppDatabase.deleteTask(id);
+    await loadTasks(showLoading: false);
+    _triggerSync();
+    await _refreshRemindersAndCalendarFromDatabase();
   }
 
   Future<({bool success, bool tokenExpired})> sync(
@@ -352,6 +415,30 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
   void _triggerSync() {
     sync(background: true);
+  }
+
+  Future<void> _cancelTaskIntegrations(List<TaskItem> tasks) async {
+    for (final task in tasks) {
+      try {
+        await ReminderService.cancelReminder(task.id);
+      } catch (e) {
+        // 取消通知失败不影响归档结果，恢复时会按数据库状态重新扫描。
+      }
+      if (task.calendarEventId != null) {
+        try {
+          await CalendarService.removeTask(task.calendarEventId!);
+        } catch (e) {
+          // Android 14+ 可能拒绝删除日历事件，降级方案已在 CalendarService 内部处理。
+        }
+      }
+    }
+  }
+
+  Future<void> _refreshRemindersAndCalendarFromDatabase() async {
+    final allTasks =
+        (await AppDatabase.getAllTasks()).map(_taskFromMap).toList();
+    await ReminderService.refreshAll(allTasks);
+    await CalendarService.refreshAll(allTasks);
   }
 
   Future<TaskItem> createTask(String title,
