@@ -6,8 +6,15 @@ import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 
 class Sidebar extends ConsumerStatefulWidget {
   final VoidCallback? onListChanged;
+  final double topPadding;
+  final bool showRightBorder;
 
-  const Sidebar({super.key, this.onListChanged});
+  const Sidebar({
+    super.key,
+    this.onListChanged,
+    this.topPadding = 8,
+    this.showRightBorder = true,
+  });
 
   @override
   ConsumerState<Sidebar> createState() => _SidebarState();
@@ -66,18 +73,20 @@ class _SidebarState extends ConsumerState<Sidebar> {
     final customLists = taskState.lists.where((l) => !l.isSystem).toList();
 
     return Container(
-      width: 220,
+      width: double.infinity,
       decoration: BoxDecoration(
         color: context.appColors.sidebar,
-        border: Border(
-          right: BorderSide(
-            color: context.appColors.border,
-          ),
-        ),
+        border: widget.showRightBorder
+            ? Border(
+                right: BorderSide(
+                  color: context.appColors.border,
+                ),
+              )
+            : null,
       ),
       child: Column(
         children: [
-          const SizedBox(height: 8),
+          SizedBox(height: widget.topPadding),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
