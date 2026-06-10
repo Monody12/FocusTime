@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
@@ -32,7 +33,6 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
   @override
   Widget build(BuildContext context) {
     final taskNotifier = ref.read(taskProvider.notifier);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isOverdue = _isOverdue(widget.task.dueDate);
 
     // 任务项内容 widget
@@ -43,13 +43,18 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           _showContextMenu(context, details.globalPosition),
       behavior: HitTestBehavior.opaque,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: widget.isSelected
-              ? (isDark ? const Color(0xFF3D3D5C) : const Color(0xFFE5E7EB))
+              ? (context.appColors.surfaceElevated)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
+          border: widget.isSelected
+              ? Border.all(
+                  color: context.appColors.border,
+                )
+              : null,
         ),
         child: Row(
           children: [
@@ -61,20 +66,19 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 height: 22,
                 decoration: BoxDecoration(
                   color: widget.task.completed
-                      ? const Color(0xFF7C3AED)
+                      ? (context.appColors.accent)
                       : Colors.transparent,
                   border: Border.all(
                     color: widget.task.completed
-                        ? const Color(0xFF7C3AED)
-                        : (isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder),
+                        ? (context.appColors.accent)
+                        : (context.appColors.border),
                     width: 2,
                   ),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: widget.task.completed
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                    ? const Icon(AppIcons.taskDone,
+                        size: AppIconSizes.status, color: Colors.white)
                     : null,
               ),
             ),
@@ -86,12 +90,10 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 style: TextStyle(
                   fontSize: 15,
                   color: widget.task.completed
-                      ? (isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary)
+                      ? (context.appColors.textSecondary)
                       : isOverdue && !widget.task.completed
                           ? Colors.red
-                          : (isDark ? AppColors.darkText : AppColors.lightText),
+                          : (context.appColors.text),
                   decoration:
                       widget.task.completed ? TextDecoration.lineThrough : null,
                 ),
@@ -101,22 +103,20 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
             if (widget.task.isMyDay)
               Padding(
                 padding: const EdgeInsets.only(left: 8),
-                child: Icon(
-                  Icons.wb_sunny_outlined,
-                  size: 16,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                child: AppIcon(
+                  AppIcons.myDay,
+                  size: AppIconSizes.compact,
+                  color: context.appColors.textSecondary,
                 ),
               ),
             // 重要图标
             if (widget.task.isImportant)
               Padding(
                 padding: const EdgeInsets.only(left: 8),
-                child: const Icon(
-                  Icons.star,
-                  size: 16,
-                  color: Color(0xFF7C3AED),
+                child: AppIcon(
+                  AppIcons.importantFilled,
+                  size: AppIconSizes.compact,
+                  color: context.appColors.warning,
                 ),
               ),
             // 截止日期
@@ -126,14 +126,12 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.schedule,
-                      size: 12,
+                    AppIcon(
+                      AppIcons.schedule,
+                      size: AppIconSizes.status,
                       color: isOverdue && !widget.task.completed
                           ? Colors.red
-                          : (isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary),
+                          : (context.appColors.textSecondary),
                     ),
                     const SizedBox(width: 2),
                     Text(
@@ -142,9 +140,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                         fontSize: 12,
                         color: isOverdue && !widget.task.completed
                             ? Colors.red
-                            : (isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary),
+                            : (context.appColors.textSecondary),
                       ),
                     ),
                   ],
@@ -154,14 +150,14 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
             if (widget.task.reminderAt != null)
               Padding(
                 padding: const EdgeInsets.only(left: 8),
-                child: Icon(
-                  Icons.notifications_active,
-                  size: 14,
+                child: AppIcon(
+                  AppIcons.reminderActive,
+                  size: AppIconSizes.status,
                   color: (widget.task.reminderAt! <
                               DateTime.now().millisecondsSinceEpoch &&
                           !widget.task.completed)
                       ? Colors.red
-                      : const Color(0xFF7C3AED),
+                      : (context.appColors.accent),
                 ),
               ),
           ],
@@ -180,10 +176,10 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           width: 260,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            color: context.appColors.surface,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: const Color(0xFF7C3AED),
+              color: context.appColors.accent,
               width: 2,
             ),
           ),
@@ -195,20 +191,19 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 height: 22,
                 decoration: BoxDecoration(
                   color: widget.task.completed
-                      ? const Color(0xFF7C3AED)
+                      ? (context.appColors.accent)
                       : Colors.transparent,
                   border: Border.all(
                     color: widget.task.completed
-                        ? const Color(0xFF7C3AED)
-                        : (isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder),
+                        ? (context.appColors.accent)
+                        : (context.appColors.border),
                     width: 2,
                   ),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: widget.task.completed
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
+                    ? const Icon(AppIcons.taskDone,
+                        size: AppIconSizes.status, color: Colors.white)
                     : null,
               ),
               const SizedBox(width: 12),
@@ -217,7 +212,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   widget.task.title,
                   style: TextStyle(
                     fontSize: 15,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -296,7 +291,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           position.dx, position.dy, position.dx, position.dy),
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      color: isDark ? const Color(0xFF2D2D3F) : Colors.white,
+      color: context.appColors.surface,
       items: <PopupMenuEntry<dynamic>>[
         PopupMenuItem<dynamic>(
           height: 38,
@@ -308,7 +303,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
             }
           },
           child: _buildMenuItem(
-            widget.task.isMyDay ? Icons.wb_sunny : Icons.wb_sunny_outlined,
+            AppIcons.myDay,
             widget.task.isMyDay ? '从"我的一天"中移除' : '添加到"我的一天"',
             'Ctrl+T',
             isDark,
@@ -318,7 +313,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           height: 38,
           onTap: () => taskNotifier.toggleTaskImportant(widget.task.id),
           child: _buildMenuItem(
-            widget.task.isImportant ? Icons.star : Icons.star_border,
+            widget.task.isImportant
+                ? AppIcons.importantFilled
+                : AppIcons.important,
             widget.task.isImportant ? '取消标记为重要' : '标记为重要',
             null,
             isDark,
@@ -329,8 +326,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           onTap: () => taskNotifier.toggleTaskComplete(widget.task.id),
           child: _buildMenuItem(
             widget.task.completed
-                ? Icons.check_circle
-                : Icons.radio_button_unchecked,
+                ? AppIcons.taskComplete
+                : AppIcons.taskIncomplete,
             widget.task.completed ? '标记为未完成' : '标记为已完成',
             'Ctrl+D',
             isDark,
@@ -352,45 +349,56 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         PopupMenuItem<dynamic>(
           height: 38,
           onTap: () => _setDueDate(AppTime.now()),
-          child: _buildMenuItem(Icons.event, '今天', null, isDark),
+          child: _buildMenuItem(AppIcons.today, '今天', null, isDark),
         ),
         PopupMenuItem<dynamic>(
           height: 38,
           onTap: () => _setDueDate(AppTime.now().add(const Duration(days: 1))),
-          child: _buildMenuItem(Icons.event_note, '明天', null, isDark),
+          child: _buildMenuItem(AppIcons.tomorrow, '明天', null, isDark),
         ),
         PopupMenuItem<dynamic>(
           height: 38,
           onTap: () => _pickDate(context),
-          child: _buildMenuItem(Icons.calendar_today, '选择日期', null, isDark),
+          child: _buildMenuItem(AppIcons.calendar, '选择日期', null, isDark),
         ),
         const PopupMenuDivider(height: 1),
         PopupMenuItem<dynamic>(
           height: 38,
           onTap: () =>
               Future.delayed(Duration.zero, () => _showMoveToDialog(context)),
-          child: _buildMenuItem(Icons.move_to_inbox, '移动任务到...', null, isDark),
+          child: _buildMenuItem(AppIcons.move, '移动任务到...', null, isDark),
+        ),
+        PopupMenuItem<dynamic>(
+          height: 38,
+          onTap: () => _archiveTask(context),
+          child: _buildMenuItem(AppIcons.archive, '归档任务', null, isDark),
         ),
         PopupMenuItem<dynamic>(
           height: 38,
           onTap: () =>
               Future.delayed(Duration.zero, () => _confirmDelete(context)),
-          child: _buildMenuItem(Icons.delete_outline, '删除任务', 'Delete', isDark,
+          child: _buildMenuItem(AppIcons.delete, '删除任务', 'Delete', isDark,
               isDanger: true),
         ),
       ],
     );
   }
 
+  Future<void> _archiveTask(BuildContext context) async {
+    await ref.read(taskProvider.notifier).archiveTask(widget.task.id);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('任务已归档，可在设置中恢复')),
+    );
+  }
+
   void _confirmDelete(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除任务', style: TextStyle(fontSize: 16)),
         content: Text('确定要删除任务 "${widget.task.title}" 吗？'),
-        backgroundColor:
-            isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        backgroundColor: context.appColors.surface,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -412,7 +420,6 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
   void _showMoveToDialog(BuildContext context) {
     final taskState = ref.read(taskProvider);
     final taskNotifier = ref.read(taskProvider.notifier);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     // 排除系统清单和当前清单
     final otherLists = taskState.lists
@@ -430,7 +437,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('移动任务到', style: TextStyle(fontSize: 16)),
-        backgroundColor: isDark ? const Color(0xFF2D2D3F) : Colors.white,
+        backgroundColor: context.appColors.surface,
         content: SizedBox(
           width: 300,
           child: ListView.builder(
@@ -440,7 +447,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
               final list = otherLists[index];
               return ListTile(
                 title: Text(list.name),
-                leading: const Icon(Icons.list),
+                leading: const Icon(AppIcons.list),
                 onTap: () {
                   taskNotifier.moveTaskToList(widget.task.id, list.id);
                   Navigator.pop(context);
@@ -466,8 +473,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         isDanger ? Colors.red : (isDark ? Colors.white : Colors.black87);
     return Row(
       children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 12),
+        AppIcon(icon, size: AppIconSizes.action, color: color),
+        const SizedBox(width: AppIconSpacing.labelGap),
         Expanded(
           child: Text(
             text,

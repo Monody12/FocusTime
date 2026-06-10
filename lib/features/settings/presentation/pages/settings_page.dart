@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:focus_my_time/core/providers/theme_provider.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
@@ -16,6 +18,7 @@ import 'package:focus_my_time/features/ai_assistant/services/deepseek_api_client
 import 'package:focus_my_time/core/providers/package_info_provider.dart';
 import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
 import 'package:focus_my_time/features/update/services/update_service.dart';
+import 'package:focus_my_time/features/settings/presentation/widgets/archived_items_dialog.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -200,6 +203,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final preferredModeWhenOverdue =
         ref.watch(timerProvider.select((s) => s.preferredModeWhenOverdue));
     final timeZoneMode = ref.watch(timeZoneProvider);
+    final themeScheme = ref.watch(themeSchemeProvider);
 
     // 构建一个不包含流逝时间的状态对象供当前页面使用，彻底避免计时器走字导致的页面每秒重绘
     final timerState = TimerState(
@@ -217,7 +221,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      color: context.appColors.background,
       child: Column(
         children: [
           // Header
@@ -230,12 +234,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(AppIcons.close),
                   onPressed: widget.onClose,
                 ),
               ],
@@ -410,6 +414,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   const SizedBox(height: 12),
                   _buildTimeZoneSetting(timeZoneMode, isDark),
                   const SizedBox(height: 12),
+                  _buildSelectSetting(
+                    label: '主题配色',
+                    value: themeScheme.id,
+                    options: AppTheme.schemes
+                        .map((scheme) => {
+                              'value': scheme.id,
+                              'label': scheme.label,
+                            })
+                        .toList(),
+                    onChanged: (value) async {
+                      try {
+                        await ref
+                            .read(themeSchemeProvider.notifier)
+                            .setThemeScheme(value);
+                        _showSnackBar('主题配色已切换');
+                      } catch (e) {
+                        _showSnackBar('主题配色保存失败: $e', isError: true);
+                      }
+                    },
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 12),
                   _buildSwitchSetting(
                     label: '提示音',
                     value: _soundEnabled,
@@ -451,9 +477,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       '启用后，选择模式时会记住您的选择，下次超时自动使用该模式',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   ),
@@ -463,17 +487,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   // Data Management Section
                   _buildSectionTitle('💾 数据管理', isDark),
                   const SizedBox(height: 12),
+                  _SettingButton(
+                    label: '管理归档任务与清单',
+                    onPressed: () => ArchivedItemsDialog.show(context),
+                    isPrimary: false,
+                    isAccent: true,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkSurface
-                          : AppColors.lightSurface,
+                      color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder,
+                        color: context.appColors.border,
                       ),
                     ),
                     child: Column(
@@ -483,9 +511,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           '数据库：',
                           style: TextStyle(
                             fontSize: 12,
-                            color: isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary,
+                            color: context.appColors.textSecondary,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -494,9 +520,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           style: TextStyle(
                             fontSize: 12,
                             fontFamily: 'monospace',
-                            color: isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary,
+                            color: context.appColors.textSecondary,
                           ),
                           softWrap: true,
                         ),
@@ -524,9 +548,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     '导入将覆盖当前数据，请先导出备份',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
 
@@ -539,9 +561,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     '如果您的日历出现重复事件或无法修改的问题，您可以使用此按钮强制清理系统中的所有相关日历并重新同步当前有效任务。',
                     style: TextStyle(
                       fontSize: 12,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -571,6 +591,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       );
 
                       if (confirm == true) {
+                        if (!context.mounted) return;
                         try {
                           // 展示一个全局 Loading
                           showDialog(
@@ -580,17 +601,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 child: CircularProgressIndicator()),
                           );
 
-                          final tasks = ref.read(taskProvider).tasks;
+                          final tasks = await _loadAllTaskItems();
                           await CalendarService.forceRebuildCalendar(tasks);
 
-                          if (mounted) {
+                          if (context.mounted) {
                             Navigator.of(context).pop(); // 关闭 loading
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('日历系统已清理并重新同步完成！')),
                             );
                           }
                         } catch (e) {
-                          if (mounted) {
+                          if (context.mounted) {
                             Navigator.of(context).pop(); // 关闭 loading
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('清理失败: $e')),
@@ -700,9 +721,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       '上次同步：${AppTime.formatDateTimeFromMilliseconds(_lastSyncTime!)}',
                       style: TextStyle(
                         fontSize: 12,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   ],
@@ -720,9 +739,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     '多设备数据自动合并，最新修改优先',
                     style: TextStyle(
                       fontSize: 11,
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -747,9 +764,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? AppColors.darkSurface
-                            : AppColors.lightSurface,
+                        color: context.appColors.surface,
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Row(
@@ -766,9 +781,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               _syncStatus,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: isDark
-                                    ? AppColors.darkText
-                                    : AppColors.lightText,
+                                color: context.appColors.text,
                               ),
                             ),
                           ),
@@ -783,14 +796,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkSurface
-                          : AppColors.lightSurface,
+                      color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder,
+                        color: context.appColors.border,
                       ),
                     ),
                     child: Row(
@@ -800,9 +809,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           style: TextStyle(
                             fontWeight: FontWeight.w500,
                             fontSize: 13,
-                            color: isDark
-                                ? AppColors.darkText
-                                : AppColors.lightText,
+                            color: context.appColors.text,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -811,9 +818,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                             _getConfigSummary(timerState),
                             style: TextStyle(
                               fontSize: 13,
-                              color: isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary,
+                              color: context.appColors.textSecondary,
                             ),
                           ),
                         ),
@@ -829,14 +834,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkSurface
-                          : AppColors.lightSurface,
+                      color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: isDark
-                            ? AppColors.darkBorder
-                            : AppColors.lightBorder,
+                        color: context.appColors.border,
                       ),
                     ),
                     child: Column(
@@ -851,9 +852,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                       '${e.key}:',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: isDark
-                                            ? AppColors.darkTextSecondary
-                                            : AppColors.lightTextSecondary,
+                                        color: context.appColors.textSecondary,
                                       ),
                                     ),
                                   ),
@@ -863,7 +862,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                       fontSize: 12,
                                       fontWeight: FontWeight.bold,
                                       color: e.value.contains('granted')
-                                          ? Colors.green
+                                          ? context.appColors.success
                                           : Colors.orange,
                                     ),
                                   ),
@@ -981,6 +980,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         );
 
                         if (confirm == true) {
+                          if (!context.mounted) return;
                           try {
                             showDialog(
                               context: context,
@@ -989,15 +989,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                   child: CircularProgressIndicator()),
                             );
 
-                            final tasks = ref.read(taskProvider).tasks;
+                            final tasks = await _loadAllTaskItems();
                             await CalendarService.forceRebuildCalendar(tasks);
 
-                            if (mounted) {
+                            if (context.mounted) {
                               Navigator.of(context).pop(); // 关闭 loading
                               _showSnackBar('日历系统已清理并重新同步完成！');
                             }
                           } catch (e) {
-                            if (mounted) {
+                            if (context.mounted) {
                               Navigator.of(context).pop(); // 关闭 loading
                               _showSnackBar('清理失败: $e', isError: true);
                             }
@@ -1053,11 +1053,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     onChanged: (value) async {
                       await CalendarService.setEnabled(value);
                       setState(() => _calendarSyncEnabled = value);
-                      if (value) {
-                        // 立即同步所有现有任务
-                        final taskState = ref.read(taskProvider);
-                        CalendarService.refreshAll(taskState.tasks);
-                      }
+                      // 立即按“日历优先、通知兜底”的统一规则刷新所有任务。
+                      // 启用日历且权限正常时会创建/更新日历并取消系统通知；
+                      // 关闭日历时会回到系统通知并清理本机日历事件。
+                      final allTasks = await _loadAllTaskItems();
+                      await ReminderService.refreshAll(allTasks);
                     },
                     isDark: isDark,
                   ),
@@ -1067,9 +1067,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       '启用后，有提醒时间的任务将自动同步到手机系统日历中，提供更可靠的提醒。',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   ),
@@ -1113,9 +1111,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       '获取密钥: platform.deepseek.com/api_keys',
                       style: TextStyle(
                         fontSize: 11,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   ),
@@ -1131,9 +1127,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 'v${info.version}',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: isDark
-                                      ? AppColors.darkTextSecondary
-                                      : AppColors.lightTextSecondary,
+                                  color: context.appColors.textSecondary,
                                 ),
                               ),
                               loading: () => const SizedBox.shrink(),
@@ -1165,7 +1159,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       style: TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w600,
-        color: isDark ? AppColors.darkText : AppColors.lightText,
+        color: context.appColors.text,
       ),
     );
   }
@@ -1183,7 +1177,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             label,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
         ),
@@ -1222,7 +1216,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             label,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
         ),
@@ -1232,7 +1226,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFF7C3AED),
+            activeColor: context.appColors.accent,
           ),
         ),
       ],
@@ -1251,7 +1245,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 '时区',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                  color: context.appColors.text,
                 ),
               ),
               const SizedBox(height: 4),
@@ -1259,9 +1253,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 AppTime.description(mode),
                 style: TextStyle(
                   fontSize: 11,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
               ),
             ],
@@ -1270,10 +1262,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            color: context.appColors.surface,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              color: context.appColors.border,
             ),
           ),
           child: DropdownButton<AppTimeZoneMode>(
@@ -1282,10 +1274,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             isDense: true,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
-            dropdownColor:
-                isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            dropdownColor: context.appColors.surface,
             items: AppTimeZoneMode.values.map((option) {
               return DropdownMenuItem(
                 value: option,
@@ -1326,17 +1317,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             label,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            color: context.appColors.surface,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              color: context.appColors.border,
             ),
           ),
           child: DropdownButton<String>(
@@ -1345,10 +1336,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             isDense: true,
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
-            dropdownColor:
-                isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            dropdownColor: context.appColors.surface,
             items: options
                 .map((opt) => DropdownMenuItem(
                       value: opt['value'],
@@ -1388,7 +1378,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           label,
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? AppColors.darkText : AppColors.lightText,
+            color: context.appColors.text,
           ),
         ),
         const SizedBox(height: 6),
@@ -1419,11 +1409,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Icon(
-                        obscureText ? Icons.visibility_off : Icons.visibility,
+                        obscureText ? AppIcons.hidden : AppIcons.visible,
                         size: 16,
-                        color: isDark
-                            ? AppColors.darkTextSecondary
-                            : AppColors.lightTextSecondary,
+                        color: context.appColors.textSecondary,
                       ),
                     ),
                   )
@@ -1463,7 +1451,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           label,
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? AppColors.darkText : AppColors.lightText,
+            color: context.appColors.text,
           ),
         ),
         const SizedBox(height: 6),
@@ -1490,17 +1478,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               '可用占位符：',
               style: TextStyle(
                 fontSize: 11,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
+                color: context.appColors.textSecondary,
               ),
             ),
             ...placeholderHints.map((p) => Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color:
-                        isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                    color: context.appColors.surface,
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -1508,9 +1493,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     style: TextStyle(
                       fontSize: 11,
                       fontFamily: 'monospace',
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                 )),
@@ -1559,7 +1542,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: isError ? Colors.red : context.appColors.success,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
       ),
@@ -1896,24 +1879,20 @@ class _SettingButton extends StatelessWidget {
     final bgColor = isDanger
         ? Colors.red
         : isAccent
-            ? const Color(0xFF4FC3F7)
+            ? (context.appColors.accentSecondary)
             : isPrimary
-                ? const Color(0xFF7C3AED)
+                ? (context.appColors.accent)
                 : Colors.transparent;
 
     final textColor = isPrimary || isAccent || isDanger
         ? Colors.white
-        : isDark
-            ? AppColors.darkText
-            : AppColors.lightText;
+        : context.appColors.text;
 
     final borderColor = isDanger
         ? Colors.red
         : isPrimary || isAccent
             ? bgColor
-            : isDark
-                ? AppColors.darkBorder
-                : AppColors.lightBorder;
+            : context.appColors.border;
 
     return Material(
       color: bgColor,

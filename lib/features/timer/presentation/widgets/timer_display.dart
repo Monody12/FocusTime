@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/timer_provider.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 class TimerDisplay extends ConsumerWidget {
   const TimerDisplay({super.key});
@@ -8,18 +9,16 @@ class TimerDisplay extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final timerState = ref.watch(timerProvider);
-    final size = 160.0;
+    const size = 160.0;
     const strokeWidth = 8.0;
-    final radius = (size - strokeWidth) / 2;
-    final circumference = radius * 2 * 3.14159;
-    final offset = circumference * (1 - timerState.progress);
 
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final remainingProgress = timerState.totalSeconds > 0
+        ? timerState.remainingSeconds / timerState.totalSeconds
+        : 0.0;
     final progressColor = timerState.timerStatus == TimerStatus.completed
-        ? (isDark ? const Color(0xFF10B981) : const Color(0xFF10B981))
-        : (isDark ? const Color(0xFF7C3AED) : const Color(0xFF7C3AED));
-    final borderColor = isDark ? const Color(0xFF3D3D5C) : const Color(0xFFE5E7EB);
+        ? (context.appColors.success)
+        : (context.appColors.accent);
+    final borderColor = context.appColors.border;
 
     return SizedBox(
       width: size,
@@ -29,7 +28,7 @@ class TimerDisplay extends ConsumerWidget {
         children: [
           // Background circle
           CustomPaint(
-            size: Size(size, size),
+            size: const Size(size, size),
             painter: CircleProgressPainter(
               progress: 1.0,
               color: borderColor,
@@ -38,9 +37,9 @@ class TimerDisplay extends ConsumerWidget {
           ),
           // Progress circle
           CustomPaint(
-            size: Size(size, size),
+            size: const Size(size, size),
             painter: CircleProgressPainter(
-              progress: timerState.progress,
+              progress: remainingProgress.clamp(0.0, 1.0),
               color: progressColor,
               strokeWidth: strokeWidth,
             ),
@@ -57,7 +56,7 @@ class TimerDisplay extends ConsumerWidget {
                   fontFamily: 'monospace',
                   color: timerState.timerStatus == TimerStatus.completed
                       ? progressColor
-                      : (isDark ? const Color(0xFFE4E4E7) : const Color(0xFF1F2937)),
+                      : (context.appColors.text),
                 ),
               ),
               if (timerState.timerStatus == TimerStatus.completed)
@@ -98,7 +97,7 @@ class CircleProgressPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    final sweepAngle = 2 * 3.14159 * progress;
+    final sweepAngle = -2 * 3.14159 * progress;
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: radius),
       -3.14159 / 2, // Start from top

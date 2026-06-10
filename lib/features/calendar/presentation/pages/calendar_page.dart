@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
@@ -170,7 +171,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.chevron_left),
+                  icon: const Icon(AppIcons.previous),
                   onPressed: () {
                     setState(() {
                       _currentMonth = DateTime(year, month - 1, 1);
@@ -183,11 +184,11 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.chevron_right),
+                  icon: const Icon(AppIcons.next),
                   onPressed: () {
                     setState(() {
                       _currentMonth = DateTime(year, month + 1, 1);
@@ -210,9 +211,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                             d,
                             style: TextStyle(
                               fontSize: 12,
-                              color: isDark
-                                  ? AppColors.darkTextSecondary
-                                  : AppColors.lightTextSecondary,
+                              color: context.appColors.textSecondary,
                             ),
                           ),
                         ),
@@ -253,15 +252,15 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   margin: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? const Color(0xFF7C3AED)
+                        ? (context.appColors.accent)
                         : isToday
-                            ? (isDark
-                                ? AppColors.darkSurface
-                                : AppColors.lightSurface)
+                            ? (context.appColors.surface)
                             : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                     border: isToday && !isSelected
-                        ? Border.all(color: const Color(0xFF7C3AED))
+                        ? Border.all(
+                            color: context.appColors.accent,
+                          )
                         : null,
                   ),
                   child: Column(
@@ -274,9 +273,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                               isToday ? FontWeight.bold : FontWeight.normal,
                           color: isSelected
                               ? Colors.white
-                              : (isDark
-                                  ? AppColors.darkText
-                                  : AppColors.lightText),
+                              : (context.appColors.text),
                         ),
                       ),
                       if (stat != null) ...[
@@ -296,15 +293,16 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                                       fontSize: 8,
                                       color: isSelected
                                           ? Colors.white70
-                                          : (isDark
-                                              ? AppColors.darkTextSecondary
-                                              : AppColors.lightTextSecondary),
+                                          : (context.appColors.textSecondary),
                                     ),
                                   ),
                                 if ((stat['recurringCount'] as int) > 0)
-                                  const Text(
-                                    '🔄',
-                                    style: TextStyle(fontSize: 8),
+                                  AppIcon(
+                                    AppIcons.repeat,
+                                    size: 8,
+                                    color: isSelected
+                                        ? Colors.white70
+                                        : context.appColors.textSecondary,
                                   ),
                               ],
                             ),
@@ -331,7 +329,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -347,18 +345,14 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                         Text(
                           '专注 ${_selectedDateSessions.fold<int>(0, (sum, s) => sum + ((s['durationSeconds'] as int) / 60).floor())} 分钟',
                           style: TextStyle(
-                            color: isDark
-                                ? AppColors.darkText
-                                : AppColors.lightText,
+                            color: context.appColors.text,
                           ),
                         ),
                       if (_selectedDateTasks.isNotEmpty)
                         Text(
                           '完成 ${_selectedDateTasks.where((t) => t['completed'] == true).length} 项任务',
                           style: TextStyle(
-                            color: isDark
-                                ? AppColors.darkTextSecondary
-                                : AppColors.lightTextSecondary,
+                            color: context.appColors.textSecondary,
                           ),
                         ),
                     ],
@@ -376,18 +370,14 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                                   ? '☑'
                                   : '☐',
                               style: TextStyle(
-                                color: isDark
-                                    ? AppColors.darkText
-                                    : AppColors.lightText,
+                                color: context.appColors.text,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Text(
                               task['title'] as String,
                               style: TextStyle(
-                                color: isDark
-                                    ? AppColors.darkText
-                                    : AppColors.lightText,
+                                color: context.appColors.text,
                                 decoration: _selectedDateCompletions
                                         .contains(task['id'])
                                     ? TextDecoration.lineThrough
@@ -408,18 +398,14 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                             Text(
                               task['completed'] == true ? '☑' : '☐',
                               style: TextStyle(
-                                color: isDark
-                                    ? AppColors.darkText
-                                    : AppColors.lightText,
+                                color: context.appColors.text,
                               ),
                             ),
                             const SizedBox(width: 8),
                             Text(
                               task['title'] as String,
                               style: TextStyle(
-                                color: isDark
-                                    ? AppColors.darkText
-                                    : AppColors.lightText,
+                                color: context.appColors.text,
                               ),
                             ),
                           ],
@@ -435,9 +421,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                       child: Text(
                         '暂无记录',
                         style: TextStyle(
-                          color: isDark
-                              ? AppColors.darkTextSecondary
-                              : AppColors.lightTextSecondary,
+                          color: context.appColors.textSecondary,
                         ),
                       ),
                     ),
@@ -458,7 +442,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: isDark ? AppColors.darkText : AppColors.lightText,
+          color: context.appColors.text,
         ),
       ),
     );

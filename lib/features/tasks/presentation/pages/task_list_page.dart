@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../providers/task_provider.dart';
-import '../widgets/task_item.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:focus_my_time/features/tasks/presentation/widgets/task_item.dart';
 
 class TaskListView extends ConsumerStatefulWidget {
   final Function(String?)? onTaskSelected;
@@ -37,7 +38,9 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
     } else if (taskState.currentViewType == 'all-tasks') {
       listName = '任务';
     } else {
-      final currentList = taskState.lists.where((l) => l.id == taskState.currentListId).firstOrNull;
+      final currentList = taskState.lists
+          .where((l) => l.id == taskState.currentListId)
+          .firstOrNull;
       listName = currentList?.name ?? '清单';
     }
 
@@ -45,7 +48,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
       children: [
         // Header
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
           child: Row(
             children: [
               Text(
@@ -53,7 +56,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                  color: context.appColors.text,
                 ),
               ),
               const SizedBox(width: 12),
@@ -61,7 +64,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                 '${incompleteTasks.length} 个未完成',
                 style: TextStyle(
                   fontSize: 14,
-                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
               ),
             ],
@@ -70,45 +73,54 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
 
         // Add task input
         Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.symmetric(horizontal: 22),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+            color: context.appColors.surfaceElevated,
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: context.appColors.border,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.14 : 0.04),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Row(
             children: [
               Container(
-                width: 24,
-                height: 24,
+                width: AppIconSizes.action,
+                height: AppIconSizes.action,
                 alignment: Alignment.center,
-                child: Text(
-                  '+',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: const Color(0xFF7C3AED),
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: AppIcon(
+                  AppIcons.addTask,
+                  size: AppIconSizes.action,
+                  color: context.appColors.accentSecondary,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppIconSpacing.labelGap),
               Expanded(
                 child: TextField(
                   controller: _newTaskController,
                   decoration: InputDecoration(
                     hintText: '添加任务...',
+                    filled: false,
+                    fillColor: Colors.transparent,
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
                     hintStyle: TextStyle(
-                      color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                   style: TextStyle(
                     fontSize: 14,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                   onSubmitted: (_) => _addTask(),
                 ),
@@ -125,42 +137,47 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
               ? const Center(child: CircularProgressIndicator())
               : taskState.tasks.isEmpty
                   ? _buildEmptyState(isDark)
-                    : ListView(
-                        children: [
-                          // Incomplete tasks
-                          ReorderableListView(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            // 由 TaskItemWidget 内的 ReorderableDragStartListener 接管拖拽
-                            buildDefaultDragHandles: false,
-                            onReorder: (oldIndex, newIndex) {
-                              if (newIndex > oldIndex) newIndex -= 1;
-                              final taskIds = incompleteTasks.map((t) => t.id).toList();
-                              final item = taskIds.removeAt(oldIndex);
-                              taskIds.insert(newIndex, item);
-                              taskNotifier.reorderTasks(taskIds);
-                            },
-                            children: [
-                              for (int i = 0; i < incompleteTasks.length; i++)
-                                TaskItemWidget(
-                                  key: ValueKey(incompleteTasks[i].id),
-                                  task: incompleteTasks[i],
-                                  index: i,
-                                  isSelected: taskState.selectedTaskId == incompleteTasks[i].id,
-                                  onTap: () {
-                                    taskNotifier.setSelectedTask(incompleteTasks[i].id);
-                                    widget.onTaskSelected?.call(incompleteTasks[i].id);
-                                  },
-                                ),
-                            ],
-                          ),
+                  : ListView(
+                      children: [
+                        // Incomplete tasks
+                        ReorderableListView(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          // 由 TaskItemWidget 内的 ReorderableDragStartListener 接管拖拽
+                          buildDefaultDragHandles: false,
+                          onReorder: (oldIndex, newIndex) {
+                            if (newIndex > oldIndex) newIndex -= 1;
+                            final taskIds =
+                                incompleteTasks.map((t) => t.id).toList();
+                            final item = taskIds.removeAt(oldIndex);
+                            taskIds.insert(newIndex, item);
+                            taskNotifier.reorderTasks(taskIds);
+                          },
+                          children: [
+                            for (int i = 0; i < incompleteTasks.length; i++)
+                              TaskItemWidget(
+                                key: ValueKey(incompleteTasks[i].id),
+                                task: incompleteTasks[i],
+                                index: i,
+                                isSelected: taskState.selectedTaskId ==
+                                    incompleteTasks[i].id,
+                                onTap: () {
+                                  taskNotifier
+                                      .setSelectedTask(incompleteTasks[i].id);
+                                  widget.onTaskSelected
+                                      ?.call(incompleteTasks[i].id);
+                                },
+                              ),
+                          ],
+                        ),
 
-                          // Completed tasks
+                        // Completed tasks
                         if (completedTasks.isNotEmpty) ...[
                           const SizedBox(height: 8),
                           Padding(
                             key: const ValueKey('completed_header'),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
                             child: Row(
                               children: [
                                 Text(
@@ -168,7 +185,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
-                                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                    color: context.appColors.textSecondary,
                                   ),
                                 ),
                               ],
@@ -178,10 +195,13 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                             TaskItemWidget(
                               key: ValueKey(completedTasks[i].id),
                               task: completedTasks[i],
-                              isSelected: taskState.selectedTaskId == completedTasks[i].id,
+                              isSelected: taskState.selectedTaskId ==
+                                  completedTasks[i].id,
                               onTap: () {
-                                taskNotifier.setSelectedTask(completedTasks[i].id);
-                                widget.onTaskSelected?.call(completedTasks[i].id);
+                                taskNotifier
+                                    .setSelectedTask(completedTasks[i].id);
+                                widget.onTaskSelected
+                                    ?.call(completedTasks[i].id);
                               },
                             ),
                         ],
@@ -197,16 +217,17 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '📝',
-            style: TextStyle(fontSize: 48),
+          AppIcon(
+            AppIcons.emptyTasks,
+            size: AppIconSizes.empty,
+            color: context.appColors.textSecondary,
           ),
           const SizedBox(height: 16),
           Text(
             '还没有任务，添加一个吧',
             style: TextStyle(
               fontSize: 16,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
           ),
         ],
@@ -219,9 +240,9 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
       final currentViewType = ref.read(taskProvider).currentViewType;
       final isMyDay = currentViewType == 'my-day';
       await ref.read(taskProvider.notifier).createTask(
-        _newTaskController.text.trim(),
-        isMyDay: isMyDay,
-      );
+            _newTaskController.text.trim(),
+            isMyDay: isMyDay,
+          );
       _newTaskController.clear();
     }
   }

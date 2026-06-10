@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
@@ -62,7 +63,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
           prev?.streamingText != next.streamingText) {
         _scrollToBottom();
       }
-      if (next.errorMessage != null && prev?.errorMessage != next.errorMessage) {
+      if (next.errorMessage != null &&
+          prev?.errorMessage != next.errorMessage) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(next.errorMessage!),
@@ -78,7 +80,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        color: context.appColors.background,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -105,8 +107,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
         children: [
           IconButton(
             onPressed: widget.onClose,
-            icon: const Icon(Icons.close, size: 20),
-            color: isDark ? AppColors.darkText : AppColors.lightText,
+            icon: const Icon(AppIcons.close, size: AppIconSizes.nav),
+            color: context.appColors.text,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
@@ -116,23 +118,24 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
           const Spacer(),
           IconButton(
             onPressed: () => _showSettingsSheet(context, isDark),
-            icon: const Icon(Icons.tune, size: 20),
-            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            icon: const Icon(AppIcons.tune, size: AppIconSizes.nav),
+            color: context.appColors.textSecondary,
             tooltip: '偏好设置',
           ),
           const SizedBox(width: 4),
           TextButton.icon(
-            onPressed: () => ref.read(aiChatProvider.notifier).newConversation(),
-            icon: const Icon(Icons.add, size: 18),
+            onPressed: () =>
+                ref.read(aiChatProvider.notifier).newConversation(),
+            icon: const Icon(AppIcons.add, size: AppIconSizes.action),
             label: const Text('新对话'),
             style: TextButton.styleFrom(
-              foregroundColor: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              foregroundColor: context.appColors.textSecondary,
             ),
           ),
         ],
@@ -144,9 +147,9 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     return Container(
       constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
-        color: (isDark ? AppColors.darkAccent : AppColors.lightAccent).withOpacity(0.05),
+        color: (context.appColors.accent).withOpacity(0.05),
         border: Border(
-          bottom: BorderSide(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+          bottom: BorderSide(color: context.appColors.border),
         ),
       ),
       child: Column(
@@ -156,28 +159,33 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
-                Icon(Icons.preview, size: 16, color: isDark ? AppColors.darkAccent : AppColors.lightAccent),
+                AppIcon(AppIcons.preview,
+                    size: AppIconSizes.compact,
+                    color: context.appColors.accent),
                 const SizedBox(width: 6),
                 Text(
                   '操作预览 (${ops.length})',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                    color: context.appColors.accent,
                   ),
                 ),
                 const Spacer(),
                 TextButton(
-                  onPressed: () => ref.read(aiChatProvider.notifier).rejectAllOperations(),
+                  onPressed: () =>
+                      ref.read(aiChatProvider.notifier).rejectAllOperations(),
                   child: const Text('全部拒绝', style: TextStyle(fontSize: 12)),
                 ),
                 const SizedBox(width: 4),
                 ElevatedButton(
-                  onPressed: () => ref.read(aiChatProvider.notifier).approveAllOperations(),
+                  onPressed: () =>
+                      ref.read(aiChatProvider.notifier).approveAllOperations(),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
+                    backgroundColor: context.appColors.success,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     minimumSize: Size.zero,
                   ),
                   child: const Text('全部批准', style: TextStyle(fontSize: 12)),
@@ -193,15 +201,19 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                 final op = ops[index];
                 return OperationPreviewCard(
                   operation: op,
-                  onApprove: () => ref.read(aiChatProvider.notifier).approveOperation(op.id),
+                  onApprove: () =>
+                      ref.read(aiChatProvider.notifier).approveOperation(op.id),
                   onEdit: () => showOperationDetailSheet(
                     context,
                     operation: op,
                     onSave: (newParams) {
-                      ref.read(aiChatProvider.notifier).editOperation(op.id, newParams);
+                      ref
+                          .read(aiChatProvider.notifier)
+                          .editOperation(op.id, newParams);
                     },
                   ),
-                  onReject: () => ref.read(aiChatProvider.notifier).rejectOperation(op.id),
+                  onReject: () =>
+                      ref.read(aiChatProvider.notifier).rejectOperation(op.id),
                 );
               },
             ),
@@ -242,7 +254,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                   '已生成 ${msg.operations!.length} 个操作建议 (见上方预览区)',
                   style: TextStyle(
                     fontSize: 11,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: context.appColors.textSecondary,
                   ),
                 ),
               ),
@@ -257,14 +269,15 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.key, size: 48, color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+          AppIcon(AppIcons.key,
+              size: AppIconSizes.empty, color: context.appColors.textSecondary),
           const SizedBox(height: 16),
           Text(
             '未配置 API 密钥',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: isDark ? AppColors.darkText : AppColors.lightText,
+              color: context.appColors.text,
             ),
           ),
           const SizedBox(height: 8),
@@ -272,7 +285,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
             '请在设置页面配置 DeepSeek API 密钥',
             style: TextStyle(
               fontSize: 13,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
           ),
         ],
@@ -282,15 +295,15 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.smart_toy_outlined, size: 48,
-            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+        AppIcon(AppIcons.ai,
+            size: AppIconSizes.empty, color: context.appColors.textSecondary),
         const SizedBox(height: 16),
         Text(
           'AI 任务助手',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: isDark ? AppColors.darkText : AppColors.lightText,
+            color: context.appColors.text,
           ),
         ),
         const SizedBox(height: 8),
@@ -298,7 +311,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
           '试试这些：',
           style: TextStyle(
             fontSize: 13,
-            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+            color: context.appColors.textSecondary,
           ),
         ),
         const SizedBox(height: 8),
@@ -312,10 +325,11 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
               },
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    color: context.appColors.border,
                   ),
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -323,7 +337,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                   hint,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                    color: context.appColors.accent,
                   ),
                 ),
               ),
@@ -352,7 +366,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                   if (!sel.isCollapsed) return;
                   // Delete character after cursor
                   if (sel.start < text.length) {
-                    final newText = text.substring(0, sel.start) + text.substring(sel.start + 1);
+                    final newText = text.substring(0, sel.start) +
+                        text.substring(sel.start + 1);
                     _textController.value = TextEditingValue(
                       text: newText,
                       selection: TextSelection.collapsed(offset: sel.start),
@@ -366,36 +381,37 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                 enabled: canSend,
                 onSubmitted: (_) => _sendMessage(),
                 style: TextStyle(
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                  color: context.appColors.text,
                   fontSize: 14,
                 ),
                 decoration: InputDecoration(
                   hintText: state.isStreaming ? 'AI 正在回复...' : '输入任务安排...',
                   hintStyle: TextStyle(
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                    color: context.appColors.textSecondary,
                     fontSize: 14,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      color: context.appColors.border,
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      color: context.appColors.border,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide(
-                      color: isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                      color: context.appColors.accent,
                     ),
                   ),
                   filled: true,
-                  fillColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+                  fillColor: context.appColors.surface,
                 ),
                 maxLines: 3,
                 minLines: 1,
@@ -415,14 +431,12 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Icon(
-                      Icons.send_rounded,
-                      color: canSend
-                          ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
-                          : Colors.grey,
+                      AppIcons.send,
+                      color: canSend ? (context.appColors.accent) : Colors.grey,
                     ),
               style: IconButton.styleFrom(
                 backgroundColor: canSend
-                    ? (isDark ? AppColors.darkAccent : AppColors.lightAccent).withOpacity(0.15)
+                    ? (context.appColors.accent).withOpacity(0.15)
                     : Colors.grey.withOpacity(0.1),
               ),
             ),
@@ -444,7 +458,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      backgroundColor: context.appColors.background,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -463,7 +477,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color: context.appColors.text,
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -473,7 +487,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                       '自定义提示词',
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color: context.appColors.text,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -483,13 +497,13 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                       minLines: 2,
                       style: TextStyle(
                         fontSize: 13,
-                        color: isDark ? AppColors.darkText : AppColors.lightText,
+                        color: context.appColors.text,
                       ),
                       decoration: InputDecoration(
                         hintText: '如：我偏好下午5点锻炼。早上做有挑战的工作...',
                         hintStyle: TextStyle(
                           fontSize: 12,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          color: context.appColors.textSecondary,
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -528,7 +542,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                           '日期清单模式',
                           style: TextStyle(
                             fontSize: 13,
-                            color: isDark ? AppColors.darkText : AppColors.lightText,
+                            color: context.appColors.text,
                           ),
                         ),
                         const Spacer(),
@@ -547,7 +561,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                         '日期格式',
                         style: TextStyle(
                           fontSize: 13,
-                          color: isDark ? AppColors.darkText : AppColors.lightText,
+                          color: context.appColors.text,
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -558,21 +572,23 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                               controller: formatController,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: isDark ? AppColors.darkText : AppColors.lightText,
+                                color: context.appColors.text,
                               ),
                               decoration: InputDecoration(
                                 hintText: 'yyyyMMdd',
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           TextButton(
                             onPressed: () {
-                              notifier.setDatedListFormat(formatController.text);
+                              notifier
+                                  .setDatedListFormat(formatController.text);
                             },
                             child: const Text('应用'),
                           ),
@@ -584,7 +600,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                           '当前日期清单名称: ${_getFormattedDate(state.datedListFormat)}',
                           style: TextStyle(
                             fontSize: 11,
-                            color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            color: context.appColors.textSecondary,
                           ),
                         ),
                       ),
@@ -602,14 +618,14 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                                 '创建任务时自动添加提醒',
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                                  color: context.appColors.text,
                                 ),
                               ),
                               Text(
                                 '将提醒时间设为任务计划开始时间',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                                  color: context.appColors.textSecondary,
                                 ),
                               ),
                             ],

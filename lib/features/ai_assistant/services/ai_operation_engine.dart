@@ -277,7 +277,8 @@ class AiOperationEngine {
       updates['expectedMinutes'] = params['expectedMinutes'];
     if (params.containsKey('isImportant'))
       updates['isImportant'] = params['isImportant'] == true;
-    if (params.containsKey('listId')) updates['listId'] = params['listId'];
+    updates['listId'] =
+        params.containsKey('listId') ? params['listId'] : 'system-all-tasks';
 
     if (updates.isNotEmpty) {
       await taskNotifier.updateTask(task.id, updates);

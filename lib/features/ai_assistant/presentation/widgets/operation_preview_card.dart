@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
@@ -24,7 +25,6 @@ class OperationPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isDelete = operation.type.name == 'deleteTask';
     final isCompleted = operation.status == AiOperationStatus.approved ||
         operation.status == AiOperationStatus.rejected ||
@@ -33,12 +33,12 @@ class OperationPreviewCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDelete
               ? Colors.red.withOpacity(0.5)
-              : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+              : (context.appColors.border),
           width: isDelete ? 1.5 : 1,
         ),
       ),
@@ -52,9 +52,7 @@ class OperationPreviewCard extends StatelessWidget {
                 Icon(
                   _typeIcon(),
                   size: 20,
-                  color: isDelete
-                      ? Colors.red
-                      : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
+                  color: isDelete ? Colors.red : (context.appColors.accent),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -63,16 +61,16 @@ class OperationPreviewCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: isDark ? AppColors.darkText : AppColors.lightText,
+                      color: context.appColors.text,
                     ),
                   ),
                 ),
-                if (isCompleted) _statusChip(isDark),
+                if (isCompleted) _statusChip(context),
               ],
             ),
             if (_hasTimeInfo) ...[
               const SizedBox(height: 6),
-              _buildTimeDetail(isDark),
+              _buildTimeDetail(context),
             ],
             if (operation.reasoning != null &&
                 operation.reasoning!.isNotEmpty) ...[
@@ -81,9 +79,7 @@ class OperationPreviewCard extends StatelessWidget {
                 operation.reasoning!,
                 style: TextStyle(
                   fontSize: 12,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
               ),
             ],
@@ -99,16 +95,13 @@ class OperationPreviewCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  _actionButton('拒绝', Icons.close, Colors.grey, onReject),
+                  _actionButton('拒绝', AppIcons.close, Colors.grey, onReject),
                   const SizedBox(width: 8),
                   _actionButton(
-                      '编辑',
-                      Icons.edit_outlined,
-                      isDark ? AppColors.darkAccent : AppColors.lightAccent,
-                      onEdit),
+                      '编辑', AppIcons.edit, context.appColors.accent, onEdit),
                   const SizedBox(width: 8),
-                  _actionButton(
-                      '批准', Icons.check, const Color(0xFF10B981), onApprove),
+                  _actionButton('批准', AppIcons.taskDone,
+                      context.appColors.success, onApprove),
                 ],
               ),
             ],
@@ -118,7 +111,7 @@ class OperationPreviewCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTimeDetail(bool isDark) {
+  Widget _buildTimeDetail(BuildContext context) {
     final params = operation.params;
     final dueDate = params['dueDate'] as String?;
     final dueTime = params['dueTime'] as String?;
@@ -155,42 +148,40 @@ class OperationPreviewCard extends StatelessWidget {
             ? endDt.difference(startDt).inMinutes
             : null);
 
+    final colors = context.appColors;
     final chips = <Widget>[];
 
     if (startDt != null) {
       chips.add(_timeChip(
-        Icons.notifications_outlined,
+        AppIcons.reminder,
         '提醒 ${_fmtTime(startDt)}',
-        isDark,
+        colors,
         accent: Colors.orange,
       ));
       if (endDt != null) {
         chips.add(Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Icon(Icons.arrow_forward,
-              size: 12,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary),
+          child: Icon(AppIcons.arrowForward,
+              size: AppIconSizes.status, color: colors.textSecondary),
         ));
       }
     }
     if (endDt != null) {
       chips.add(_timeChip(
-        Icons.flag_outlined,
+        AppIcons.flag,
         startDt != null
             ? '截止 ${_fmtTime(endDt)}'
             : '截止 ${_fmtDate(endDt)} ${_fmtTime(endDt)}',
-        isDark,
+        colors,
       ));
     }
     if (duration != null && duration > 0) {
-      chips.add(_timeChip(Icons.timer_outlined, '$duration分钟', isDark));
+      chips.add(_timeChip(AppIcons.timer, '$duration分钟', colors));
     }
     if (dueDate != null && startDt == null && endDt == null) {
-      chips.add(_timeChip(Icons.calendar_today, dueDate, isDark));
+      chips.add(_timeChip(AppIcons.calendar, dueDate, colors));
     } else if (dueDate != null) {
-      chips.add(_timeChip(Icons.calendar_today, dueDate, isDark));
+      chips.add(_timeChip(AppIcons.calendar, dueDate, colors));
     }
 
     if (chips.isEmpty) return const SizedBox.shrink();
@@ -203,9 +194,9 @@ class OperationPreviewCard extends StatelessWidget {
     );
   }
 
-  Widget _timeChip(IconData icon, String label, bool isDark, {Color? accent}) {
-    final color = accent ??
-        (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary);
+  Widget _timeChip(IconData icon, String label, AppThemeColors colors,
+      {Color? accent}) {
+    final color = accent ?? colors.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -215,7 +206,7 @@ class OperationPreviewCard extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color),
+          Icon(icon, size: AppIconSizes.status, color: color),
           const SizedBox(width: 3),
           Text(
             label,
@@ -235,12 +226,13 @@ class OperationPreviewCard extends StatelessWidget {
     return AppTime.formatDate(dt);
   }
 
-  Widget _statusChip(bool isDark) {
+  Widget _statusChip(BuildContext context) {
+    final colors = context.appColors;
     final label = operation.statusLabel;
     Color color;
     switch (operation.status) {
       case AiOperationStatus.approved:
-        color = const Color(0xFF10B981);
+        color = colors.success;
         break;
       case AiOperationStatus.rejected:
         color = Colors.grey;
@@ -249,7 +241,7 @@ class OperationPreviewCard extends StatelessWidget {
         color = Colors.red;
         break;
       default:
-        color = isDark ? AppColors.darkAccent : AppColors.lightAccent;
+        color = colors.accent;
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -275,7 +267,7 @@ class OperationPreviewCard extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: color),
+            Icon(icon, size: AppIconSizes.compact, color: color),
             const SizedBox(width: 4),
             Text(
               label,
@@ -291,33 +283,33 @@ class OperationPreviewCard extends StatelessWidget {
   IconData _typeIcon() {
     switch (operation.type.name) {
       case 'createTask':
-        return Icons.add_circle_outline;
+        return AppIcons.listReceive;
       case 'updateTask':
-        return Icons.edit_outlined;
+        return AppIcons.edit;
       case 'deleteTask':
-        return Icons.delete_outline;
+        return AppIcons.delete;
       case 'setDueDate':
-        return Icons.calendar_today;
+        return AppIcons.calendar;
       case 'setReminder':
-        return Icons.notifications_outlined;
+        return AppIcons.reminder;
       case 'setRecurrence':
-        return Icons.repeat;
+        return AppIcons.repeat;
       case 'addToMyDay':
-        return Icons.wb_sunny_outlined;
+        return AppIcons.myDay;
       case 'toggleImportant':
-        return Icons.star_outline;
+        return AppIcons.important;
       case 'moveToList':
-        return Icons.move_to_inbox;
+        return AppIcons.move;
       case 'reorderTasks':
-        return Icons.reorder;
+        return AppIcons.reorder;
       case 'createList':
-        return Icons.playlist_add;
+        return AppIcons.playlistAdd;
       case 'updateList':
-        return Icons.edit_note;
+        return AppIcons.editNote;
       case 'deleteList':
-        return Icons.playlist_remove;
+        return AppIcons.playlistRemove;
       default:
-        return Icons.help_outline;
+        return AppIcons.help;
     }
   }
 }

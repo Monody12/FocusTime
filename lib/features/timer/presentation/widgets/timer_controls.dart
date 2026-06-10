@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../providers/timer_provider.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 class TimerControls extends ConsumerWidget {
   const TimerControls({super.key});
@@ -27,7 +29,7 @@ class TimerControls extends ConsumerWidget {
             }
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF7C3AED),
+            backgroundColor: context.appColors.accent,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             minimumSize: Size.zero,
@@ -41,9 +43,9 @@ class TimerControls extends ConsumerWidget {
             children: [
               Icon(
                 timerState.timerStatus == TimerStatus.running
-                    ? Icons.pause
-                    : Icons.play_arrow,
-                size: 18,
+                    ? AppIcons.pause
+                    : AppIcons.play,
+                size: AppIconSizes.action,
               ),
               const SizedBox(width: 6),
               Text(
@@ -72,15 +74,15 @@ class TimerControls extends ConsumerWidget {
             side: BorderSide(
               color: timerState.timerStatus == TimerStatus.idle
                   ? Colors.grey.withOpacity(0.3)
-                  : const Color(0xFF7C3AED),
+                  : (context.appColors.accent),
             ),
-            foregroundColor: const Color(0xFF7C3AED),
+            foregroundColor: context.appColors.accent,
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.refresh, size: 18),
+              Icon(AppIcons.reset, size: AppIconSizes.action),
               SizedBox(width: 6),
               Text('重置', style: TextStyle(fontSize: 14)),
             ],

@@ -18,7 +18,7 @@ const _tools = [
     'function': {
       'name': 'create_task',
       'description':
-          '创建一个新任务。dueDate/dueTime 是截止时间（结束时间），不能早于当前时间。如果用户指定了开始时间和时长，截止时间 = 开始时间 + 时长。',
+          '创建一个新任务。必须遵守系统提示中的清单、日期清单和日程安排规则。dueDate/dueTime 是截止时间（结束时间），不能早于当前时间。如果用户指定了开始时间和时长，截止时间 = 开始时间 + 时长。',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -26,7 +26,8 @@ const _tools = [
           'notes': {'type': 'string', 'description': '备注（可选）'},
           'listId': {
             'type': 'string',
-            'description': '清单 ID，默认 system-all-tasks'
+            'description':
+                '清单 ID 或清单名。必须优先遵守系统提示；日期清单模式开启时使用当天日期清单名，不要默认 system-all-tasks。'
           },
           'dueDate': {
             'type': 'string',
@@ -40,7 +41,11 @@ const _tools = [
             'type': 'integer',
             'description': '任务持续时长（分钟）。截止时间 = 开始时间 + 持续时长'
           },
-          'isMyDay': {'type': 'boolean', 'description': '是否添加到"我的一天"'},
+          'isMyDay': {
+            'type': 'boolean',
+            'description':
+                '是否添加到"我的一天"。仅当用户明确要求添加到"我的一天"时设为 true；日期清单模式下通常应为 false 或省略。'
+          },
           'isImportant': {'type': 'boolean', 'description': '是否标记为重要'},
           'reminderAt': {
             'type': 'string',
@@ -116,7 +121,7 @@ const _tools = [
     'type': 'function',
     'function': {
       'name': 'add_to_my_day',
-      'description': '将任务添加到"我的一天"列表。',
+      'description': '将任务添加到"我的一天"列表。仅当用户明确要求使用"我的一天"时调用；日期清单模式开启时不要为了安排今天而调用。',
       'parameters': {
         'type': 'object',
         'properties': {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_operation.dart';
@@ -235,7 +236,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: isDark ? AppColors.darkText : AppColors.lightText,
+                    color: context.appColors.text,
                   ),
                 ),
                 const Spacer(),
@@ -243,9 +244,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                   widget.operation.typeLabel,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isDark
-                        ? AppColors.darkTextSecondary
-                        : AppColors.lightTextSecondary,
+                    color: context.appColors.textSecondary,
                   ),
                 ),
               ],
@@ -266,8 +265,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isDark ? AppColors.darkAccent : AppColors.lightAccent,
+                  backgroundColor: context.appColors.accent,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
@@ -288,13 +286,12 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     final labelStyle = TextStyle(
       fontSize: 12,
       fontWeight: FontWeight.w500,
-      color:
-          isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+      color: context.appColors.textSecondary,
     );
     final tileStyle = TextStyle(
       fontSize: 14,
       fontWeight: FontWeight.w600,
-      color: isDark ? AppColors.darkText : AppColors.lightText,
+      color: context.appColors.text,
     );
 
     return [
@@ -303,7 +300,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: isDark ? AppColors.darkText : AppColors.lightText,
+          color: context.appColors.text,
         ),
       ),
       const SizedBox(height: 10),
@@ -315,7 +312,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         children: [
           Expanded(
             child: _pickerTile(
-              icon: Icons.calendar_today,
+              icon: AppIcons.calendar,
               label: _startDt != null ? _fmtDate(_startDt!) : '选择日期',
               isSet: _startDt != null,
               isDark: isDark,
@@ -325,7 +322,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
           const SizedBox(width: 8),
           Expanded(
             child: _pickerTile(
-              icon: Icons.access_time,
+              icon: AppIcons.schedule,
               label: _startDt != null ? _fmtTime(_startDt!) : '选择时间',
               isSet: _startDt != null,
               isDark: isDark,
@@ -351,7 +348,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         children: [
           Expanded(
             child: _pickerTile(
-              icon: Icons.calendar_today,
+              icon: AppIcons.calendar,
               label: _endDt != null ? _fmtDate(_endDt!) : '选择日期',
               isSet: _endDt != null,
               isDark: isDark,
@@ -361,7 +358,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
           const SizedBox(width: 8),
           Expanded(
             child: _pickerTile(
-              icon: Icons.access_time,
+              icon: AppIcons.schedule,
               label: _endDt != null ? _fmtTime(_endDt!) : '选择时间',
               isSet: _endDt != null,
               isDark: isDark,
@@ -387,9 +384,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                 hintText: '分钟',
                 hintStyle: TextStyle(
                   fontSize: 13,
-                  color: isDark
-                      ? AppColors.darkTextSecondary
-                      : AppColors.lightTextSecondary,
+                  color: context.appColors.textSecondary,
                 ),
                 border:
                     OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -401,7 +396,8 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
             ),
           ),
           const SizedBox(width: 8),
-          const Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+          const Icon(AppIcons.arrowForward,
+              size: AppIconSizes.compact, color: Colors.grey),
           const SizedBox(width: 8),
           Text(
             _startDt != null && _durationMinutes > 0
@@ -409,9 +405,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                 : '—',
             style: TextStyle(
               fontSize: 13,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
           ),
         ],
@@ -454,13 +448,11 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isSet
-                ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
-                : (isDark ? AppColors.darkBorder : AppColors.lightBorder),
+            color:
+                isSet ? (context.appColors.accent) : (context.appColors.border),
           ),
           color: isSet
-              ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
-                  .withOpacity(0.08)
+              ? (context.appColors.accent).withOpacity(0.08)
               : Colors.transparent,
         ),
         child: Row(
@@ -468,9 +460,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
           children: [
             Icon(icon,
                 size: 16,
-                color: isSet
-                    ? (isDark ? AppColors.darkAccent : AppColors.lightAccent)
-                    : Colors.grey),
+                color: isSet ? (context.appColors.accent) : Colors.grey),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -478,9 +468,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: isSet ? FontWeight.w600 : FontWeight.normal,
-                  color: isSet
-                      ? (isDark ? AppColors.darkText : AppColors.lightText)
-                      : Colors.grey,
+                  color: isSet ? (context.appColors.text) : Colors.grey,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -499,7 +487,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         side: BorderSide(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          color: context.appColors.border,
         ),
       ),
       child: Text(label, style: const TextStyle(fontSize: 12)),
@@ -511,7 +499,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
   List<Widget> _buildFields(bool isDark) {
     final fields = <Widget>[];
     final style = TextStyle(
-      color: isDark ? AppColors.darkText : AppColors.lightText,
+      color: context.appColors.text,
     );
 
     void addField(String key, String label, {bool isNumber = false}) {
@@ -534,14 +522,12 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
           decoration: InputDecoration(
             labelText: label,
             labelStyle: TextStyle(
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide(
-                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                color: context.appColors.border,
               ),
             ),
             contentPadding:
@@ -601,12 +587,10 @@ void showOperationDetailSheet(
   required AiOperation operation,
   required void Function(Map<String, dynamic>) onSave,
 }) {
-  final isDark = Theme.of(context).brightness == Brightness.dark;
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor:
-        isDark ? AppColors.darkBackground : AppColors.lightBackground,
+    backgroundColor: context.appColors.background,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),

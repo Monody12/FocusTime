@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
 import 'package:focus_my_time/core/providers/theme_provider.dart';
@@ -14,6 +18,7 @@ import 'package:focus_my_time/features/ai_assistant/presentation/pages/ai_chat_p
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/core/providers/package_info_provider.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/update/services/update_service.dart';
 import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
 
@@ -24,20 +29,50 @@ class FocusMyTimeApp extends ConsumerStatefulWidget {
   ConsumerState<FocusMyTimeApp> createState() => _FocusMyTimeAppState();
 }
 
-class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
+class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
+    with WidgetsBindingObserver {
+  static const MethodChannel _androidBackChannel =
+      MethodChannel('focus_my_time/android_back');
+
   bool _showTimerPanel = false; // 默认不显示计时器，开始专注后才显示
   bool _showSettings = false;
   bool _showCalendar = false;
   bool _showAiChat = false;
   bool _showNoTaskToast = false;
+  Timer? _foregroundSyncDebounce;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleAndroidForegroundSync();
     // 延迟检查更新，避免阻塞首屏
     Future.delayed(const Duration(seconds: 2), _checkUpdate);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _foregroundSyncDebounce?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _scheduleAndroidForegroundSync();
+    }
+  }
+
+  void _scheduleAndroidForegroundSync() {
+    if (!Platform.isAndroid || !SyncService.isLoggedIn) return;
+    _foregroundSyncDebounce?.cancel();
+    _foregroundSyncDebounce = Timer(const Duration(seconds: 1), () {
+      if (!mounted) return;
+      ref.read(taskProvider.notifier).sync(background: true);
+    });
   }
 
   Future<void> _checkUpdate() async {
@@ -101,17 +136,15 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                 children: [
                   // Header (Top-level, spans full width)
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 12),
                     decoration: BoxDecoration(
                       color: isDark
-                          ? AppColors.darkBackground
-                          : AppColors.lightBackground,
+                          ? context.appColors.sidebar
+                          : context.appColors.surface,
                       border: Border(
                         bottom: BorderSide(
-                          color: isDark
-                              ? AppColors.darkBorder
-                              : AppColors.lightBorder,
+                          color: context.appColors.border,
                         ),
                       ),
                     ),
@@ -120,12 +153,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                         if (isMobile)
                           Builder(
                             builder: (context) => IconButton(
-                              icon: const Icon(Icons.menu),
+                              icon: const Icon(AppIcons.menu),
                               onPressed: () =>
                                   Scaffold.of(context).openDrawer(),
-                              color: isDark
-                                  ? AppColors.darkText
-                                  : AppColors.lightText,
+                              color: context.appColors.text,
                             ),
                           ),
                         // 应用标题
@@ -135,31 +166,28 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: isDark
-                                ? AppColors.darkAccent
-                                : AppColors.lightAccent,
+                                ? context.appColors.accentSecondary
+                                : context.appColors.accent,
                           ),
                         ),
                         const Spacer(),
                         // Theme toggle
                         IconButton(
                           icon: Icon(
-                              isDark ? Icons.light_mode : Icons.dark_mode,
-                              size: 20),
+                              isDark ? AppIcons.lightMode : AppIcons.darkMode,
+                              size: AppIconSizes.nav),
                           onPressed: () => themeNotifier.toggleTheme(),
                           tooltip: '切换主题',
-                          color:
-                              isDark ? AppColors.darkText : AppColors.lightText,
+                          color: context.appColors.text,
                         ),
                         const SizedBox(width: 4),
                         // AI Assistant button
                         TextButton.icon(
                           onPressed: () => setState(() => _showAiChat = true),
-                          icon: const Icon(Icons.smart_toy_outlined, size: 18),
+                          icon: const Icon(AppIcons.ai, size: AppIconSizes.nav),
                           label: isMobile ? const Text('') : const Text('AI'),
                           style: TextButton.styleFrom(
-                            foregroundColor: isDark
-                                ? AppColors.darkText
-                                : AppColors.lightText,
+                            foregroundColor: context.appColors.text,
                             minimumSize: Size.zero,
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                           ),
@@ -168,12 +196,11 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                         // Settings button
                         TextButton.icon(
                           onPressed: () => setState(() => _showSettings = true),
-                          icon: const Icon(Icons.settings, size: 18),
+                          icon: const Icon(AppIcons.settings,
+                              size: AppIconSizes.nav),
                           label: isMobile ? const Text('') : const Text('设置'),
                           style: TextButton.styleFrom(
-                            foregroundColor: isDark
-                                ? AppColors.darkText
-                                : AppColors.lightText,
+                            foregroundColor: context.appColors.text,
                             minimumSize: Size.zero,
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                           ),
@@ -211,14 +238,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 16, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: isDark
-                                      ? AppColors.darkBackground
-                                      : AppColors.lightBackground,
+                                  color: context.appColors.background,
                                   border: Border(
                                     top: BorderSide(
-                                      color: isDark
-                                          ? AppColors.darkBorder
-                                          : AppColors.lightBorder,
+                                      color: context.appColors.border,
                                     ),
                                   ),
                                 ),
@@ -230,9 +253,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                           '⚠ 请先选择一个任务',
                                           style: TextStyle(
                                             fontSize: 14,
-                                            color: isDark
-                                                ? AppColors.darkTextSecondary
-                                                : AppColors.lightTextSecondary,
+                                            color:
+                                                context.appColors.textSecondary,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -267,24 +289,39 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                                             horizontal: isMobile ? 8 : 16,
                                             vertical: 10),
                                         side: BorderSide(
-                                          color: isDark
-                                              ? AppColors.darkBorder
-                                              : AppColors.lightBorder,
+                                          color: context.appColors.border,
                                         ),
                                         shape: RoundedRectangleBorder(
                                           borderRadius:
                                               BorderRadius.circular(6),
                                         ),
                                       ),
-                                      child: Text(
-                                        isMobile ? '📅' : '📅 日历',
-                                        style: TextStyle(
-                                          color: _showCalendar
-                                              ? const Color(0xFF4FC3F7)
-                                              : (isDark
-                                                  ? AppColors.darkText
-                                                  : AppColors.lightText),
-                                        ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          AppIcon(
+                                            AppIcons.calendar,
+                                            size: AppIconSizes.compact,
+                                            color: _showCalendar
+                                                ? context
+                                                    .appColors.accentSecondary
+                                                : context.appColors.text,
+                                          ),
+                                          if (!isMobile) ...[
+                                            const SizedBox(
+                                                width:
+                                                    AppIconSpacing.compactGap),
+                                            Text(
+                                              '日历',
+                                              style: TextStyle(
+                                                color: _showCalendar
+                                                    ? context.appColors
+                                                        .accentSecondary
+                                                    : context.appColors.text,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                     ),
                                     if (!isMobile) ...[
@@ -339,9 +376,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
           if (isMobile && taskState.selectedTaskId != null && !_showCalendar)
             Positioned.fill(
               child: Container(
-                color: isDark
-                    ? AppColors.darkBackground
-                    : AppColors.lightBackground,
+                color: context.appColors.background,
                 child: TaskDetailPage(
                   taskId: taskState.selectedTaskId!,
                   onClose: () {
@@ -361,9 +396,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                     width: isMobile ? size.width * 0.9 : 500,
                     height: size.height * 0.8,
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkBackground
-                          : AppColors.lightBackground,
+                      color: context.appColors.background,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: SettingsPage(
@@ -382,9 +415,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
                     width: isMobile ? size.width * 0.95 : 700,
                     height: size.height * 0.85,
                     decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.darkBackground
-                          : AppColors.lightBackground,
+                      color: context.appColors.background,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: AiChatPage(
@@ -398,53 +429,103 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       ),
     );
 
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyT, control: true): () {
-          if (taskState.selectedTaskId != null) {
-            final taskNotifier = ref.read(taskProvider.notifier);
-            final task = taskState.tasks
-                .where((t) => t.id == taskState.selectedTaskId)
-                .firstOrNull;
-            if (task != null) {
-              if (task.isMyDay)
-                taskNotifier.removeFromMyDay(task.id);
-              else
-                taskNotifier.addToMyDay(task.id);
-            }
-          }
-        },
-        const SingleActivator(LogicalKeyboardKey.keyD, control: true): () {
-          if (taskState.selectedTaskId != null) {
-            ref
-                .read(taskProvider.notifier)
-                .toggleTaskComplete(taskState.selectedTaskId!);
-          }
-        },
-        const SingleActivator(LogicalKeyboardKey.delete): () {
-          if (taskState.selectedTaskId != null) {
-            final task = taskState.tasks
-                .where((t) => t.id == taskState.selectedTaskId)
-                .firstOrNull;
-            if (task != null) {
-              _confirmDeleteTask(context, task);
-            }
-          }
-        },
+    return PopScope(
+      canPop: !Platform.isAndroid,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        _handleSystemBack(isMobile);
       },
-      child: mainContent,
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.keyT, control: true): () {
+            if (taskState.selectedTaskId != null) {
+              final taskNotifier = ref.read(taskProvider.notifier);
+              final task = taskState.tasks
+                  .where((t) => t.id == taskState.selectedTaskId)
+                  .firstOrNull;
+              if (task != null) {
+                if (task.isMyDay)
+                  taskNotifier.removeFromMyDay(task.id);
+                else
+                  taskNotifier.addToMyDay(task.id);
+              }
+            }
+          },
+          const SingleActivator(LogicalKeyboardKey.keyD, control: true): () {
+            if (taskState.selectedTaskId != null) {
+              ref
+                  .read(taskProvider.notifier)
+                  .toggleTaskComplete(taskState.selectedTaskId!);
+            }
+          },
+          const SingleActivator(LogicalKeyboardKey.delete): () {
+            if (taskState.selectedTaskId != null) {
+              final task = taskState.tasks
+                  .where((t) => t.id == taskState.selectedTaskId)
+                  .firstOrNull;
+              if (task != null) {
+                _confirmDeleteTask(context, task);
+              }
+            }
+          },
+        },
+        child: mainContent,
+      ),
     );
   }
 
+  Future<bool> _handleSystemBack(bool isMobile) async {
+    if (_scaffoldKey.currentState?.isDrawerOpen == true) {
+      Navigator.of(context).pop();
+      return false;
+    }
+
+    if (_showSettings) {
+      setState(() => _showSettings = false);
+      return false;
+    }
+
+    if (_showAiChat) {
+      setState(() => _showAiChat = false);
+      return false;
+    }
+
+    final taskNotifier = ref.read(taskProvider.notifier);
+    final taskState = ref.read(taskProvider);
+    if (taskState.selectedTaskId != null) {
+      taskNotifier.setSelectedTask(null);
+      return false;
+    }
+
+    if (_showCalendar) {
+      setState(() => _showCalendar = false);
+      return false;
+    }
+
+    if (isMobile && _showTimerPanel) {
+      setState(() => _showTimerPanel = false);
+      return false;
+    }
+
+    if (Platform.isAndroid) {
+      try {
+        await _androidBackChannel.invokeMethod<void>('moveTaskToBack');
+      } catch (_) {
+        await SystemNavigator.pop();
+      }
+      return false;
+    }
+
+    return true;
+  }
+
   void _confirmDeleteTask(BuildContext context, TaskItem task) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除任务', style: TextStyle(fontSize: 16)),
         content: Text('确定要删除任务 "${task.title}" 吗？'),
-        backgroundColor:
-            isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        backgroundColor: context.appColors.surface,
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -475,15 +556,13 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
             ),
             Positioned.fill(
               child: Container(
-                color: isDark
-                    ? AppColors.darkBackground
-                    : AppColors.lightBackground,
+                color: context.appColors.background,
                 child: Column(
                   children: [
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.arrow_back),
+                          icon: const Icon(AppIcons.back),
                           onPressed: () =>
                               setState(() => _showTimerPanel = false),
                         ),
@@ -511,10 +590,22 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
           ),
           Container(
             width: 1,
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            color: context.appColors.border,
           ),
-          SizedBox(
-            width: 280,
+          Container(
+            width: 376,
+            decoration: BoxDecoration(
+              color: isDark
+                  ? context.appColors.sidebar
+                  : context.appColors.background,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.16 : 0.06),
+                  blurRadius: 18,
+                  offset: const Offset(-8, 0),
+                ),
+              ],
+            ),
             child: const TimerPage(),
           ),
         ],
@@ -549,20 +640,20 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
               _buildFooterActionButton(
                 label: isMobile ? '☕ 休息' : '☕ 开始休息',
                 onTap: () => timerNotifier.startBreak(),
-                color: const Color(0xFF7C3AED),
+                color: context.appColors.accent,
                 isPrimary: true,
               )
             else
               _buildFooterActionButton(
                 label: isMobile ? '🎯 专注' : '🎯 开始专注',
                 onTap: () => timerNotifier.resetFocus(),
-                color: const Color(0xFF4FC3F7),
+                color: context.appColors.accentSecondary,
                 isPrimary: true,
               ),
             _buildFooterActionButton(
               label: isMobile ? '🎯 继续' : '🎯 继续专注',
               onTap: () => timerNotifier.startFocus(),
-              color: const Color(0xFF7C3AED),
+              color: context.appColors.accent,
               isPrimary: false,
               isDark: isDark,
             ),
@@ -573,7 +664,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       final minutes = remaining ~/ 60;
       final seconds = remaining % 60;
       return Material(
-        color: const Color(0xFF4FC3F7),
+        color: context.appColors.accentSecondary,
         borderRadius: BorderRadius.circular(6),
         child: InkWell(
           onTap: () =>
@@ -593,7 +684,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp> {
       );
     }
     return Material(
-      color: const Color(0xFF4FC3F7),
+      color: context.appColors.accentSecondary,
       borderRadius: BorderRadius.circular(6),
       child: InkWell(
         onTap: () => _handleFooterButton(timerState, timerNotifier, taskState),

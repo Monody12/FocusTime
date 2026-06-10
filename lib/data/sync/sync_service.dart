@@ -16,7 +16,10 @@ class SyncService {
   static String _realPassword = ''; // 真实的密码明文缓存
   static int _lastSyncTime = 0;
   static bool _syncing = false; // 防止并发同步
+  static bool _syncRequested = false; // 同步过程中如有新请求，结束后补跑一次
+  static Timer? _debouncedSyncTimer;
   static Timer? _autoSyncTimer;
+  static final Set<FutureOr<void> Function()> _syncCompletedListeners = {};
 
   static const String _encryptionKey = 'FocusMyTimeSecretKey!';
 
@@ -24,7 +27,8 @@ class SyncService {
     if (text.isEmpty) return '';
     final bytes = utf8.encode(text);
     final keyBytes = utf8.encode(_encryptionKey);
-    final encrypted = List<int>.generate(bytes.length, (i) => bytes[i] ^ keyBytes[i % keyBytes.length]);
+    final encrypted = List<int>.generate(
+        bytes.length, (i) => bytes[i] ^ keyBytes[i % keyBytes.length]);
     return base64.encode(encrypted);
   }
 
@@ -33,7 +37,8 @@ class SyncService {
     try {
       final bytes = base64.decode(base64text);
       final keyBytes = utf8.encode(_encryptionKey);
-      final decrypted = List<int>.generate(bytes.length, (i) => bytes[i] ^ keyBytes[i % keyBytes.length]);
+      final decrypted = List<int>.generate(
+          bytes.length, (i) => bytes[i] ^ keyBytes[i % keyBytes.length]);
       return utf8.decode(decrypted);
     } catch (_) {
       return '';
@@ -62,7 +67,8 @@ class SyncService {
     final fakePassword = await AppDatabase.getSetting('syncFakePassword');
     if (fakePassword != null) _fakePassword = fakePassword;
 
-    final realPasswordEncrypted = await AppDatabase.getSetting('syncRealPassword');
+    final realPasswordEncrypted =
+        await AppDatabase.getSetting('syncRealPassword');
     if (realPasswordEncrypted != null) {
       _realPassword = _decrypt(realPasswordEncrypted);
     }
@@ -80,7 +86,8 @@ class SyncService {
     if (_lastSyncTime == 0) return;
     try {
       final db = await AppDatabase.database;
-      final result = await db.rawQuery('SELECT COUNT(*) as cnt FROM tasks WHERE deleted = 0');
+      final result = await db
+          .rawQuery('SELECT COUNT(*) as cnt FROM tasks WHERE deleted = 0');
       final taskCount = (result.first['cnt'] as int?) ?? 0;
       if (taskCount == 0) {
         _lastSyncTime = 0;
@@ -99,12 +106,21 @@ class SyncService {
   static String get realPassword => _realPassword;
   static int get lastSyncTime => _lastSyncTime;
 
+  static void addSyncCompletedListener(FutureOr<void> Function() listener) {
+    _syncCompletedListeners.add(listener);
+  }
+
+  static void removeSyncCompletedListener(FutureOr<void> Function() listener) {
+    _syncCompletedListeners.remove(listener);
+  }
+
   static Future<void> setServerUrl(String url) async {
     _serverUrl = url;
     await AppDatabase.setSetting('syncServerUrl', url);
   }
 
-  static Future<void> _saveToken(String token, String userId, {String? username, String? password}) async {
+  static Future<void> _saveToken(String token, String userId,
+      {String? username, String? password}) async {
     _token = token;
     _userId = userId;
     await AppDatabase.setSetting('syncToken', token);
@@ -139,16 +155,20 @@ class SyncService {
     await AppDatabase.setSetting('syncRealPassword', '');
   }
 
-  static Future<({bool success, bool tokenExpired, String? error, String? userId})> register({
+  static Future<
+          ({bool success, bool tokenExpired, String? error, String? userId})>
+      register({
     required String username,
     required String password,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$_serverUrl/api/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$_serverUrl/api/auth/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'username': username, 'password': password}),
+          )
+          .timeout(const Duration(seconds: 10));
 
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
@@ -156,24 +176,43 @@ class SyncService {
         final userId = data['userId'] as String;
         // 注册成功，保存登录凭证和用户信息
         await _saveToken(token, userId, username: username, password: password);
-        return (success: true, tokenExpired: false, error: null, userId: userId);
+        return (
+          success: true,
+          tokenExpired: false,
+          error: null,
+          userId: userId
+        );
       }
-      return (success: false, tokenExpired: false, error: (data['error'] as String?) ?? '注册失败', userId: null);
+      return (
+        success: false,
+        tokenExpired: false,
+        error: (data['error'] as String?) ?? '注册失败',
+        userId: null
+      );
     } catch (e) {
-      return (success: false, tokenExpired: false, error: e.toString(), userId: null);
+      return (
+        success: false,
+        tokenExpired: false,
+        error: e.toString(),
+        userId: null
+      );
     }
   }
 
-  static Future<({bool success, bool tokenExpired, String? error, String? userId})> login({
+  static Future<
+          ({bool success, bool tokenExpired, String? error, String? userId})>
+      login({
     required String username,
     required String password,
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('$_serverUrl/api/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$_serverUrl/api/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'username': username, 'password': password}),
+          )
+          .timeout(const Duration(seconds: 10));
 
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
@@ -181,11 +220,26 @@ class SyncService {
         final userId = data['userId'] as String;
         // 登录成功，保存登录凭证和用户信息
         await _saveToken(token, userId, username: username, password: password);
-        return (success: true, tokenExpired: false, error: null, userId: userId);
+        return (
+          success: true,
+          tokenExpired: false,
+          error: null,
+          userId: userId
+        );
       }
-      return (success: false, tokenExpired: false, error: (data['error'] as String?) ?? '登录失败', userId: null);
+      return (
+        success: false,
+        tokenExpired: false,
+        error: (data['error'] as String?) ?? '登录失败',
+        userId: null
+      );
     } catch (e) {
-      return (success: false, tokenExpired: false, error: e.toString(), userId: null);
+      return (
+        success: false,
+        tokenExpired: false,
+        error: e.toString(),
+        userId: null
+      );
     }
   }
 
@@ -204,8 +258,13 @@ class SyncService {
   }
 
   /// 执行完整同步流程：上传本地变更 -> 下载远程变更
-  static Future<({bool success, bool tokenExpired})> fullSync() async {
+  static Future<({bool success, bool tokenExpired})> fullSync({
+    bool notifyListeners = true,
+  }) async {
     if (!isLoggedIn || _syncing) {
+      if (isLoggedIn && _syncing) {
+        _syncRequested = true;
+      }
       return (success: false, tokenExpired: false);
     }
     _syncing = true;
@@ -213,38 +272,60 @@ class SyncService {
       // Upload local changes
       final uploadResult = await _syncToServer();
       if (!uploadResult.success) {
-        return (success: false, tokenExpired: uploadResult.tokenExpired ?? false);
+        return (
+          success: false,
+          tokenExpired: uploadResult.tokenExpired ?? false
+        );
       }
 
       // Download remote changes（使用 _lastSyncTime 而非 serverLastSync，
       // 确保当本地 _lastSyncTime 很旧时能拉取到全部历史数据）
       final downloadResult = await _downloadFromServer(_lastSyncTime);
       if (!downloadResult.success) {
-        return (success: false, tokenExpired: downloadResult.tokenExpired ?? false);
+        return (
+          success: false,
+          tokenExpired: downloadResult.tokenExpired ?? false
+        );
       }
 
       await updateLastSyncTime();
+      if (notifyListeners) {
+        await _notifySyncCompleted();
+      }
       return (success: true, tokenExpired: false);
     } finally {
       _syncing = false;
+      if (_syncRequested) {
+        _scheduleQueuedSync(Duration.zero);
+      }
     }
   }
 
-  static Future<({bool success, bool? tokenExpired, int? serverLastSync})> _syncToServer() async {
+  static Future<void> _notifySyncCompleted() async {
+    for (final listener
+        in List<FutureOr<void> Function()>.from(_syncCompletedListeners)) {
+      await Future.sync(listener);
+    }
+  }
+
+  static Future<({bool success, bool? tokenExpired, int? serverLastSync})>
+      _syncToServer() async {
     try {
       final payload = await AppDatabase.getSyncPayload(_lastSyncTime);
-      
-      final response = await http.post(
-        Uri.parse('$_serverUrl/api/sync'),
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'lastSyncTime': _lastSyncTime,
-          'tables': payload,
-        }),
-      ).timeout(const Duration(seconds: 20));
+
+      final response = await http
+          .post(
+            Uri.parse('$_serverUrl/api/sync'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'lastSyncTime': _lastSyncTime,
+              'tables': payload,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 401) {
         await logout();
@@ -253,7 +334,11 @@ class SyncService {
 
       final data = jsonDecode(response.body);
       if (data['success'] == true || data['serverLastSync'] != null) {
-        return (success: true, tokenExpired: false, serverLastSync: data['serverLastSync'] as int?);
+        return (
+          success: true,
+          tokenExpired: false,
+          serverLastSync: data['serverLastSync'] as int?
+        );
       }
       return (success: false, tokenExpired: false, serverLastSync: null);
     } catch (e) {
@@ -261,25 +346,28 @@ class SyncService {
     }
   }
 
-  static Future<({bool success, bool? tokenExpired, int? serverLastSync})> _downloadFromServer(int syncTimeForDownload) async {
+  static Future<({bool success, bool? tokenExpired, int? serverLastSync})>
+      _downloadFromServer(int syncTimeForDownload) async {
     try {
-      final response = await http.post(
-        Uri.parse('$_serverUrl/api/sync'),
-        headers: {
-          'Authorization': 'Bearer $_token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'lastSyncTime': syncTimeForDownload,
-          'tables': {
-            'lists': [],
-            'tasks': [],
-            'sessions': [],
-            'task_recurrence_completions': [],
-            'settings': [],
-          },
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse('$_serverUrl/api/sync'),
+            headers: {
+              'Authorization': 'Bearer $_token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({
+              'lastSyncTime': syncTimeForDownload,
+              'tables': {
+                'lists': [],
+                'tasks': [],
+                'sessions': [],
+                'task_recurrence_completions': [],
+                'settings': [],
+              },
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 401) {
         await logout();
@@ -290,16 +378,37 @@ class SyncService {
       if (data['tables'] != null) {
         await AppDatabase.applySyncChanges(data['tables']);
       }
-      
-      return (success: true, tokenExpired: false, serverLastSync: data['serverLastSync'] as int?);
+
+      return (
+        success: true,
+        tokenExpired: false,
+        serverLastSync: data['serverLastSync'] as int?
+      );
     } catch (e) {
       return (success: false, tokenExpired: null, serverLastSync: null);
     }
   }
 
   /// 后台触发同步（fire-and-forget，不阻塞调用方）
-  static void triggerBackgroundSync() {
-    unawaited(fullSync().catchError((_) => (success: false, tokenExpired: false)));
+  static void triggerBackgroundSync({
+    Duration debounce = const Duration(seconds: 2),
+  }) {
+    if (!isLoggedIn) return;
+    _syncRequested = true;
+    _scheduleQueuedSync(debounce);
+  }
+
+  static void _scheduleQueuedSync(Duration debounce) {
+    _debouncedSyncTimer?.cancel();
+    _debouncedSyncTimer = Timer(debounce, () {
+      unawaited(_drainBackgroundSyncQueue());
+    });
+  }
+
+  static Future<void> _drainBackgroundSyncQueue() async {
+    if (!isLoggedIn || _syncing || !_syncRequested) return;
+    _syncRequested = false;
+    await fullSync().catchError((_) => (success: false, tokenExpired: false));
   }
 
   /// 启动定时同步，每隔 [interval] 自动执行一次后台同步
@@ -314,5 +423,8 @@ class SyncService {
   static void stopAutoSync() {
     _autoSyncTimer?.cancel();
     _autoSyncTimer = null;
+    _debouncedSyncTimer?.cancel();
+    _debouncedSyncTimer = null;
+    _syncRequested = false;
   }
 }

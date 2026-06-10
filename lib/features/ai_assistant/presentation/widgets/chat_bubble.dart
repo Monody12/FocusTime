@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/ai_assistant/models/ai_message.dart';
 import 'package:focus_my_time/features/ai_assistant/presentation/widgets/streaming_text.dart';
@@ -29,7 +30,6 @@ class ChatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == AiMessageRole.user;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasContent = message.content.isNotEmpty;
 
     return GestureDetector(
@@ -38,26 +38,29 @@ class ChatBubble extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Row(
-          mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment:
+              isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!isUser) ...[
-              _buildAvatar(isDark, false),
+              _buildAvatar(context, false),
               const SizedBox(width: 8),
             ],
             Flexible(
               child: Column(
-                crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   Container(
                     constraints: BoxConstraints(
                       maxWidth: MediaQuery.of(context).size.width * 0.7,
                     ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: isUser
-                          ? const Color(0xFF7C3AED)
-                          : (isDark ? AppColors.darkSurface : AppColors.lightSurface),
+                          ? (context.appColors.accent)
+                          : (context.appColors.surface),
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -65,12 +68,15 @@ class ChatBubble extends StatelessWidget {
                         bottomRight: Radius.circular(isUser ? 4 : 16),
                       ),
                     ),
-                    child: isStreaming && message.role == AiMessageRole.assistant
+                    child: isStreaming &&
+                            message.role == AiMessageRole.assistant
                         ? StreamingText(
                             text: message.content,
                             isStreaming: isStreaming,
                             style: TextStyle(
-                              color: isUser ? Colors.white : (isDark ? AppColors.darkText : AppColors.lightText),
+                              color: isUser
+                                  ? Colors.white
+                                  : (context.appColors.text),
                               fontSize: 14,
                               height: 1.5,
                             ),
@@ -78,7 +84,9 @@ class ChatBubble extends StatelessWidget {
                         : Text(
                             message.content.isEmpty ? '...' : message.content,
                             style: TextStyle(
-                              color: isUser ? Colors.white : (isDark ? AppColors.darkText : AppColors.lightText),
+                              color: isUser
+                                  ? Colors.white
+                                  : (context.appColors.text),
                               fontSize: 14,
                               height: 1.5,
                             ),
@@ -91,9 +99,9 @@ class ChatBubble extends StatelessWidget {
                         onTap: () => _copyContent(context),
                         borderRadius: BorderRadius.circular(4),
                         child: Icon(
-                          Icons.copy,
-                          size: 14,
-                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                          AppIcons.copy,
+                          size: AppIconSizes.status,
+                          color: context.appColors.textSecondary,
                         ),
                       ),
                     ),
@@ -102,7 +110,7 @@ class ChatBubble extends StatelessWidget {
             ),
             if (isUser) ...[
               const SizedBox(width: 8),
-              _buildAvatar(isDark, true),
+              _buildAvatar(context, true),
             ],
           ],
         ),
@@ -110,14 +118,15 @@ class ChatBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatar(bool isDark, bool isUser) {
+  Widget _buildAvatar(BuildContext context, bool isUser) {
     return CircleAvatar(
       radius: 16,
-      backgroundColor: isUser ? const Color(0xFF7C3AED) : (isDark ? AppColors.darkSurface : AppColors.lightSurface),
+      backgroundColor:
+          isUser ? (context.appColors.accent) : (context.appColors.surface),
       child: Icon(
-        isUser ? Icons.person : Icons.smart_toy_outlined,
-        size: 18,
-        color: isUser ? Colors.white : (isDark ? AppColors.darkAccent : AppColors.lightAccent),
+        isUser ? AppIcons.user : AppIcons.ai,
+        size: AppIconSizes.action,
+        color: isUser ? Colors.white : (context.appColors.accent),
       ),
     );
   }

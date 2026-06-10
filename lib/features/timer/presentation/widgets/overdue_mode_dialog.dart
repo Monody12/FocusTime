@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_theme.dart';
-import '../../providers/timer_provider.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 
 class OverdueModeDialog extends ConsumerStatefulWidget {
   const OverdueModeDialog({super.key});
@@ -21,8 +22,6 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return AlertDialog(
       title: const Text('任务已超时'),
       content: Column(
@@ -33,7 +32,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
             '该任务已累计超过预期专注时间。请选择专注模式：',
             style: TextStyle(
               fontSize: 14,
-              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+              color: context.appColors.textSecondary,
             ),
           ),
           const SizedBox(height: 16),
@@ -42,7 +41,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
               Expanded(
                 child: _ModeButton(
                   label: '单核',
-                  emoji: '🎯',
+                  icon: AppIcons.focus,
                   onTap: () => _selectMode(TimerMode.singleCore),
                 ),
               ),
@@ -50,7 +49,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
               Expanded(
                 child: _ModeButton(
                   label: '番茄',
-                  emoji: '🍅',
+                  icon: AppIcons.timer,
                   onTap: () => _selectMode(TimerMode.pomodoro),
                 ),
               ),
@@ -64,7 +63,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
                 onChanged: (value) {
                   setState(() => _rememberChoice = value ?? false);
                 },
-                activeColor: const Color(0xFF7C3AED),
+                activeColor: context.appColors.accent,
               ),
               Expanded(
                 child: GestureDetector(
@@ -75,7 +74,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
                     '记住选择',
                     style: TextStyle(
                       fontSize: 13,
-                      color: isDark ? AppColors.darkText : AppColors.lightText,
+                      color: context.appColors.text,
                     ),
                   ),
                 ),
@@ -88,6 +87,7 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
         TextButton(
           onPressed: () {
             ref.read(overdueModeDialogProvider.notifier).state = 0;
+            Navigator.of(context, rootNavigator: true).pop();
           },
           child: const Text('取消'),
         ),
@@ -102,29 +102,28 @@ class _OverdueModeDialogState extends ConsumerState<OverdueModeDialog> {
       notifier.setRememberModeChoice(true);
       notifier.setPreferredModeWhenOverdue(mode.name);
     }
+    ref.read(overdueModeDialogProvider.notifier).state = 0;
+    Navigator.of(context, rootNavigator: true).pop();
     // 确认选择并开始专注
     notifier.confirmOverdueMode(mode);
-    ref.read(overdueModeDialogProvider.notifier).state = 0;
   }
 }
 
 class _ModeButton extends StatelessWidget {
   final String label;
-  final String emoji;
+  final IconData icon;
   final VoidCallback onTap;
 
   const _ModeButton({
     required this.label,
-    required this.emoji,
+    required this.icon,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Material(
-      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      color: context.appColors.surface,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
@@ -134,19 +133,23 @@ class _ModeButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              color: context.appColors.border,
             ),
           ),
           child: Column(
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 24)),
+              AppIcon(
+                icon,
+                size: 24,
+                color: context.appColors.accent,
+              ),
               const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? AppColors.darkText : AppColors.lightText,
+                  color: context.appColors.text,
                 ),
               ),
             ],

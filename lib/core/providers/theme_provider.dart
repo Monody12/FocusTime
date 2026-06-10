@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeNotifier extends StateNotifier<ThemeMode> {
@@ -52,4 +53,29 @@ class ThemeNotifier extends StateNotifier<ThemeMode> {
 
 final themeProvider = StateNotifierProvider<ThemeNotifier, ThemeMode>((ref) {
   return ThemeNotifier();
+});
+
+class ThemeSchemeNotifier extends StateNotifier<AppThemeScheme> {
+  ThemeSchemeNotifier() : super(AppTheme.defaultScheme) {
+    _loadThemeScheme();
+  }
+
+  Future<void> _loadThemeScheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final schemeId =
+        prefs.getString('themeSchemeId') ?? AppTheme.defaultScheme.id;
+    state = AppTheme.schemeById(schemeId);
+  }
+
+  Future<void> setThemeScheme(String schemeId) async {
+    final scheme = AppTheme.schemeById(schemeId);
+    state = scheme;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('themeSchemeId', scheme.id);
+  }
+}
+
+final themeSchemeProvider =
+    StateNotifierProvider<ThemeSchemeNotifier, AppThemeScheme>((ref) {
+  return ThemeSchemeNotifier();
 });
