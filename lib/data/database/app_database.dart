@@ -816,6 +816,28 @@ class AppDatabase {
         [...values, id]);
   }
 
+  /// 仅更新本机系统集成状态，不推进 updated_at，避免触发云同步。
+  static Future<void> updateTaskCalendarEventId(
+      String id, String? calendarEventId) async {
+    final db = await database;
+    await db.update(
+      'tasks',
+      {'calendar_event_id': calendarEventId},
+      where: 'id = ? AND deleted = 0',
+      whereArgs: [id],
+    );
+  }
+
+  /// 清空所有本机日历事件引用；这些 ID 不跨设备同步。
+  static Future<void> clearTaskCalendarEventIds() async {
+    final db = await database;
+    await db.update(
+      'tasks',
+      {'calendar_event_id': null},
+      where: 'deleted = 0',
+    );
+  }
+
   static Future<void> archiveTask(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;

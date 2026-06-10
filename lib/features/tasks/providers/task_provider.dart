@@ -1,3 +1,5 @@
+import 'dart:developer' as dev;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
@@ -390,7 +392,15 @@ class TaskNotifier extends StateNotifier<TaskState> {
         await loadLists();
         await loadTasks();
         // 同步完成后刷新所有提醒和日历（必须使用完整数据集，不受当前视图过滤影响）
-        await _refreshRemindersAndCalendarFromDatabase();
+        try {
+          await _refreshRemindersAndCalendarFromDatabase();
+        } catch (e, stackTrace) {
+          dev.log(
+            '[TaskNotifier] 同步完成后刷新提醒失败',
+            error: e,
+            stackTrace: stackTrace,
+          );
+        }
       }
       if (!background) state = state.copyWith(isLoading: false);
       return result;
@@ -408,7 +418,15 @@ class TaskNotifier extends StateNotifier<TaskState> {
     if (!mounted) return;
     await loadLists();
     await loadTasks(showLoading: false);
-    await _refreshRemindersAndCalendarFromDatabase();
+    try {
+      await _refreshRemindersAndCalendarFromDatabase();
+    } catch (e, stackTrace) {
+      dev.log(
+        '[TaskNotifier] 外部同步后刷新提醒失败',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   Future<void> _cancelTaskIntegrations(List<TaskItem> tasks) async {
@@ -454,9 +472,25 @@ class TaskNotifier extends StateNotifier<TaskState> {
           (currentTask.reminderAt == null || currentTask.completed);
       if (!removed && !reminderDisabled) continue;
 
-      await ReminderService.cancelReminder(previousTask.id);
+      try {
+        await ReminderService.cancelReminder(previousTask.id);
+      } catch (e, stackTrace) {
+        dev.log(
+          '[TaskNotifier] 清理已移除任务的通知失败',
+          error: e,
+          stackTrace: stackTrace,
+        );
+      }
       if (previousTask.calendarEventId != null) {
-        await CalendarService.removeTask(previousTask.calendarEventId!);
+        try {
+          await CalendarService.removeTask(previousTask.calendarEventId!);
+        } catch (e, stackTrace) {
+          dev.log(
+            '[TaskNotifier] 清理已移除任务的日历事件失败',
+            error: e,
+            stackTrace: stackTrace,
+          );
+        }
       }
     }
   }
@@ -518,9 +552,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
     // 如果创建时带了提醒（虽然目前 UI 尚未直接支持），进行调度
     if (task.reminderAt != null) {
       final eventId = await ReminderService.scheduleUnifiedReminders(task);
-      // 将日历事件 ID 持久化到数据库，确保跨设备同步时能正确关联
+      // 将日历事件 ID 持久化到本机数据库；该字段不跨设备同步
       if (eventId != null && eventId != task.calendarEventId) {
-        await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+        await AppDatabase.updateTaskCalendarEventId(task.id, eventId);
       }
       _rememberTaskIntegration(task.copyWith(
         calendarEventId: eventId,
@@ -567,9 +601,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
     if (updatedTask != null) {
       final eventId =
           await ReminderService.scheduleUnifiedReminders(updatedTask);
-      // 将 eventId 持久化到数据库，不仅仅是内存 state
+      // 将 eventId 持久化到本机数据库，不推进同步时间戳
       if (eventId != null && eventId != updatedTask.calendarEventId) {
-        await AppDatabase.updateTask(id, {'calendarEventId': eventId});
+        await AppDatabase.updateTaskCalendarEventId(id, eventId);
       }
       state = state.copyWith(
         tasks: state.tasks
@@ -696,8 +730,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
         final newEventId =
             await ReminderService.scheduleUnifiedReminders(newTask);
         if (newEventId != null) {
-          await AppDatabase.updateTask(
-              newTask.id, {'calendarEventId': newEventId});
+          await AppDatabase.updateTaskCalendarEventId(newTask.id, newEventId);
         }
         _rememberTaskIntegration(newTask.copyWith(
           calendarEventId: newEventId,
@@ -716,7 +749,7 @@ class TaskNotifier extends StateNotifier<TaskState> {
       final eventId =
           await ReminderService.scheduleUnifiedReminders(updatedTask);
       if (eventId != null && eventId != updatedTask.calendarEventId) {
-        await AppDatabase.updateTask(id, {'calendarEventId': eventId});
+        await AppDatabase.updateTaskCalendarEventId(id, eventId);
       }
       state = state.copyWith(
         tasks: state.tasks

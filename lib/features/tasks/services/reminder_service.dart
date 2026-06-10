@@ -17,6 +17,9 @@ import 'package:focus_my_time/data/database/app_database.dart';
 /// 任务提醒服务
 /// 职责：管理任务的定时提醒通知，支持 Android (系统级调度) 和 Windows (应用级调度)
 class ReminderService {
+  static const int _FNV_OFFSET_BASIS = 0x811C9DC5;
+  static const int _FNV_PRIME = 0x01000193;
+
   static final FlutterLocalNotificationsPlugin _localPlugin =
       FlutterLocalNotificationsPlugin();
   static WindowsNotification? _winNotifier;
@@ -358,8 +361,12 @@ class ReminderService {
     if (task.reminderAt == null || task.completed) {
       await cancelReminder(task.id);
       if (task.calendarEventId != null) {
-        await CalendarService.removeTask(task.calendarEventId!);
-        await AppDatabase.updateTask(task.id, {'calendarEventId': null});
+        try {
+          await CalendarService.removeTask(task.calendarEventId!);
+        } catch (e) {
+          dev.log('[ReminderService] 清理日历事件失败: ${task.title}, $e');
+        }
+        await AppDatabase.updateTaskCalendarEventId(task.id, null);
       }
       return null;
     }
@@ -386,7 +393,7 @@ class ReminderService {
       try {
         final eventId = await CalendarService.syncTask(task);
         if (eventId != null && eventId != task.calendarEventId) {
-          await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+          await AppDatabase.updateTaskCalendarEventId(task.id, eventId);
         }
         await cancelReminder(task.id);
         return eventId;
@@ -407,7 +414,7 @@ class ReminderService {
         } catch (e) {
           dev.log('[ReminderService] 清理日历事件失败（预期桌面平台）: $e');
         }
-        await AppDatabase.updateTask(task.id, {'calendarEventId': null});
+        await AppDatabase.updateTaskCalendarEventId(task.id, null);
       }
       return null;
     } else {
@@ -442,7 +449,7 @@ class ReminderService {
   static Future<void> cancelReminder(String taskId) async {
     // Android/macOS 端：根据任务 ID 的 Hash 取消系统调度
     if (Platform.isAndroid || Platform.isMacOS) {
-      final int notificationId = taskId.hashCode;
+      final int notificationId = _notificationIdForTask(taskId);
       await _localPlugin.cancel(notificationId);
     }
 
@@ -468,7 +475,7 @@ class ReminderService {
 
   static Future<void> _scheduleLocalPlugin(
       TaskItem task, DateTime scheduledTime) async {
-    final int notificationId = task.id.hashCode;
+    final int notificationId = _notificationIdForTask(task.id);
 
     // 先取消旧调度再创建新的，防止部分 OEM 设备出现重复通知
     await _localPlugin.cancel(notificationId);
@@ -495,6 +502,15 @@ class ReminderService {
     }
     dev.log(
         '[ReminderService] 本地提醒已调度 (Android/macOS): ${task.title} at $scheduledTime');
+  }
+
+  static int _notificationIdForTask(String taskId) {
+    var hash = _FNV_OFFSET_BASIS;
+    for (final codeUnit in taskId.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * _FNV_PRIME) & 0x7fffffff;
+    }
+    return hash == 0 ? 1 : hash;
   }
 
   static Future<void> _zonedScheduleLocalNotification({
@@ -657,31 +673,32 @@ class ReminderService {
     final missedThreshold = nowMs - 30 * 60 * 1000; // 过去 30 分钟（仅 Windows 用）
 
     for (final task in tasks) {
-      if (task.reminderAt == null || task.completed) {
-        if (task.calendarEventId != null) {
-          await scheduleUnifiedReminders(task);
+      try {
+        if (task.reminderAt == null || task.completed) {
+          if (task.calendarEventId != null) {
+            await scheduleUnifiedReminders(task);
+          }
+          continue;
         }
-        continue;
-      }
 
-      final reminderTime =
-          DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
-      if (reminderTime.isAfter(now)) {
-        // 未来提醒：正常调度，并将 eventId 持久化到数据库
-        final eventId = await scheduleUnifiedReminders(task);
-        if (eventId != null && eventId != task.calendarEventId) {
-          await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
-        }
-      } else if (Platform.isWindows &&
-          task.reminderAt! >= missedThreshold &&
-          _winNotifier != null) {
-        // Windows 端：检测刚错过的提醒（APP 关闭期间的提醒）
-        // 使用 task.id 作为 tag 防止重复弹窗
-        final message = NotificationMessage.fromCustomTemplate(
-          'missed_${task.id}',
-          group: 'reminders',
-        );
-        final String toastXml = '''
+        final reminderTime =
+            DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+        if (reminderTime.isAfter(now)) {
+          // 未来提醒：正常调度，并将 eventId 持久化到本机数据库
+          final eventId = await scheduleUnifiedReminders(task);
+          if (eventId != null && eventId != task.calendarEventId) {
+            await AppDatabase.updateTaskCalendarEventId(task.id, eventId);
+          }
+        } else if (Platform.isWindows &&
+            task.reminderAt! >= missedThreshold &&
+            _winNotifier != null) {
+          // Windows 端：检测刚错过的提醒（APP 关闭期间的提醒）
+          // 使用 task.id 作为 tag 防止重复弹窗
+          final message = NotificationMessage.fromCustomTemplate(
+            'missed_${task.id}',
+            group: 'reminders',
+          );
+          final String toastXml = '''
           <toast>
             <visual>
               <binding template="ToastGeneric">
@@ -691,7 +708,14 @@ class ReminderService {
             </visual>
           </toast>
         ''';
-        _winNotifier!.showNotificationCustomTemplate(message, toastXml);
+          _winNotifier!.showNotificationCustomTemplate(message, toastXml);
+        }
+      } catch (e, stackTrace) {
+        dev.log(
+          '[ReminderService] 刷新任务提醒失败: ${task.title}',
+          error: e,
+          stackTrace: stackTrace,
+        );
       }
       // 过期提醒不自动删除 reminder_at，保留用户数据
     }

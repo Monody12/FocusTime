@@ -17,6 +17,7 @@ class SyncService {
   static int _lastSyncTime = 0;
   static bool _syncing = false; // 防止并发同步
   static bool _syncRequested = false; // 同步过程中如有新请求，结束后补跑一次
+  static Completer<({bool success, bool tokenExpired})>? _activeSyncCompleter;
   static Timer? _debouncedSyncTimer;
   static Timer? _autoSyncTimer;
   static final Set<FutureOr<void> Function()> _syncCompletedListeners = {};
@@ -261,39 +262,57 @@ class SyncService {
   static Future<({bool success, bool tokenExpired})> fullSync({
     bool notifyListeners = true,
   }) async {
-    if (!isLoggedIn || _syncing) {
-      if (isLoggedIn && _syncing) {
-        _syncRequested = true;
+    if (!isLoggedIn) {
+      return (success: false, tokenExpired: false);
+    }
+
+    if (_syncing) {
+      _syncRequested = true;
+      final activeSync = _activeSyncCompleter;
+      if (activeSync != null) {
+        return activeSync.future;
       }
       return (success: false, tokenExpired: false);
     }
+
     _syncing = true;
+    final completer = Completer<({bool success, bool tokenExpired})>();
+    _activeSyncCompleter = completer;
+    var syncResult = (success: false, tokenExpired: false);
     try {
       // Upload local changes
       final uploadResult = await _syncToServer();
       if (!uploadResult.success) {
-        return (
-          success: false,
-          tokenExpired: uploadResult.tokenExpired ?? false
-        );
+        syncResult =
+            (success: false, tokenExpired: uploadResult.tokenExpired ?? false);
+        return syncResult;
       }
 
       // Download remote changes（使用 _lastSyncTime 而非 serverLastSync，
       // 确保当本地 _lastSyncTime 很旧时能拉取到全部历史数据）
       final downloadResult = await _downloadFromServer(_lastSyncTime);
       if (!downloadResult.success) {
-        return (
+        syncResult = (
           success: false,
           tokenExpired: downloadResult.tokenExpired ?? false
         );
+        return syncResult;
       }
 
       await updateLastSyncTime();
       if (notifyListeners) {
         await _notifySyncCompleted();
       }
-      return (success: true, tokenExpired: false);
+      syncResult = (success: true, tokenExpired: false);
+      return syncResult;
+    } catch (_) {
+      syncResult = (success: false, tokenExpired: false);
+      return syncResult;
     } finally {
+      if (!completer.isCompleted) {
+        completer.complete(syncResult);
+      }
+      _activeSyncCompleter = null;
       _syncing = false;
       if (_syncRequested) {
         _scheduleQueuedSync(Duration.zero);
@@ -304,7 +323,11 @@ class SyncService {
   static Future<void> _notifySyncCompleted() async {
     for (final listener
         in List<FutureOr<void> Function()>.from(_syncCompletedListeners)) {
-      await Future.sync(listener);
+      try {
+        await Future.sync(listener);
+      } catch (_) {
+        // 后处理失败不能影响同步结果，调用方会在对应模块记录细节。
+      }
     }
   }
 
