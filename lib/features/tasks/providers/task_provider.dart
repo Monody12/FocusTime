@@ -282,6 +282,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
         selectedTaskId: taskId, clearSelectedTask: taskId == null);
   }
 
+  List<TaskList> get listsSnapshot => state.lists;
+
   Future<TaskList> createList(String name) async {
     final result = await AppDatabase.createList(name);
     final list = _listFromMap(result);
@@ -513,14 +515,15 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<TaskItem> createTask(String title,
-      {bool isMyDay = false, DateTime? reminderAt}) async {
-    final listId = state.currentListId == 'system-my-day' ||
-            state.currentListId == 'system-all-tasks'
-        ? 'system-all-tasks'
-        : state.currentListId;
+      {String? listId, bool isMyDay = false, DateTime? reminderAt}) async {
+    final targetListId = listId ??
+        (state.currentListId == 'system-my-day' ||
+                state.currentListId == 'system-all-tasks'
+            ? 'system-all-tasks'
+            : state.currentListId);
 
     final result = await AppDatabase.createTask(
-      listId: listId,
+      listId: targetListId,
       title: title,
       isMyDay: isMyDay,
       reminderAt: reminderAt?.millisecondsSinceEpoch,

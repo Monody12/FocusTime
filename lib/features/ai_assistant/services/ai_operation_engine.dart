@@ -30,8 +30,8 @@ class AiOperationEngine {
         }
         // If creating in a dated list, ensure it exists
         if (params.containsKey('listId')) {
-          final listId = params['listId'] as String;
-          if (!currentLists.any((l) => l.id == listId)) {
+          final listRef = params['listId'] as String;
+          if (_findListByReference(currentLists, listRef) == null) {
             return null; // Will be auto-created by _ensureList
           }
         }
@@ -67,9 +67,9 @@ class AiOperationEngine {
         if (listName == null || listName.trim().isEmpty) {
           return '清单名称不能为空';
         }
-        if (currentLists.any((l) => l.name == listName)) {
-          return '清单 "$listName" 已存在';
-        }
+        // AI may propose create_list before create_task even when the list is
+        // already present in context. Treat this as an idempotent no-op so a
+        // duplicate list proposal does not block the actual task creation.
         return null;
 
       case AiOperationType.updateList:
@@ -146,14 +146,18 @@ class AiOperationEngine {
         final updates = <String, dynamic>{};
         if (params.containsKey('title')) updates['title'] = params['title'];
         if (params.containsKey('notes')) updates['notes'] = params['notes'];
-        if (params.containsKey('dueDate'))
+        if (params.containsKey('dueDate')) {
           updates['dueDate'] = params['dueDate'];
-        if (params.containsKey('dueTime'))
+        }
+        if (params.containsKey('dueTime')) {
           updates['dueTime'] = params['dueTime'];
-        if (params.containsKey('expectedMinutes'))
+        }
+        if (params.containsKey('expectedMinutes')) {
           updates['expectedMinutes'] = params['expectedMinutes'];
-        if (params.containsKey('isImportant'))
+        }
+        if (params.containsKey('isImportant')) {
           updates['isImportant'] = params['isImportant'];
+        }
         if (updates.isNotEmpty) {
           await taskNotifier.updateTask(taskId, updates);
         }
@@ -203,7 +207,9 @@ class AiOperationEngine {
 
       case AiOperationType.moveToList:
         if (params.containsKey('listId')) {
-          await _ensureList(params['listId'] as String, taskNotifier);
+          final realId =
+              await _ensureList(params['listId'] as String, taskNotifier);
+          params['listId'] = realId;
         }
         await taskNotifier.moveTaskToList(
           params['taskId'] as String,
@@ -217,7 +223,7 @@ class AiOperationEngine {
         break;
 
       case AiOperationType.createList:
-        await taskNotifier.createList(params['name'] as String);
+        await _ensureList(params['name'] as String, taskNotifier);
         break;
 
       case AiOperationType.updateList:
@@ -239,20 +245,28 @@ class AiOperationEngine {
     String listRef,
     TaskNotifier taskNotifier,
   ) async {
-    // ignore: invalid_use_of_protected_member
-    final currentLists = taskNotifier.state.lists;
+    final currentLists = taskNotifier.listsSnapshot;
 
-    // First try exact ID match
-    var match = currentLists.where((l) => l.id == listRef).firstOrNull;
-    if (match != null) return match.id;
-
-    // Then try name match
-    match = currentLists.where((l) => l.name == listRef).firstOrNull;
+    final match = _findListByReference(currentLists, listRef);
     if (match != null) return match.id;
 
     // Create new list with the reference as name
-    final created = await taskNotifier.createList(listRef);
+    final created = await taskNotifier.createList(listRef.trim());
     return created.id;
+  }
+
+  static TaskList? _findListByReference(
+    List<TaskList> lists,
+    String listRef,
+  ) {
+    final normalized = listRef.trim();
+    var match = lists.where((l) => l.id == normalized).firstOrNull;
+    if (match != null) return match;
+
+    final lower = normalized.toLowerCase();
+    match =
+        lists.where((l) => l.name.trim().toLowerCase() == lower).firstOrNull;
+    return match;
   }
 
   static Future<void> _executeCreateTask(
@@ -263,6 +277,7 @@ class AiOperationEngine {
 
     final task = await taskNotifier.createTask(
       title,
+      listId: params['listId'] as String?,
       isMyDay: params['isMyDay'] == true,
       reminderAt: params['reminderAt'] != null
           ? AppTime.parseSelectedIso(params['reminderAt'] as String)
@@ -273,13 +288,12 @@ class AiOperationEngine {
     if (params.containsKey('notes')) updates['notes'] = params['notes'];
     if (params.containsKey('dueDate')) updates['dueDate'] = params['dueDate'];
     if (params.containsKey('dueTime')) updates['dueTime'] = params['dueTime'];
-    if (params.containsKey('expectedMinutes'))
+    if (params.containsKey('expectedMinutes')) {
       updates['expectedMinutes'] = params['expectedMinutes'];
-    if (params.containsKey('isImportant'))
+    }
+    if (params.containsKey('isImportant')) {
       updates['isImportant'] = params['isImportant'] == true;
-    updates['listId'] =
-        params.containsKey('listId') ? params['listId'] : 'system-all-tasks';
-
+    }
     if (updates.isNotEmpty) {
       await taskNotifier.updateTask(task.id, updates);
     }
