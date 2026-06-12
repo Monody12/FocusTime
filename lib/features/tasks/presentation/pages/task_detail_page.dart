@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
@@ -38,6 +39,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   bool _todayCompleted = false;
   List<Map<String, dynamic>> _focusSessions = [];
   TaskItem? _cachedTask;
+  bool _confirmingExpectedMinutes = false;
 
   // FocusNode 用于监听焦点变化，实现鼠标离开自动保存
   late FocusNode _titleFocusNode;
@@ -96,6 +98,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   void _onExpectedMinutesFocusChange() {
     if (!_expectedMinutesFocusNode.hasFocus) {
+      if (_confirmingExpectedMinutes) return;
       _saveExpectedMinutes(widget.taskId);
     }
   }
@@ -444,19 +447,29 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
                   // Expected minutes
                   _buildSectionLabel('预期时间（分钟）', isDark),
-                  TextField(
-                    controller: _expectedMinutesController,
-                    focusNode: _expectedMinutesFocusNode,
-                    decoration: InputDecoration(
-                      hintText: '预计需要的专注时间',
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(LogicalKeyboardKey.enter): () =>
+                          _confirmExpectedMinutes(task.id),
+                      const SingleActivator(LogicalKeyboardKey.numpadEnter):
+                          () => _confirmExpectedMinutes(task.id),
+                    },
+                    child: TextField(
+                      controller: _expectedMinutesController,
+                      focusNode: _expectedMinutesFocusNode,
+                      decoration: InputDecoration(
+                        hintText: '预计需要的专注时间',
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _confirmExpectedMinutes(task.id),
+                      onEditingComplete: () => _confirmExpectedMinutes(task.id),
                     ),
-                    keyboardType: TextInputType.number,
-                    onSubmitted: (_) => _saveExpectedMinutes(task.id),
-                    onEditingComplete: () => _saveExpectedMinutes(task.id),
                   ),
 
                   const SizedBox(height: 16),
@@ -1048,9 +1061,22 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   void _saveExpectedMinutes(String taskId) {
-    final mins = int.tryParse(_expectedMinutesController.text);
+    final rawValue = _expectedMinutesController.text.trim();
+    final mins = rawValue.isEmpty ? null : int.tryParse(rawValue);
+    final task =
+        ref.read(taskProvider).tasks.where((t) => t.id == taskId).firstOrNull;
+    if (task != null && task.expectedMinutes == mins) return;
     ref
         .read(taskProvider.notifier)
         .updateTask(taskId, {'expectedMinutes': mins});
+  }
+
+  void _confirmExpectedMinutes(String taskId) {
+    _confirmingExpectedMinutes = true;
+    _saveExpectedMinutes(taskId);
+    _expectedMinutesFocusNode.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _confirmingExpectedMinutes = false;
+    });
   }
 }
