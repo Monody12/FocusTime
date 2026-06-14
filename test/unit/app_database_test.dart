@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:focus_my_time/data/database/app_database.dart';
 
 void main() {
   group('AppDatabase JSON encoding/decoding', () {
@@ -12,7 +11,8 @@ void main() {
       // and _decodeJson converts String back to Map
 
       final testMap = {'frequency': 'daily', 'interval': 1};
-      final encoded = testMap.entries.map((e) => '${e.key}:${e.value}').join(';');
+      final encoded =
+          testMap.entries.map((e) => '${e.key}:${e.value}').join(';');
 
       expect(encoded, 'frequency:daily;interval:1');
 
@@ -31,7 +31,8 @@ void main() {
 
     test('recurrence config encodes null values', () {
       final testMap = {'frequency': 'daily', 'interval': null as dynamic};
-      final encoded = testMap.entries.map((e) => '${e.key}:${e.value}').join(';');
+      final encoded =
+          testMap.entries.map((e) => '${e.key}:${e.value}').join(';');
       expect(encoded, 'frequency:daily;interval:null');
     });
   });

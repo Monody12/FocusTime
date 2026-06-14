@@ -503,62 +503,6 @@ class _SidebarState extends ConsumerState<Sidebar> {
     );
   }
 
-  void _showListMenu(BuildContext context, String listId, String listName) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: context.appColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  listName,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: context.appColors.text,
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(AppIcons.edit),
-                title: const Text('重命名'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _startEditing(listId, listName);
-                },
-              ),
-              ListTile(
-                leading: const Icon(AppIcons.archive),
-                title: const Text('归档'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _confirmArchiveList(context, listId, listName);
-                },
-              ),
-              ListTile(
-                leading: const Icon(AppIcons.delete, color: Colors.red),
-                title: const Text('删除', style: TextStyle(color: Colors.red)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _confirmDeleteList(context, listId, listName);
-                },
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   void _confirmArchiveList(
       BuildContext context, String listId, String listName) {
     showDialog(

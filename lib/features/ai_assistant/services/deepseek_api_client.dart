@@ -18,9 +18,8 @@ class ChatResponseChunk {
         finishReason = null,
         error = null;
 
-  ChatResponseChunk.tool({required Map<String, dynamic> toolCall})
+  ChatResponseChunk.tool({required this.toolCall})
       : textDelta = null,
-        toolCall = toolCall,
         isDone = false,
         finishReason = null,
         error = null;
@@ -41,7 +40,8 @@ class ChatResponseChunk {
 class DeepSeekApiClient {
   static const String _baseUrl = 'https://api.deepseek.com/v1';
   static const String _model = 'deepseek-chat';
-  static const String _encryptionKey = 'FocusMyTimeSecretKey_DeepSeekKey'; // 32位AES密钥
+  static const String _encryptionKey =
+      'FocusMyTimeSecretKey_DeepSeekKey'; // 32位AES密钥
   static String? _apiKey;
   static bool _initialized = false;
 
@@ -59,7 +59,9 @@ class DeepSeekApiClient {
   }
 
   static String _decryptKey(String encryptedText) {
-    if (encryptedText.isEmpty || !encryptedText.contains(':')) return encryptedText;
+    if (encryptedText.isEmpty || !encryptedText.contains(':')) {
+      return encryptedText;
+    }
     try {
       final parts = encryptedText.split(':');
       final iv = encrypt.IV.fromBase64(parts[0]);
@@ -118,7 +120,8 @@ class DeepSeekApiClient {
       body['tool_choice'] = 'auto';
     }
 
-    final request = http.Request('POST', Uri.parse('$_baseUrl/chat/completions'));
+    final request =
+        http.Request('POST', Uri.parse('$_baseUrl/chat/completions'));
     request.headers.addAll({
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $_apiKey',
@@ -190,7 +193,8 @@ class DeepSeekApiClient {
               final id = tc['id'] as String?;
               final func = tc['function'] as Map<String, dynamic>?;
 
-              toolCallAccumulators.putIfAbsent(index, () => _ToolCallAccumulator(index));
+              toolCallAccumulators.putIfAbsent(
+                  index, () => _ToolCallAccumulator(index));
               final acc = toolCallAccumulators[index]!;
               if (id != null) acc.id = id;
               if (func != null) {

@@ -17,7 +17,8 @@ class TimerNotificationService {
   static WindowsNotification? _winNotifier;
 
   // 本地通知插件 (Android & macOS)
-  static final FlutterLocalNotificationsPlugin _localNotifier = FlutterLocalNotificationsPlugin();
+  static final FlutterLocalNotificationsPlugin _localNotifier =
+      FlutterLocalNotificationsPlugin();
 
   static bool _initialized = false;
 
@@ -47,7 +48,8 @@ class TimerNotificationService {
   static void _initWindowsNotifier() {
     try {
       _winNotifier = WindowsNotification(
-        applicationId: r'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe',
+        applicationId:
+            r'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe',
       );
 
       _winNotifier!.initNotificationCallBack((details) {
@@ -65,15 +67,16 @@ class TimerNotificationService {
   static Future<void> _initLocalNotifier() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-    
+
     const DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
       requestSoundPermission: true,
       requestBadgePermission: true,
       requestAlertPermission: true,
     );
-    
-    const InitializationSettings initializationSettings = InitializationSettings(
+
+    const InitializationSettings initializationSettings =
+        InitializationSettings(
       android: initializationSettingsAndroid,
       macOS: initializationSettingsDarwin,
     );
@@ -86,7 +89,8 @@ class TimerNotificationService {
         if (payload != null && _onAction != null) {
           // payload 可能是 'action:start_break' 这种格式，
           // 但 flutter_local_notifications 的 actionId 是直接的 ID
-          final String normalizedPayload = payload.startsWith('action:') ? payload : 'action:$payload';
+          final String normalizedPayload =
+              payload.startsWith('action:') ? payload : 'action:$payload';
           _onAction!(normalizedPayload);
         }
       },
@@ -104,7 +108,8 @@ class TimerNotificationService {
       );
 
       await _localNotifier
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(channel);
     }
   }
@@ -132,9 +137,15 @@ class TimerNotificationService {
 
     // 2. 发送通知
     if (Platform.isWindows && _winNotifier != null) {
-      await _sendActionableToast(title: title, body: body, phase: phase, duration: duration, soundEnabled: soundEnabled);
+      await _sendActionableToast(
+          title: title,
+          body: body,
+          phase: phase,
+          duration: duration,
+          soundEnabled: soundEnabled);
     } else if (Platform.isAndroid || Platform.isMacOS) {
-      await _sendLocalNotification(title: title, body: body, phase: phase, soundEnabled: soundEnabled);
+      await _sendLocalNotification(
+          title: title, body: body, phase: phase, soundEnabled: soundEnabled);
     }
   }
 
@@ -146,11 +157,15 @@ class TimerNotificationService {
   }) async {
     final List<AndroidNotificationAction> actions = [];
     if (phase == 'focus') {
-      actions.add(const AndroidNotificationAction('start_break', '开始休息', showsUserInterface: true));
-      actions.add(const AndroidNotificationAction('start_focus', '继续专注', showsUserInterface: true));
+      actions.add(const AndroidNotificationAction('start_break', '开始休息',
+          showsUserInterface: true));
+      actions.add(const AndroidNotificationAction('start_focus', '继续专注',
+          showsUserInterface: true));
     } else {
-      actions.add(const AndroidNotificationAction('start_focus', '开始专注', showsUserInterface: true));
-      actions.add(const AndroidNotificationAction('skip_break', '跳过休息', showsUserInterface: true));
+      actions.add(const AndroidNotificationAction('start_focus', '开始专注',
+          showsUserInterface: true));
+      actions.add(const AndroidNotificationAction('skip_break', '跳过休息',
+          showsUserInterface: true));
     }
 
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
@@ -170,12 +185,13 @@ class TimerNotificationService {
     final NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
       macOS: const DarwinNotificationDetails(
-        presentAlert: true,     // 弹窗提示
-        presentBadge: true,     // 角标
-        presentSound: true,     // 声音
-        presentBanner: true,    // macOS: 横幅样式（屏幕顶部滑入）
-        presentList: true,      // macOS: 通知中心列表中可见
-        interruptionLevel: InterruptionLevel.timeSensitive, // macOS: 时间敏感，突破专注模式
+        presentAlert: true, // 弹窗提示
+        presentBadge: true, // 角标
+        presentSound: true, // 声音
+        presentBanner: true, // macOS: 横幅样式（屏幕顶部滑入）
+        presentList: true, // macOS: 通知中心列表中可见
+        interruptionLevel:
+            InterruptionLevel.timeSensitive, // macOS: 时间敏感，突破专注模式
       ),
     );
 
@@ -192,7 +208,8 @@ class TimerNotificationService {
   static Future<void> _playAlarmSound({bool loop = true}) async {
     try {
       await _audioPlayer.stop();
-      await _audioPlayer.setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release);
+      await _audioPlayer
+          .setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release);
       await _audioPlayer.play(AssetSource('audio/alarm.wav'));
     } catch (e) {
       dev.log('[TimerNotificationService] 铃声播放失败: $e');
@@ -221,7 +238,8 @@ class TimerNotificationService {
       String audioElement = '';
       if (soundEnabled) {
         const String audioSrc = 'ms-winsoundevent:Notification.Looping.Alarm';
-        final String loopingAttr = duration != 'short' ? ' loop="true"' : ' loop="false"';
+        final String loopingAttr =
+            duration != 'short' ? ' loop="true"' : ' loop="false"';
         audioElement = '<audio src="$audioSrc" $loopingAttr />';
       }
 
@@ -268,7 +286,7 @@ class TimerNotificationService {
   static Future<void> stopAlarm() async {
     dev.log('[TimerNotificationService] 停止铃声并尝试清除系统通知');
     await _audioPlayer.stop();
-    
+
     if (Platform.isWindows && _winNotifier != null) {
       try {
         _winNotifier!.removeNotificationId('timer_completion', 'focus_my_time');

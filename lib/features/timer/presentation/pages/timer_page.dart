@@ -282,7 +282,7 @@ class TimerPage extends ConsumerWidget {
       child: Column(
         children: [
           Text(
-            '专注完成！开始${breakName}休息',
+            '专注完成！开始$breakName休息',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,

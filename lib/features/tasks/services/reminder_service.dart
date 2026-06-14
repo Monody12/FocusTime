@@ -17,8 +17,8 @@ import 'package:focus_my_time/data/database/app_database.dart';
 /// 任务提醒服务
 /// 职责：管理任务的定时提醒通知，支持 Android (系统级调度) 和 Windows (应用级调度)
 class ReminderService {
-  static const int _FNV_OFFSET_BASIS = 0x811C9DC5;
-  static const int _FNV_PRIME = 0x01000193;
+  static const int _fnvOffsetBasis = 0x811C9DC5;
+  static const int _fnvPrime = 0x01000193;
 
   static final FlutterLocalNotificationsPlugin _localPlugin =
       FlutterLocalNotificationsPlugin();
@@ -505,10 +505,10 @@ class ReminderService {
   }
 
   static int _notificationIdForTask(String taskId) {
-    var hash = _FNV_OFFSET_BASIS;
+    var hash = _fnvOffsetBasis;
     for (final codeUnit in taskId.codeUnits) {
       hash ^= codeUnit;
-      hash = (hash * _FNV_PRIME) & 0x7fffffff;
+      hash = (hash * _fnvPrime) & 0x7fffffff;
     }
     return hash == 0 ? 1 : hash;
   }

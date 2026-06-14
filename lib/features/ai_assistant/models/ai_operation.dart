@@ -47,7 +47,8 @@ class AiOperation {
         summary: summary ?? this.summary,
         reasoning: clearReasoning ? null : (reasoning ?? this.reasoning),
         status: status ?? this.status,
-        errorMessage: clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
+        errorMessage:
+            clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
         createdAt: createdAt ?? this.createdAt,
       );
 
@@ -74,7 +75,8 @@ class AiOperation {
           : <String, dynamic>{},
       summary: map['summary'] as String,
       reasoning: map['reasoning'] as String?,
-      status: AiOperationStatus.values.firstWhere((s) => s.name == map['status']),
+      status:
+          AiOperationStatus.values.firstWhere((s) => s.name == map['status']),
       errorMessage: map['error_message'] as String?,
       createdAt: map['created_at'] as int,
     );

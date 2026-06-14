@@ -16,7 +16,7 @@ class _TaskInputState extends ConsumerState<TaskInput> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   bool _showHistory = false;
-  List<String> _localHistory = [];
+  final List<String> _localHistory = [];
 
   @override
   void initState() {

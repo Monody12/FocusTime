@@ -6,7 +6,7 @@ void main() {
     test('Encrypts and decrypts normal password correctly', () {
       const password = 'my_super_secret_password_123!';
       final encrypted = SyncService.encryptForTesting(password);
-      
+
       expect(encrypted, isNotEmpty);
       expect(encrypted, isNot(equals(password)));
 
@@ -23,11 +23,13 @@ void main() {
     });
 
     test('Decrypts invalid base64 string as empty string safely', () {
-      final decrypted = SyncService.decryptForTesting('invalid_base64_string_!!!!');
+      final decrypted =
+          SyncService.decryptForTesting('invalid_base64_string_!!!!');
       expect(decrypted, isEmpty);
     });
 
-    test('Encrypts and decrypts password containing unicode/chinese characters', () {
+    test('Encrypts and decrypts password containing unicode/chinese characters',
+        () {
       const password = '密码123456★😊';
       final encrypted = SyncService.encryptForTesting(password);
       final decrypted = SyncService.decryptForTesting(encrypted);
