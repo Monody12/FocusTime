@@ -583,10 +583,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
         // Mobile: Show TimerPage as a stack or separate view
         return Stack(
           children: [
-            TaskListView(
-              onTaskSelected: (taskId) =>
-                  ref.read(taskProvider.notifier).setSelectedTask(taskId),
-            ),
+            const TaskListView(),
             Positioned.fill(
               child: Container(
                 color: context.appColors.background,
@@ -615,11 +612,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
       // Desktop grid
       return Row(
         children: [
-          Expanded(
-            child: TaskListView(
-              onTaskSelected: (taskId) =>
-                  ref.read(taskProvider.notifier).setSelectedTask(taskId),
-            ),
+          const Expanded(
+            child: TaskListView(),
           ),
           Container(
             width: 1,
@@ -644,10 +638,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
         ],
       );
     } else {
-      return TaskListView(
-        onTaskSelected: (taskId) =>
-            ref.read(taskProvider.notifier).setSelectedTask(taskId),
-      );
+      return const TaskListView();
     }
   }
 
@@ -762,21 +753,6 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
         setState(() => _showTimerPanel = true);
       }
     }
-  }
-
-  String _getFooterButtonText(TimerState timerState) {
-    if (timerState.timerStatus == TimerStatus.running ||
-        timerState.timerStatus == TimerStatus.paused ||
-        timerState.timerStatus == TimerStatus.completed) {
-      if (timerState.timerStatus == TimerStatus.completed) {
-        return '✅ 已完成';
-      }
-      final remaining = timerState.totalSeconds - timerState.elapsedSeconds;
-      final minutes = remaining ~/ 60;
-      final seconds = remaining % 60;
-      return '⏱ ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    }
-    return '🎯 开始专注';
   }
 
   Widget _buildFooterActionButton({

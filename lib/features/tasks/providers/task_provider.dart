@@ -246,28 +246,35 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
   Future<void> loadLists() async {
     final dbLists = await AppDatabase.getLists();
+    if (!mounted) return;
+
     final lists = dbLists.map(_listFromMap).toList();
     state = state.copyWith(lists: lists);
   }
 
   Future<void> loadTasks({bool showLoading = true}) async {
     if (showLoading) state = state.copyWith(isLoading: true);
+    final viewType = state.currentViewType;
+    final listId = state.currentListId;
     try {
       List<Map<String, dynamic>> dbTasks;
-      if (state.currentViewType == 'my-day') {
+      if (viewType == 'my-day') {
         dbTasks = await AppDatabase.getMyDayTasks();
-      } else if (state.currentViewType == 'important') {
+      } else if (viewType == 'important') {
         dbTasks = await AppDatabase.getImportantTasks();
-      } else if (state.currentViewType == 'all-tasks') {
+      } else if (viewType == 'all-tasks') {
         dbTasks = await AppDatabase.getAllTasks();
       } else {
-        dbTasks = await AppDatabase.getTasksByList(state.currentListId);
+        dbTasks = await AppDatabase.getTasksByList(listId);
       }
+      if (!mounted) return;
 
       final tasks = dbTasks.map(_taskFromMap).toList();
 
       state = state.copyWith(tasks: tasks, isLoading: false);
     } catch (e) {
+      if (!mounted) return;
+
       state = state.copyWith(isLoading: false);
     }
   }
@@ -278,6 +285,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   void setSelectedTask(String? taskId) {
+    if (state.selectedTaskId == taskId) return;
+
     state = state.copyWith(
         selectedTaskId: taskId, clearSelectedTask: taskId == null);
   }
