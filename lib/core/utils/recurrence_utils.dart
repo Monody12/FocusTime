@@ -106,7 +106,7 @@ DateTime getNextDate(DateTime current, RecurrenceConfig config) {
     case RecurrenceFrequency.weekly:
       if (config.daysOfWeek != null && config.daysOfWeek!.isNotEmpty) {
         // 找到下周同类型的日期
-        var next = current.add(Duration(days: 1));
+        var next = current.add(const Duration(days: 1));
         int count = 0;
         while (count < 7 * config.interval) {
           if (config.daysOfWeek!.contains(next.weekday % 7)) {

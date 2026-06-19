@@ -100,6 +100,8 @@ class AiContextBuilder {
     buf.writeln('10. 安排日程时必须避免重叠；任务之间默认保留 0-10 分钟间隔，并根据任务难度、脑力消耗和时间紧张程度调整。');
     buf.writeln('11. 如果用户偏好中包含禁止时间段（如"不要在19到20点安排任务"），该时间段视为硬性不可用区间，不得安排任务。');
     buf.writeln('12. 如果任务太大、太难或当天没有连续时间，应拆分成多个清晰的小任务，并分别安排开始时间和持续时长。');
+    buf.writeln('13. 如果目标清单已经出现在“任务清单”中，必须直接使用该清单的 ID 创建任务，不要再调用 create_list。');
+    buf.writeln('14. 只有当目标清单没有出现在“任务清单”中时，才可以调用 create_list。');
 
     // Custom user preferences
     if (customPrompt.isNotEmpty) {
@@ -121,12 +123,21 @@ class AiContextBuilder {
       buf.writeln('## 日期清单模式（已启用）');
       buf.writeln('当前日期清单名称: $dateStr');
       buf.writeln('日期格式: $datedListFormat');
-      buf.writeln('规则: 创建任务时，必须使用清单名 "$dateStr" 作为 listId。如果该清单不存在，系统会自动创建。');
+      final existingDatedList =
+          lists.where((list) => list.name == dateStr).firstOrNull;
+      if (existingDatedList != null) {
+        buf.writeln(
+            '规则: 创建任务时，必须使用现有日期清单 ID "${existingDatedList.id}" 作为 listId，不要调用 create_list。');
+      } else {
+        buf.writeln('规则: 创建任务时，必须使用清单名 "$dateStr" 作为 listId。如果该清单不存在，系统会自动创建。');
+      }
       buf.writeln(
           '不要使用系统清单（system-my-day/system-all-tasks/system-important），请使用日期清单。');
       buf.writeln(
           '除非用户明确要求添加到"我的一天"，否则 create_task 时 isMyDay 必须为 false 或省略，且不要调用 add_to_my_day。');
-      buf.writeln('如果你需要先创建清单，请创建名为 "$dateStr" 的清单，然后继续把任务创建到该清单。');
+      if (existingDatedList == null) {
+        buf.writeln('如果你需要先创建清单，请创建名为 "$dateStr" 的清单，然后继续把任务创建到该清单。');
+      }
     }
 
     // Reminder on create

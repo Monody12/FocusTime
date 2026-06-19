@@ -159,39 +159,39 @@ extension AppThemeContext on BuildContext {
 class AppTheme {
   // 使用 Noto Sans SC (思源黑体) 作为全局字体，确保中英文粗细一致且美观
   // 该字体由 Google 提供，完美支持中文各种字重。
-  static const blueAmberLightColors = AppThemeColors(
-    background: Color(0xFFF8FAFC),
-    sidebar: Color(0xFFEFF6FF),
+  static const duskLightColors = AppThemeColors(
+    background: Color(0xFFF7F5FB),
+    sidebar: Color(0xFFEDEAF5),
     surface: Color(0xFFFFFFFF),
-    surfaceElevated: Color(0xFFF1F5F9),
-    border: Color(0xFFCBDDEB),
-    accent: Color(0xFF2563EB),
-    accentSecondary: Color(0xFF0D9488),
-    success: Color(0xFF16A34A),
-    warning: Color(0xFF7C3AED),
-    text: Color(0xFF0F172A),
-    textSecondary: Color(0xFF5B6B7D),
+    surfaceElevated: Color(0xFFF1EEF8),
+    border: Color(0xFFD8D2E8),
+    accent: Color(0xFF4F46E5),
+    accentSecondary: Color(0xFFD97706),
+    success: Color(0xFF15803D),
+    warning: Color(0xFFC2410C),
+    text: Color(0xFF1F1B2E),
+    textSecondary: Color(0xFF6B6478),
   );
 
-  static const blueAmberDarkColors = AppThemeColors(
-    background: Color(0xFF0F172A),
-    sidebar: Color(0xFF111D31),
-    surface: Color(0xFF172338),
-    surfaceElevated: Color(0xFF1D2E49),
-    border: Color(0xFF334A67),
-    accent: Color(0xFF60A5FA),
-    accentSecondary: Color(0xFF2DD4BF),
+  static const duskDarkColors = AppThemeColors(
+    background: Color(0xFF12111D),
+    sidebar: Color(0xFF19172A),
+    surface: Color(0xFF211D33),
+    surfaceElevated: Color(0xFF2C2642),
+    border: Color(0xFF443B5D),
+    accent: Color(0xFFA78BFA),
+    accentSecondary: Color(0xFFF59E0B),
     success: Color(0xFF4ADE80),
-    warning: Color(0xFFA78BFA),
-    text: Color(0xFFEFF6FF),
-    textSecondary: Color(0xFFAFC0D3),
+    warning: Color(0xFFFB7185),
+    text: Color(0xFFF6F2FF),
+    textSecondary: Color(0xFFC7BED8),
   );
 
-  static const blueAmberScheme = AppThemeScheme(
-    id: 'blueAmber',
-    label: '蓝青',
-    light: blueAmberLightColors,
-    dark: blueAmberDarkColors,
+  static const duskScheme = AppThemeScheme(
+    id: 'starfieldDusk',
+    label: '星岩暮光',
+    light: duskLightColors,
+    dark: duskDarkColors,
   );
 
   static const greenScheme = AppThemeScheme(
@@ -201,10 +201,10 @@ class AppTheme {
     dark: AppColors.darkThemeColors,
   );
 
-  static const defaultScheme = blueAmberScheme;
+  static const defaultScheme = duskScheme;
 
   static const List<AppThemeScheme> schemes = [
-    blueAmberScheme,
+    duskScheme,
     greenScheme,
   ];
 

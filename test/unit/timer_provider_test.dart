@@ -98,7 +98,8 @@ void main() {
     });
 
     test('formattedTime shows remaining time', () {
-      final state = TimerState(totalSeconds: 1500, elapsedSeconds: 900); // 10:00 remaining
+      final state = TimerState(
+          totalSeconds: 1500, elapsedSeconds: 900); // 10:00 remaining
       expect(state.formattedTime, '10:00');
     });
 

@@ -9,7 +9,8 @@ import 'package:device_calendar/device_calendar.dart';
 /// 使 `CalendarService` 可以用统一的方式调用 Android 和 macOS 日历功能。
 class MacOsCalendarPlugin {
   /// 与 MainFlutterWindow.swift 中注册的 channel 名称一致
-  static const MethodChannel _channel = MethodChannel('com.focusmytime.calendar');
+  static const MethodChannel _channel =
+      MethodChannel('com.focusmytime.calendar');
 
   /// 检查当前应用是否已获得 macOS 日历访问权限
   Future<Result<bool>> hasPermissions() async {
@@ -40,7 +41,8 @@ class MacOsCalendarPlugin {
   Future<Result<List<Calendar>>> retrieveCalendars() async {
     final result = Result<List<Calendar>>();
     try {
-      final List<dynamic> calendarsList = await _channel.invokeMethod('retrieveCalendars');
+      final List<dynamic> calendarsList =
+          await _channel.invokeMethod('retrieveCalendars');
       final List<Calendar> calendars = calendarsList.map((c) {
         final map = Map<String, dynamic>.from(c);
         return Calendar(
@@ -82,7 +84,8 @@ class MacOsCalendarPlugin {
   Future<Result<String>> createOrUpdateEvent(Event event) async {
     final result = Result<String>();
     try {
-      final String eventId = await _channel.invokeMethod('createOrUpdateEvent', {
+      final String eventId =
+          await _channel.invokeMethod('createOrUpdateEvent', {
         'calendarId': event.calendarId,
         'eventId': event.eventId,
         'title': event.title,

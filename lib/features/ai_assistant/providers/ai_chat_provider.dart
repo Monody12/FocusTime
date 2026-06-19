@@ -369,6 +369,10 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     );
 
     // Build context
+    final taskNotifier = _ref.read(taskProvider.notifier);
+    if (_ref.read(taskProvider).lists.isEmpty) {
+      await taskNotifier.loadLists();
+    }
     final taskState = _ref.read(taskProvider);
     final systemPrompt = AiContextBuilder.buildSystemPrompt(
       allTasks: taskState.tasks,
@@ -554,8 +558,9 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
 
     // Mark as approved first (optimistic)
     var ops = state.pendingOperations.map((o) {
-      if (o.id == operationId)
+      if (o.id == operationId) {
         return o.copyWith(status: AiOperationStatus.approved);
+      }
       return o;
     }).toList();
     state = state.copyWith(pendingOperations: ops);
@@ -590,9 +595,10 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
           currentTasks: taskState.tasks, currentLists: taskState.lists);
       if (error != null) {
         var ops = state.pendingOperations.map((o) {
-          if (o.id == op.id)
+          if (o.id == op.id) {
             return o.copyWith(
                 status: AiOperationStatus.failed, errorMessage: error);
+          }
           return o;
         }).toList();
         state = state.copyWith(pendingOperations: ops, errorMessage: error);

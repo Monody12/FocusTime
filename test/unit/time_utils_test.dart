@@ -46,7 +46,8 @@ void main() {
       expect(
         result.targetTime.minute == 0 || result.targetTime.minute == 30,
         true,
-        reason: 'Expected minute to be 0 or 30, got ${result.targetTime.minute}',
+        reason:
+            'Expected minute to be 0 or 30, got ${result.targetTime.minute}',
       );
     });
 

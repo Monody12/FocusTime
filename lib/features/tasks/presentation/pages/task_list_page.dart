@@ -6,9 +6,7 @@ import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/tasks/presentation/widgets/task_item.dart';
 
 class TaskListView extends ConsumerStatefulWidget {
-  final Function(String?)? onTaskSelected;
-
-  const TaskListView({super.key, this.onTaskSelected});
+  const TaskListView({super.key});
 
   @override
   ConsumerState<TaskListView> createState() => _TaskListViewState();
@@ -164,8 +162,6 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                                 onTap: () {
                                   taskNotifier
                                       .setSelectedTask(incompleteTasks[i].id);
-                                  widget.onTaskSelected
-                                      ?.call(incompleteTasks[i].id);
                                 },
                               ),
                           ],
@@ -200,8 +196,6 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                               onTap: () {
                                 taskNotifier
                                     .setSelectedTask(completedTasks[i].id);
-                                widget.onTaskSelected
-                                    ?.call(completedTasks[i].id);
                               },
                             ),
                         ],

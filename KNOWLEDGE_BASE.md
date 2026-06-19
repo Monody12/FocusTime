@@ -62,7 +62,7 @@ if (eventId == null) {
 
 旧代码采用的模式是「先 `deleteEvent` 删旧 → 再 `createOrUpdateEvent`（不带 eventId）建新」。这意味着每次修改都会触发一次 **DELETE 操作**。
 
-Android 14 (API 34)+ 对 `ContentResolver.delete()` 施加了更严格的权限检查，Android 16 进一步收紧。当 `deleteEvent` 因权限/所有权检查被系统拦截（返回 `success: false`）后，旧代码仍然继续执行 INSERT → **旧事件还在，新事件又创建 → 产生重复**。
+Android 14 (API 34)+ 对部分系统 ContentProvider 操作有更严格的权限/所有权校验；在部分 Android 16 或 OEM 日历实现上，`deleteEvent` 更容易返回失败或被系统拦截。官方 Android 16 行为变更文档没有声明“第三方应用不能修改/删除自己写入的日历事件”，Calendar Provider 文档仍然说明具备 `WRITE_CALENDAR` 权限的应用可以 insert/update/delete。实际风险来自插件实现和系统 Provider 细节：当 `deleteEvent` 失败后旧代码仍然继续执行 INSERT → **旧事件还在，新事件又创建 → 产生重复**。
 
 **修复方案**：
 
@@ -100,6 +100,45 @@ Android 14 (API 34)+ 对 `ContentResolver.delete()` 施加了更严格的权限�
 - 这类异常是 Flutter 跨平台开发的正常现象，不代表 bug
 - 排查此类异常的关键是**追踪调用链**：从 UI 事件一路追到插件调用点
 - 项目持久层（ReminderService）接入原生功能时，应在入口处加平台判断或 try-catch 静默
+
+### 3.3 Android 16 日历提醒重复：避免删除 Reminders 子表
+
+**问题现象**：
+- Android 16 上修改任务提醒时间后，系统日历出现新的事件或旧提醒时间仍然存在。
+- 删除应用内提醒后，系统日历事件可能没有被删除。
+- 添加提醒后再次手动同步，可能显示“同步失败或未配置”；退出重登或删除提醒也无法恢复，只能清除应用数据。
+- Android 13 与 Windows 路径正常。
+
+**联网核对结论**：
+- Android Calendar Provider 官方文档仍然支持 `Events` 的 query/insert/update/delete，前提是应用拥有 `WRITE_CALENDAR` 等权限。
+- Android 16 官方行为变更文档没有列出“禁止第三方应用修改或删除自己创建的日历事件”的限制。
+- `CalendarContract.Events` 文档说明普通应用删除事件时通常是设置 `deleted` 标记，真正硬删除更偏向 sync adapter 场景。因此不能把 Android 16 上的失败简单归因于“系统完全不允许改删”。
+
+**根因分析**：
+
+`device_calendar` 的 Android 更新路径虽然会对 `Events` 执行 UPDATE，但同步提醒子项时仍可能先删除旧 `Reminders` 再插入新 `Reminders`。在 Android 16/OEM 日历 Provider 上，这类对子表的 delete 可能失败，从而让整个更新流程失败；调用层随后如果回退到新建事件，就会造成旧时间残留或重复事件。
+
+另一个触发点是 `calendar_event_id` 属于本机外部系统引用，不能作为跨设备业务字段同步。把它写入任务并推进 `updated_at`，会把本机日历后处理变成一次业务同步，进而放大同步失败或并发同步的概率。
+
+**修复方案**：
+
+1. Android 改用项目自有原生 `MethodChannel` 写 Calendar Provider：
+   - 修改提醒时间：直接 UPDATE `Events.CONTENT_URI/{eventId}`，不改变 `CALENDAR_ID`。
+   - 更新 reminders：查询已有 reminders 后优先 UPDATE/INSERT，只有多余子项才 best-effort DELETE；删除失败不让主事件更新失败。
+   - 删除事件：按 app delete → sync-adapter delete → UPDATE 标记 `STATUS_CANCELED` 并移到当前时间的顺序降级。
+
+2. `calendar_event_id` 改成本机私有字段：
+   - 新增 `updateTaskCalendarEventId()`，只更新本机事件 ID，不刷新 `updated_at`。
+   - 同步 payload 不因本机事件 ID 变化而产生脏任务。
+
+3. 同步完成后的提醒/日历刷新改为后处理：
+   - 后处理失败只记录日志，不把已经成功的业务同步显示为失败。
+   - 正在进行后台同步时，手动同步等待同一个同步结果，不再立刻返回“未配置/失败”。
+
+**教训**：
+- 对系统日历这类外部 Provider，主业务同步与本机集成后处理必须解耦。
+- UPDATE 主事件比 DELETE+INSERT 更可靠；对子表也应尽量 UPDATE/INSERT，DELETE 只能作为 best-effort。
+- `calendar_event_id`、通知 ID、平台权限状态等都属于本机状态，不能推进业务数据的同步时间戳。
 
 ---
 
@@ -175,7 +214,7 @@ FocusTimer 的 AI 助手主要做任务管理操作（增删改查），需要**
 
 ---
 
-*最后更新日期：2026-05-09*
+*最后更新日期：2026-06-10*
 
 ## 4. 任务删除 Bug：异常导致乐观 UI 更新被跳过
 
@@ -780,6 +819,33 @@ onPressed: () async {
 - 多设备开发中，对于被 SDK 严格锁定的 Transitive 依赖 (如 `meta`)，应找到能平衡各端限制的兼容版本（如 `flutter_timezone 4.1.1`）。
 
 *最后更新日期：2026-05-29*
+
+---
+
+## 24. AI 创建任务误判清单不存在
+
+### 24.1 问题现象
+- AI 创建任务时反复提示需要先创建任务清单。
+- 即使目标清单已经存在，AI 仍可能生成 `create_list` 操作。
+- 用户点击“全部批准”后，重复创建清单的校验失败会阻断后续 `create_task`，导致任务无法创建。
+
+### 24.2 根因分析
+1. AI 上下文直接读取当前 `taskProvider` 状态；如果清单仍在异步加载中，系统提示里的“任务清单”可能为空，模型会误判目标清单不存在。
+2. `create_list` 本地校验把“清单已存在”当作失败处理。AI 常会先生成 `create_list` 再生成 `create_task`，重复清单失败后会让批量批准提前终止。
+3. `create_task` 的 `listId` 虽然允许传清单名，但校验只按 ID 判断，容易把已存在的清单名当作不存在。
+
+### 24.3 修复方案
+1. 发送 AI 消息前，如果清单状态为空，先调用 `loadLists()`，确保提示词包含已有清单。
+2. 强化系统提示：目标清单已存在时必须直接使用清单 ID，不要调用 `create_list`；日期清单已存在时直接写入该清单 ID。
+3. 将 AI `create_list` 变成幂等操作：清单已存在时直接复用，不再阻断后续任务创建。
+4. `create_task` 和 `move_to_list` 统一通过 ID 或名称解析清单引用；创建任务时可直接指定目标清单，避免先创建到当前清单再移动。
+
+### 24.4 教训
+- AI 工具调用必须对模型的冗余步骤有容错，尤其是 `create_*` 这类容易重复生成的操作。
+- 提示词要给模型明确的“已有资源复用”规则，但本地执行层也必须兜底，不能依赖模型始终遵守。
+- 构造 AI 上下文前应确保关键状态已加载，否则空上下文会把正确数据变成错误推理。
+
+*最后更新日期：2026-06-12*
 
 ---
 

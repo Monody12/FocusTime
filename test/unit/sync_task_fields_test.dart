@@ -93,4 +93,27 @@ void main() {
 
     await AppDatabase.deleteTask(taskId);
   });
+
+  test('本机日历事件 ID 更新不会触发任务同步', () async {
+    final task = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '本机日历字段测试',
+    );
+    final taskId = task['id'] as String;
+    final originalUpdatedAt = task['updatedAt'] as int;
+
+    await AppDatabase.updateTaskCalendarEventId(taskId, 'android-event-local');
+
+    final updatedTask = await AppDatabase.getTaskById(taskId);
+    expect(updatedTask!['calendarEventId'], 'android-event-local');
+    expect(updatedTask['updatedAt'], originalUpdatedAt);
+
+    final payload = await AppDatabase.getSyncPayload(originalUpdatedAt);
+    expect(
+      payload['tasks']!.where((record) => record['id'] == taskId),
+      isEmpty,
+    );
+
+    await AppDatabase.deleteTask(taskId);
+  });
 }

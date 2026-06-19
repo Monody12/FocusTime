@@ -37,7 +37,8 @@ class AiMessage {
         conversationId: conversationId ?? this.conversationId,
         role: role ?? this.role,
         content: content ?? this.content,
-        toolCallsJson: clearToolCallsJson ? null : (toolCallsJson ?? this.toolCallsJson),
+        toolCallsJson:
+            clearToolCallsJson ? null : (toolCallsJson ?? this.toolCallsJson),
         operations: clearOperations ? null : (operations ?? this.operations),
         createdAt: createdAt ?? this.createdAt,
       );

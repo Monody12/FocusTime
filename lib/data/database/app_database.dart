@@ -775,16 +775,21 @@ class AppDatabase {
     if (updates.containsKey('listId')) mapped['list_id'] = updates['listId'];
     if (updates.containsKey('dueDate')) mapped['due_date'] = updates['dueDate'];
     if (updates.containsKey('dueTime')) mapped['due_time'] = updates['dueTime'];
-    if (updates.containsKey('sortOrder'))
+    if (updates.containsKey('sortOrder')) {
       mapped['sort_order'] = updates['sortOrder'];
-    if (updates.containsKey('isMyDay'))
+    }
+    if (updates.containsKey('isMyDay')) {
       mapped['is_my_day'] = updates['isMyDay'] ? 1 : 0;
-    if (updates.containsKey('myDayAddedAt'))
+    }
+    if (updates.containsKey('myDayAddedAt')) {
       mapped['my_day_added_at'] = updates['myDayAddedAt'];
-    if (updates.containsKey('completed'))
+    }
+    if (updates.containsKey('completed')) {
       mapped['completed'] = updates['completed'] ? 1 : 0;
-    if (updates.containsKey('completedAt'))
+    }
+    if (updates.containsKey('completedAt')) {
       mapped['completed_at'] = updates['completedAt'];
+    }
     if (updates.containsKey('recurrenceConfig')) {
       final config = updates['recurrenceConfig'];
       mapped['recurrence_config'] = config != null ? _encodeJson(config) : null;
@@ -814,6 +819,28 @@ class AppDatabase {
     await db.rawUpdate(
         'UPDATE tasks SET $sets WHERE id = ? AND deleted = 0 AND archived = 0',
         [...values, id]);
+  }
+
+  /// 仅更新本机系统集成状态，不推进 updated_at，避免触发云同步。
+  static Future<void> updateTaskCalendarEventId(
+      String id, String? calendarEventId) async {
+    final db = await database;
+    await db.update(
+      'tasks',
+      {'calendar_event_id': calendarEventId},
+      where: 'id = ? AND deleted = 0',
+      whereArgs: [id],
+    );
+  }
+
+  /// 清空所有本机日历事件引用；这些 ID 不跨设备同步。
+  static Future<void> clearTaskCalendarEventIds() async {
+    final db = await database;
+    await db.update(
+      'tasks',
+      {'calendar_event_id': null},
+      where: 'deleted = 0',
+    );
   }
 
   static Future<void> archiveTask(String id) async {
@@ -1141,7 +1168,7 @@ class AppDatabase {
         'task_recurrence_completions', lastSyncTime, _mapRecurrenceCompletion);
 
     // settings 特殊处理：排除同步配置相关的 key
-    final SYNC_KEYS = [
+    final syncKeys = [
       'syncServerUrl',
       'syncToken',
       'syncUserId',
@@ -1154,8 +1181,8 @@ class AppDatabase {
     ];
     final settingsRecords = await db.query('settings',
         where:
-            'updated_at > ? AND key NOT IN (${SYNC_KEYS.map((_) => '?').join(',')})',
-        whereArgs: [lastSyncTime, ...SYNC_KEYS]);
+            'updated_at > ? AND key NOT IN (${syncKeys.map((_) => '?').join(',')})',
+        whereArgs: [lastSyncTime, ...syncKeys]);
 
     payload['settings'] = settingsRecords
         .map((r) => {
@@ -1200,19 +1227,23 @@ class AppDatabase {
   static Future<void> applySyncChanges(Map<String, dynamic> tables) async {
     final db = await database;
     await db.transaction((txn) async {
-      if (tables['lists'] != null)
+      if (tables['lists'] != null) {
         await _applyTableChanges(txn, 'lists', tables['lists'], _unmapList);
-      if (tables['tasks'] != null)
+      }
+      if (tables['tasks'] != null) {
         await _applyTableChanges(txn, 'tasks', tables['tasks'], _unmapTask);
-      if (tables['sessions'] != null)
+      }
+      if (tables['sessions'] != null) {
         await _applyTableChanges(
             txn, 'sessions', tables['sessions'], _unmapSession);
+      }
       if (tables['task_recurrence_completions'] != null) {
         await _applyTableChanges(txn, 'task_recurrence_completions',
             tables['task_recurrence_completions'], _unmapRecurrenceCompletion);
       }
-      if (tables['settings'] != null)
+      if (tables['settings'] != null) {
         await _applySettingsChanges(txn, tables['settings']);
+      }
     });
   }
 

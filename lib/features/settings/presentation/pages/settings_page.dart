@@ -1187,7 +1187,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             controller: controller,
             keyboardType: TextInputType.number,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13),
+            style: const TextStyle(fontSize: 13),
             decoration: InputDecoration(
               isDense: true,
               contentPadding:
@@ -1393,7 +1393,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               : (onSubmitted != null
                   ? TextInputAction.go
                   : TextInputAction.done),
-          style: TextStyle(fontSize: 13),
+          style: const TextStyle(fontSize: 13),
           decoration: InputDecoration(
             hintText: hint,
             isDense: true,
@@ -1457,7 +1457,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         const SizedBox(height: 6),
         TextField(
           controller: controller,
-          style: TextStyle(fontSize: 13),
+          style: const TextStyle(fontSize: 13),
           decoration: InputDecoration(
             hintText: hint,
             isDense: true,

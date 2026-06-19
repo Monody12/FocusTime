@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
@@ -35,9 +36,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   String? _dueTime;
   bool _showRecurrencePicker = false;
   Map<String, dynamic>? _recurrenceConfig;
-  bool _todayCompleted = false;
   List<Map<String, dynamic>> _focusSessions = [];
   TaskItem? _cachedTask;
+  late final TaskNotifier _taskNotifier;
+  bool _confirmingExpectedMinutes = false;
 
   // FocusNode 用于监听焦点变化，实现鼠标离开自动保存
   late FocusNode _titleFocusNode;
@@ -53,6 +55,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     _expectedMinutesController = TextEditingController();
     _dueDateController = TextEditingController();
     _dueTimeController = TextEditingController();
+    _taskNotifier = ref.read(taskProvider.notifier);
     _titleFocusNode = FocusNode();
     _notesFocusNode = FocusNode();
     _expectedMinutesFocusNode = FocusNode();
@@ -96,6 +99,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   void _onExpectedMinutesFocusChange() {
     if (!_expectedMinutesFocusNode.hasFocus) {
+      if (_confirmingExpectedMinutes) return;
       _saveExpectedMinutes(widget.taskId);
     }
   }
@@ -117,32 +121,30 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   void _saveAllEdits() {
-    final taskState = ref.read(taskProvider);
-    final task =
-        taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    final task = _cachedTask;
     if (task == null) return;
 
     // Save title if changed
     if (_titleController.text.trim().isNotEmpty &&
         _titleController.text.trim() != task.title) {
-      ref
-          .read(taskProvider.notifier)
-          .updateTask(widget.taskId, {'title': _titleController.text.trim()});
+      _taskNotifier.updateTask(
+        widget.taskId,
+        {'title': _titleController.text.trim()},
+      );
     }
 
     // Save notes if changed
     if (_notesController.text.trim() != (task.notes ?? '')) {
-      ref
-          .read(taskProvider.notifier)
-          .updateTask(widget.taskId, {'notes': _notesController.text.trim()});
+      _taskNotifier.updateTask(
+        widget.taskId,
+        {'notes': _notesController.text.trim()},
+      );
     }
 
     // Save expected minutes if changed
     final mins = int.tryParse(_expectedMinutesController.text);
     if (mins != null && mins != task.expectedMinutes) {
-      ref
-          .read(taskProvider.notifier)
-          .updateTask(widget.taskId, {'expectedMinutes': mins});
+      _taskNotifier.updateTask(widget.taskId, {'expectedMinutes': mins});
     }
   }
 
@@ -192,19 +194,6 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         _recurrenceConfig = currentTask.recurrenceConfig;
       });
 
-      // Load recurrence completion
-      if (_recurrenceConfig != null) {
-        final today = AppTime.formatDate(AppTime.now());
-        final completions =
-            await AppDatabase.getRecurrenceCompletions(widget.taskId);
-        if (mounted) {
-          setState(() {
-            _todayCompleted =
-                completions.any((c) => c['completionDate'] == today);
-          });
-        }
-      }
-
       // Load focus sessions
       final sessions = await AppDatabase.getSessionsByTaskId(widget.taskId);
       if (mounted) {
@@ -219,10 +208,13 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   Widget build(BuildContext context) {
     final taskState = ref.watch(taskProvider);
     // 优先从当前 state.tasks 中获取最新数据，如果没有则使用缓存的数据
-    final task =
-        taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull ??
-            _cachedTask;
-    final taskNotifier = ref.read(taskProvider.notifier);
+    final latestTask =
+        taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    if (latestTask != null) {
+      _cachedTask = latestTask;
+    }
+    final task = latestTask ?? _cachedTask;
+    final taskNotifier = _taskNotifier;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (task == null) {
@@ -444,19 +436,29 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
                   // Expected minutes
                   _buildSectionLabel('预期时间（分钟）', isDark),
-                  TextField(
-                    controller: _expectedMinutesController,
-                    focusNode: _expectedMinutesFocusNode,
-                    decoration: InputDecoration(
-                      hintText: '预计需要的专注时间',
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(LogicalKeyboardKey.enter): () =>
+                          _confirmExpectedMinutes(task.id),
+                      const SingleActivator(LogicalKeyboardKey.numpadEnter):
+                          () => _confirmExpectedMinutes(task.id),
+                    },
+                    child: TextField(
+                      controller: _expectedMinutesController,
+                      focusNode: _expectedMinutesFocusNode,
+                      decoration: InputDecoration(
+                        hintText: '预计需要的专注时间',
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _confirmExpectedMinutes(task.id),
+                      onEditingComplete: () => _confirmExpectedMinutes(task.id),
                     ),
-                    keyboardType: TextInputType.number,
-                    onSubmitted: (_) => _saveExpectedMinutes(task.id),
-                    onEditingComplete: () => _saveExpectedMinutes(task.id),
                   ),
 
                   const SizedBox(height: 16),
@@ -687,22 +689,23 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     );
   }
 
-  void _showReminderPresets(TaskItem task) async {
+  Future<void> _showReminderPresets(TaskItem task) async {
     final hasAny = await ReminderService.hasAnyReminderPermission();
     if (!hasAny) {
       if (mounted) _showPermissionDialog();
       return;
     }
 
+    if (!mounted) return;
+    _openReminderPresets(task);
+  }
+
+  void _openReminderPresets(TaskItem task) {
     final now = AppTime.now();
-    // 捕获页面级的 context 和 Navigator，避免在异步操作或弹窗关闭后 context 失效
-    final pageContext = context;
     final taskNotifier = ref.read(taskProvider.notifier);
 
-    if (!mounted) return;
-
     showModalBottomSheet(
-      context: pageContext,
+      context: context,
       backgroundColor: context.appColors.background,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -769,26 +772,26 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
                 // 使用页面级的 context 弹出日期选择器
                 final date = await showDatePicker(
-                  context: pageContext,
+                  context: context,
                   initialDate: now,
                   firstDate: now,
                   lastDate: now.add(const Duration(days: 365)),
                 );
 
-                if (date != null && pageContext.mounted) {
-                  // 使用页面级的 context 弹出时间选择器
-                  final time = await showTimePicker(
-                    context: pageContext,
-                    initialTime: TimeOfDay.fromDateTime(
-                        now.add(const Duration(hours: 1))),
-                  );
+                if (!mounted || date == null) return;
 
-                  if (time != null) {
-                    final target = AppTime.create(date.year, date.month,
-                        date.day, time.hour, time.minute);
-                    taskNotifier.setReminder(task.id, target);
-                  }
-                }
+                // 使用页面级的 context 弹出时间选择器
+                final time = await showTimePicker(
+                  context: context,
+                  initialTime:
+                      TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+                );
+
+                if (!mounted || time == null) return;
+
+                final target = AppTime.create(
+                    date.year, date.month, date.day, time.hour, time.minute);
+                taskNotifier.setReminder(task.id, target);
               },
             ),
             const SizedBox(height: 16),
@@ -970,7 +973,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           // 使用 Expanded 包裹分钟数，确保其在中间占满空间
           Expanded(
             child: Text(
-              '${mins}分钟',
+              '$mins分钟',
               style: TextStyle(
                 fontSize: 12,
                 color: context.appColors.text,
@@ -1048,9 +1051,22 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   void _saveExpectedMinutes(String taskId) {
-    final mins = int.tryParse(_expectedMinutesController.text);
+    final rawValue = _expectedMinutesController.text.trim();
+    final mins = rawValue.isEmpty ? null : int.tryParse(rawValue);
+    final task =
+        ref.read(taskProvider).tasks.where((t) => t.id == taskId).firstOrNull;
+    if (task != null && task.expectedMinutes == mins) return;
     ref
         .read(taskProvider.notifier)
         .updateTask(taskId, {'expectedMinutes': mins});
+  }
+
+  void _confirmExpectedMinutes(String taskId) {
+    _confirmingExpectedMinutes = true;
+    _saveExpectedMinutes(taskId);
+    _expectedMinutesFocusNode.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _confirmingExpectedMinutes = false;
+    });
   }
 }

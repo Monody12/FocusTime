@@ -7,12 +7,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/features/calendar/services/android_calendar_plugin.dart';
 import 'package:focus_my_time/features/calendar/services/macos_calendar_plugin.dart';
 
 /// 系统日历同步服务
 class CalendarService {
   static final DeviceCalendarPlugin _deviceCalendarPlugin =
       DeviceCalendarPlugin();
+  static final AndroidCalendarPlugin _androidCalendarPlugin =
+      AndroidCalendarPlugin();
   static final MacOsCalendarPlugin _macOsCalendarPlugin = MacOsCalendarPlugin();
 
   static String? _calendarId;
@@ -75,15 +78,23 @@ class CalendarService {
   }
 
   static Future<Result<String>?> _createOrUpdateEvent(Event event) {
-    return Platform.isMacOS
-        ? _macOsCalendarPlugin.createOrUpdateEvent(event)
-        : _deviceCalendarPlugin.createOrUpdateEvent(event);
+    if (Platform.isMacOS) {
+      return _macOsCalendarPlugin.createOrUpdateEvent(event);
+    }
+    if (Platform.isAndroid) {
+      return _androidCalendarPlugin.createOrUpdateEvent(event);
+    }
+    return _deviceCalendarPlugin.createOrUpdateEvent(event);
   }
 
   static Future<Result<bool>> _deleteEvent(String? calendarId, String eventId) {
-    return Platform.isMacOS
-        ? _macOsCalendarPlugin.deleteEvent(calendarId, eventId)
-        : _deviceCalendarPlugin.deleteEvent(calendarId, eventId);
+    if (Platform.isMacOS) {
+      return _macOsCalendarPlugin.deleteEvent(calendarId, eventId);
+    }
+    if (Platform.isAndroid) {
+      return _androidCalendarPlugin.deleteEvent(calendarId, eventId);
+    }
+    return _deviceCalendarPlugin.deleteEvent(calendarId, eventId);
   }
 
   static Future<Result<bool>> _deleteCalendar(String calendarId) {
@@ -171,8 +182,8 @@ class CalendarService {
       return null;
     }
 
-    // 传入已有 eventId 让插件执行 UPDATE 而非 DELETE+INSERT，
-    // 避免 Android 14+ 上 deleteEvent 权限受限导致重复日程
+    // 传入已有 eventId 让 Android 原生桥接执行 UPDATE，避免
+    // device_calendar 先删除旧提醒再插入新提醒导致 Android 16 重复日程。
     final event = Event(
       _calendarId,
       eventId: task.calendarEventId,
@@ -227,8 +238,20 @@ class CalendarService {
 
   /// 从日历移除任务提醒
   static Future<void> removeTask(String eventId) async {
-    if (!(await _ensureCalendar())) return;
-    final result = await _deleteEvent(_calendarId, eventId);
+    try {
+      if (!(await _ensureCalendar())) return;
+    } catch (e) {
+      dev.log('[CalendarService] 移除事件前初始化日历失败: $e');
+      return;
+    }
+
+    late final Result<bool> result;
+    try {
+      result = await _deleteEvent(_calendarId, eventId);
+    } catch (e) {
+      dev.log('[CalendarService] 删除事件异常: $eventId, $e');
+      return;
+    }
     if (result.isSuccess) {
       dev.log('[CalendarService] 已从日历移除事件: $eventId');
       return;
@@ -282,11 +305,8 @@ class CalendarService {
     // 2. 重置内存状态
     _calendarId = null;
 
-    // 3. 强制清空数据库中所有任务的 eventID，同时更新 updated_at 触发同步
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final db = await AppDatabase.database;
-    await db.execute(
-        'UPDATE tasks SET calendar_event_id = NULL, updated_at = ?', [nowMs]);
+    // 3. 强制清空数据库中所有本机 eventID，不触发云同步
+    await AppDatabase.clearTaskCalendarEventIds();
 
     // 4. 重新初始化一个纯净的日历
     await _ensureCalendar();
@@ -299,7 +319,7 @@ class CalendarService {
             task.copyWith(calendarEventId: null, clearReminder: false);
         final eventId = await syncTask(newTask);
         if (eventId != null) {
-          await AppDatabase.updateTask(task.id, {'calendarEventId': eventId});
+          await AppDatabase.updateTaskCalendarEventId(task.id, eventId);
         }
       }
     }
