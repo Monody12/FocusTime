@@ -76,6 +76,7 @@ class AppIcons {
   static const IconData user = Icons.person;
   static const IconData visible = Icons.visibility;
   static const IconData hidden = Icons.visibility_off;
+  static const IconData warning = Icons.warning_amber_rounded;
   static const IconData emptyTasks = Icons.assignment_outlined;
 }
 

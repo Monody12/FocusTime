@@ -6,6 +6,24 @@ import 'package:focus_my_time/core/utils/app_time.dart';
 
 class AppDatabase {
   static Database? _database;
+  static const Map<String, String> _taskSyncFields = {
+    'listId': 'list_id',
+    'title': 'title',
+    'notes': 'notes',
+    'completed': 'completed',
+    'completedAt': 'completed_at',
+    'dueDate': 'due_date',
+    'dueTime': 'due_time',
+    'sortOrder': 'sort_order',
+    'isMyDay': 'is_my_day',
+    'myDayAddedAt': 'my_day_added_at',
+    'recurrenceConfig': 'recurrence_config',
+    'expectedMinutes': 'expected_minutes',
+    'isImportant': 'is_important',
+    'reminderAt': 'reminder_at',
+    'archived': 'archived',
+    'archivedAt': 'archived_at',
+  };
 
   static Future<Database> get database async {
     if (_database != null) return _database!;
@@ -94,7 +112,7 @@ class AppDatabase {
       // 以只读模式打开备份文件进行校验，不修改原始备份
       backupDb = await openDatabase(backupPath, readOnly: true);
       final version = await backupDb.getVersion();
-      if (version > 10) {
+      if (version > 11) {
         throw Exception('备份数据库版本过高: $version');
       }
 
@@ -129,7 +147,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -212,6 +230,8 @@ class AppDatabase {
         updated_at INTEGER NOT NULL DEFAULT 0
       )
     ''');
+
+    await _createSyncFieldVersionsTable(db);
 
     await db.execute('''
       CREATE TABLE ai_conversations (
@@ -399,6 +419,36 @@ class AppDatabase {
           'ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
       await db.execute('ALTER TABLE tasks ADD COLUMN archived_at INTEGER');
     }
+
+    if (oldVersion < 11) {
+      await _createSyncFieldVersionsTable(db);
+      await _backfillTaskFieldVersions(db);
+    }
+  }
+
+  static Future<void> _createSyncFieldVersionsTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_field_versions (
+        table_name TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        field_name TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (table_name, record_id, field_name)
+      )
+    ''');
+  }
+
+  static Future<void> _backfillTaskFieldVersions(DatabaseExecutor db) async {
+    final rows = await db.query('tasks', columns: ['id', 'updated_at']);
+    for (final row in rows) {
+      await _setFieldVersions(
+        db,
+        'tasks',
+        row['id'] as String,
+        _taskSyncFields.keys,
+        row['updated_at'] as int? ?? 0,
+      );
+    }
   }
 
   // ========== 设置 ==========
@@ -421,6 +471,72 @@ class AppDatabase {
           'updated_at': DateTime.now().millisecondsSinceEpoch
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  static Future<void> _setFieldVersions(
+    DatabaseExecutor db,
+    String tableName,
+    String recordId,
+    Iterable<String> fieldNames,
+    int updatedAt,
+  ) async {
+    final uniqueFields = fieldNames.toSet();
+    if (uniqueFields.isEmpty) return;
+
+    for (final fieldName in uniqueFields) {
+      await db.insert(
+        'sync_field_versions',
+        {
+          'table_name': tableName,
+          'record_id': recordId,
+          'field_name': fieldName,
+          'updated_at': updatedAt,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  static Future<Map<String, int>> _getFieldVersions(
+    DatabaseExecutor db,
+    String tableName,
+    String recordId,
+  ) async {
+    final rows = await db.query(
+      'sync_field_versions',
+      where: 'table_name = ? AND record_id = ?',
+      whereArgs: [tableName, recordId],
+    );
+    return {
+      for (final row in rows)
+        row['field_name'] as String: row['updated_at'] as int,
+    };
+  }
+
+  static Map<String, int> _taskFieldVersionsFromData(
+    Map<String, dynamic> data,
+    int fallbackUpdatedAt,
+  ) {
+    final rawVersions = data['_fieldUpdatedAt'];
+    if (rawVersions is Map) {
+      final versions = <String, int>{};
+      for (final entry in rawVersions.entries) {
+        final fieldName = entry.key.toString();
+        if (!_taskSyncFields.containsKey(fieldName)) continue;
+        final value = entry.value;
+        final parsed = value is int ? value : int.tryParse(value.toString());
+        versions[fieldName] = parsed ?? fallbackUpdatedAt;
+      }
+      for (final fieldName in _taskSyncFields.keys) {
+        versions.putIfAbsent(fieldName, () => fallbackUpdatedAt);
+      }
+      return versions;
+    }
+
+    return {
+      for (final fieldName in _taskSyncFields.keys)
+        fieldName: fallbackUpdatedAt,
+    };
   }
 
   // ========== 清单 ==========
@@ -681,6 +797,7 @@ class AppDatabase {
       'created_at': now,
       'updated_at': now,
     });
+    await _setFieldVersions(db, 'tasks', id, _taskSyncFields.keys, now);
 
     return {
       'id': id,
@@ -740,6 +857,7 @@ class AppDatabase {
     };
 
     await db.insert('tasks', dbInsertMap);
+    await _setFieldVersions(db, 'tasks', id, _taskSyncFields.keys, now);
 
     return {
       'id': id,
@@ -807,7 +925,8 @@ class AppDatabase {
       mapped['calendar_event_id'] = updates['calendarEventId'];
     }
 
-    mapped['updated_at'] = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    mapped['updated_at'] = now;
     mapped['id'] = id;
 
     final sets =
@@ -816,9 +935,14 @@ class AppDatabase {
         mapped.keys.where((k) => k != 'id').map((k) => mapped[k]).toList();
 
     // 仅更新未删除的任务，防止操作已被软删除的僵尸记录
-    await db.rawUpdate(
+    final updatedRows = await db.rawUpdate(
         'UPDATE tasks SET $sets WHERE id = ? AND deleted = 0 AND archived = 0',
         [...values, id]);
+    if (updatedRows > 0) {
+      final changedFields = updates.keys
+          .where((fieldName) => _taskSyncFields.containsKey(fieldName));
+      await _setFieldVersions(db, 'tasks', id, changedFields, now);
+    }
   }
 
   /// 仅更新本机系统集成状态，不推进 updated_at，避免触发云同步。
@@ -846,7 +970,7 @@ class AppDatabase {
   static Future<void> archiveTask(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.update(
+    final updatedRows = await db.update(
         'tasks',
         {
           'archived': 1,
@@ -855,12 +979,15 @@ class AppDatabase {
         },
         where: 'id = ? AND deleted = 0',
         whereArgs: [id]);
+    if (updatedRows > 0) {
+      await _setFieldVersions(db, 'tasks', id, ['archived', 'archivedAt'], now);
+    }
   }
 
   static Future<void> restoreTask(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.update(
+    final updatedRows = await db.update(
         'tasks',
         {
           'archived': 0,
@@ -869,6 +996,9 @@ class AppDatabase {
         },
         where: 'id = ? AND deleted = 0',
         whereArgs: [id]);
+    if (updatedRows > 0) {
+      await _setFieldVersions(db, 'tasks', id, ['archived', 'archivedAt'], now);
+    }
   }
 
   /// 软删除任务及其下的所有会话
@@ -895,7 +1025,7 @@ class AppDatabase {
     final newCompleted = currentCompleted == 1 ? 0 : 1;
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    await db.update(
+    final updatedRows = await db.update(
         'tasks',
         {
           'completed': newCompleted,
@@ -904,13 +1034,22 @@ class AppDatabase {
         },
         where: 'id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [id]);
+    if (updatedRows > 0) {
+      await _setFieldVersions(
+        db,
+        'tasks',
+        id,
+        ['completed', 'completedAt'],
+        now,
+      );
+    }
   }
 
   static Future<void> addToMyDay(String taskId) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     // 仅更新未删除的任务
-    await db.update(
+    final updatedRows = await db.update(
         'tasks',
         {
           'is_my_day': 1,
@@ -919,13 +1058,22 @@ class AppDatabase {
         },
         where: 'id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [taskId]);
+    if (updatedRows > 0) {
+      await _setFieldVersions(
+        db,
+        'tasks',
+        taskId,
+        ['isMyDay', 'myDayAddedAt'],
+        now,
+      );
+    }
   }
 
   static Future<void> removeFromMyDay(String taskId) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     // 仅更新未删除的任务
-    await db.update(
+    final updatedRows = await db.update(
         'tasks',
         {
           'is_my_day': 0,
@@ -934,6 +1082,15 @@ class AppDatabase {
         },
         where: 'id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [taskId]);
+    if (updatedRows > 0) {
+      await _setFieldVersions(
+        db,
+        'tasks',
+        taskId,
+        ['isMyDay', 'myDayAddedAt'],
+        now,
+      );
+    }
   }
 
   static Future<void> reorderTasks(List<String> taskIds) async {
@@ -946,6 +1103,9 @@ class AppDatabase {
           whereArgs: [taskIds[i]]);
     }
     await batch.commit(noResult: true);
+    for (final taskId in taskIds) {
+      await _setFieldVersions(db, 'tasks', taskId, ['sortOrder'], now);
+    }
   }
 
   static Future<void> reorderLists(List<String> listIds,
@@ -1173,6 +1333,7 @@ class AppDatabase {
       'syncToken',
       'syncUserId',
       'lastSyncTime',
+      'lastServerSyncCursor',
       'syncDir',
       'syncUsername',
       'syncFakePassword',
@@ -1206,21 +1367,29 @@ class AppDatabase {
     // 必须同时查询软删除记录（deleted = 1），否则删除操作无法跨设备同步
     final records = await db.query(table,
         where: 'updated_at > ? OR deleted = 1', whereArgs: [lastSyncTime]);
-    return records.map((r) {
+    final result = <Map<String, dynamic>>[];
+    for (final r in records) {
       final mapped = mapper(r);
       // 系统日历事件 ID 是本机外部集成状态，不能跨设备同步。
       // Windows/macOS/Android 的日历事件 ID 不通用，远端覆盖会导致 Android
       // 失去本机旧事件引用，下一次刷新时新建事件并留下旧提醒。
       if (table == 'tasks') {
+        final fieldVersions =
+            await _getFieldVersions(db, 'tasks', r['id'] as String);
+        mapped['_fieldUpdatedAt'] = {
+          for (final fieldName in _taskSyncFields.keys)
+            fieldName: fieldVersions[fieldName] ?? r['updated_at'],
+        };
         mapped.remove('calendarEventId');
       }
-      return {
+      result.add({
         'id': r['id'],
         'updatedAt': r['updated_at'],
         'deleted': (r['deleted'] as int) == 1,
         'data': mapped,
-      };
-    }).toList();
+      });
+    }
+    return result;
   }
 
   /// 应用从服务器下载的同步变更
@@ -1255,8 +1424,18 @@ class AppDatabase {
     if (records is! List) return;
     for (final item in records) {
       final id = item['id'] as String;
+      if (table == 'tasks') {
+        await _applyTaskChange(txn, item);
+        continue;
+      }
       if (item['deleted'] == true) {
-        // 服务器端已删除，本地硬删除
+        final localRows = await txn.query(table,
+            where: 'id = ?', whereArgs: [id], columns: ['updated_at']);
+        final localUpdatedAt = localRows.isEmpty
+            ? 0
+            : (localRows.first['updated_at'] as int? ?? 0);
+        final serverUpdatedAt = item['updatedAt'] as int? ?? 0;
+        if (localUpdatedAt > serverUpdatedAt) continue;
         await txn.delete(table, where: 'id = ?', whereArgs: [id]);
       } else {
         // 服务器端未删除：检查本地是否已有更新的删除记录，防止复活
@@ -1278,20 +1457,124 @@ class AppDatabase {
         final row = unmapper(data);
         row['updated_at'] = item['updatedAt'];
         row['deleted'] = 0;
-        if (table == 'tasks') {
-          final localTaskRows = await txn.query(
-            table,
-            where: 'id = ?',
-            whereArgs: [id],
-            columns: ['calendar_event_id'],
-          );
-          row['calendar_event_id'] = localTaskRows.isNotEmpty
-              ? localTaskRows.first['calendar_event_id']
-              : null;
-        }
         await txn.insert(table, row,
             conflictAlgorithm: ConflictAlgorithm.replace);
       }
+    }
+  }
+
+  static Future<void> _applyTaskChange(Transaction txn, dynamic item) async {
+    final id = item['id'] as String;
+    final remoteUpdatedAt = item['updatedAt'] as int? ?? 0;
+
+    final localRows =
+        await txn.query('tasks', where: 'id = ?', whereArgs: [id]);
+    if (item['deleted'] == true) {
+      final localUpdatedAt =
+          localRows.isEmpty ? 0 : (localRows.first['updated_at'] as int? ?? 0);
+      if (localUpdatedAt > remoteUpdatedAt) return;
+      await txn.delete('tasks', where: 'id = ?', whereArgs: [id]);
+      await txn.delete(
+        'sync_field_versions',
+        where: 'table_name = ? AND record_id = ?',
+        whereArgs: ['tasks', id],
+      );
+      return;
+    }
+
+    final data = Map<String, dynamic>.from(item['data'] as Map);
+    final remoteVersions = _taskFieldVersionsFromData(data, remoteUpdatedAt);
+    final mergedData = Map<String, dynamic>.from(data);
+    final mergedVersions = Map<String, int>.from(remoteVersions);
+
+    if (localRows.isNotEmpty) {
+      final localRow = localRows.first;
+      final localDeleted = (localRow['deleted'] as int? ?? 0) == 1;
+      final localUpdatedAt = localRow['updated_at'] as int? ?? 0;
+      if (localDeleted && localUpdatedAt >= remoteUpdatedAt) return;
+
+      final localVersions = await _getFieldVersions(txn, 'tasks', id);
+      for (final fieldName in _taskSyncFields.keys) {
+        final localFieldVersion = localVersions[fieldName] ?? localUpdatedAt;
+        final remoteFieldVersion = remoteVersions[fieldName] ?? remoteUpdatedAt;
+        if (localFieldVersion > remoteFieldVersion) {
+          mergedData[fieldName] = _taskFieldValueFromRow(localRow, fieldName);
+          mergedVersions[fieldName] = localFieldVersion;
+        }
+      }
+    }
+
+    final row = _unmapTask(mergedData);
+    row['updated_at'] = [
+      remoteUpdatedAt,
+      ...mergedVersions.values,
+    ].reduce((a, b) => a > b ? a : b);
+    row['deleted'] = 0;
+
+    final localCalendarEventId =
+        localRows.isNotEmpty ? localRows.first['calendar_event_id'] : null;
+    row['calendar_event_id'] = localCalendarEventId;
+
+    await txn.insert(
+      'tasks',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    for (final entry in mergedVersions.entries) {
+      await txn.insert(
+        'sync_field_versions',
+        {
+          'table_name': 'tasks',
+          'record_id': id,
+          'field_name': entry.key,
+          'updated_at': entry.value,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+  }
+
+  static dynamic _taskFieldValueFromRow(
+    Map<String, dynamic> row,
+    String fieldName,
+  ) {
+    switch (fieldName) {
+      case 'listId':
+        return row['list_id'];
+      case 'title':
+        return row['title'];
+      case 'notes':
+        return row['notes'];
+      case 'completed':
+        return (row['completed'] as int? ?? 0) == 1;
+      case 'completedAt':
+        return row['completed_at'];
+      case 'dueDate':
+        return row['due_date'];
+      case 'dueTime':
+        return row['due_time'];
+      case 'sortOrder':
+        return row['sort_order'];
+      case 'isMyDay':
+        return (row['is_my_day'] as int? ?? 0) == 1;
+      case 'myDayAddedAt':
+        return row['my_day_added_at'];
+      case 'recurrenceConfig':
+        return row['recurrence_config'] != null
+            ? _decodeJson(row['recurrence_config'] as String)
+            : null;
+      case 'expectedMinutes':
+        return row['expected_minutes'];
+      case 'isImportant':
+        return (row['is_important'] as int? ?? 0) == 1;
+      case 'reminderAt':
+        return row['reminder_at'];
+      case 'archived':
+        return (row['archived'] as int? ?? 0) == 1;
+      case 'archivedAt':
+        return row['archived_at'];
+      default:
+        return null;
     }
   }
 
@@ -1303,10 +1586,12 @@ class AppDatabase {
       'syncToken',
       'syncUserId',
       'lastSyncTime',
+      'lastServerSyncCursor',
       'syncDir',
       'syncUsername',
       'syncFakePassword',
       'syncRealPassword',
+      'deepseekApiKey',
     };
     for (final item in records) {
       final data = item['data'] as Map<String, dynamic>;

@@ -202,6 +202,34 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                         ),
                       ),
                       const Spacer(),
+                      ValueListenableBuilder<String>(
+                        valueListenable: SyncService.syncWarningListenable,
+                        builder: (context, warning, _) {
+                          if (warning.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: TextButton.icon(
+                              onPressed: () =>
+                                  setState(() => _showSettings = true),
+                              icon: const Icon(
+                                AppIcons.warning,
+                                size: AppIconSizes.nav,
+                              ),
+                              label: isMobile
+                                  ? const SizedBox.shrink()
+                                  : const Text('同步需登录'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: context.appColors.warning,
+                                minimumSize: Size.zero,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                       // Theme toggle
                       IconButton(
                         icon: Icon(
@@ -466,45 +494,67 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
           if (didPop) return;
           _handleSystemBack(isMobile);
         },
-        child: CallbackShortcuts(
-          bindings: {
-            const SingleActivator(LogicalKeyboardKey.keyT, control: true): () {
-              if (taskState.selectedTaskId != null) {
-                final taskNotifier = ref.read(taskProvider.notifier);
-                final task = taskState.tasks
-                    .where((t) => t.id == taskState.selectedTaskId)
-                    .firstOrNull;
-                if (task != null) {
-                  if (task.isMyDay) {
-                    taskNotifier.removeFromMyDay(task.id);
-                  } else {
-                    taskNotifier.addToMyDay(task.id);
+        child: Focus(
+          autofocus: true,
+          onKeyEvent: (node, event) => _handleDeleteShortcut(event),
+          child: CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.keyT, control: true):
+                  () {
+                if (taskState.selectedTaskId != null) {
+                  final taskNotifier = ref.read(taskProvider.notifier);
+                  final task = taskState.tasks
+                      .where((t) => t.id == taskState.selectedTaskId)
+                      .firstOrNull;
+                  if (task != null) {
+                    if (task.isMyDay) {
+                      taskNotifier.removeFromMyDay(task.id);
+                    } else {
+                      taskNotifier.addToMyDay(task.id);
+                    }
                   }
                 }
-              }
-            },
-            const SingleActivator(LogicalKeyboardKey.keyD, control: true): () {
-              if (taskState.selectedTaskId != null) {
-                ref
-                    .read(taskProvider.notifier)
-                    .toggleTaskComplete(taskState.selectedTaskId!);
-              }
-            },
-            const SingleActivator(LogicalKeyboardKey.delete): () {
-              if (taskState.selectedTaskId != null) {
-                final task = taskState.tasks
-                    .where((t) => t.id == taskState.selectedTaskId)
-                    .firstOrNull;
-                if (task != null) {
-                  _confirmDeleteTask(context, task);
+              },
+              const SingleActivator(LogicalKeyboardKey.keyD, control: true):
+                  () {
+                if (taskState.selectedTaskId != null) {
+                  ref
+                      .read(taskProvider.notifier)
+                      .toggleTaskComplete(taskState.selectedTaskId!);
                 }
-              }
+              },
             },
-          },
-          child: mainContent,
+            child: mainContent,
+          ),
         ),
       ),
     );
+  }
+
+  KeyEventResult _handleDeleteShortcut(KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.delete ||
+        _isTextInputFocused()) {
+      return KeyEventResult.ignored;
+    }
+
+    final taskState = ref.read(taskProvider);
+    final selectedTaskId = taskState.selectedTaskId;
+    if (selectedTaskId == null) return KeyEventResult.ignored;
+
+    final task =
+        taskState.tasks.where((t) => t.id == selectedTaskId).firstOrNull;
+    if (task == null) return KeyEventResult.ignored;
+
+    _confirmDeleteTask(context, task);
+    return KeyEventResult.handled;
+  }
+
+  bool _isTextInputFocused() {
+    final focusedContext = FocusManager.instance.primaryFocus?.context;
+    if (focusedContext == null) return false;
+    return focusedContext.widget is EditableText ||
+        focusedContext.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 
   Future<bool> _handleSystemBack(bool isMobile) async {

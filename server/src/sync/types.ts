@@ -30,6 +30,7 @@ export interface UserRecord {
   record_id: string
   data_json: string
   updated_at: number
+  server_updated_at?: number
   deleted: number
 }
 

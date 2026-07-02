@@ -91,8 +91,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _syncPasswordController =
         TextEditingController(text: SyncService.fakePassword);
     _isLoggedIn = SyncService.isLoggedIn;
+    _syncStatus = SyncService.syncWarning;
     _lastSyncTime =
         SyncService.lastSyncTime > 0 ? SyncService.lastSyncTime : null;
+    SyncService.syncWarningListenable.addListener(_handleSyncWarningChanged);
 
     _syncUrlFocusNode = FocusNode();
     _syncUsernameFocusNode = FocusNode();
@@ -174,6 +176,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _syncServerUrlController.dispose();
     _syncUsernameController.dispose();
     _syncPasswordController.dispose();
+    SyncService.syncWarningListenable.removeListener(_handleSyncWarningChanged);
     // 释放登录表单 FocusNode
     _syncUrlFocusNode.dispose();
     _syncUsernameFocusNode.dispose();
@@ -182,6 +185,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _syncLoginFocusNode.dispose();
     _syncLogoutFocusNode.dispose();
     super.dispose();
+  }
+
+  void _handleSyncWarningChanged() {
+    if (!mounted) return;
+    final warning = SyncService.syncWarning;
+    setState(() {
+      _isLoggedIn = SyncService.isLoggedIn;
+      if (warning.isNotEmpty) {
+        _syncStatus = warning;
+      }
+      if (_syncUsernameController.text.isEmpty &&
+          SyncService.username.isNotEmpty) {
+        _syncUsernameController.text = SyncService.username;
+      }
+      if (_syncPasswordController.text.isEmpty &&
+          SyncService.fakePassword.isNotEmpty) {
+        _syncPasswordController.text = SyncService.fakePassword;
+      }
+    });
   }
 
   @override
@@ -629,6 +651,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   // Cloud Sync Section
                   _buildSectionTitle('☁ 同步服务器', isDark),
                   const SizedBox(height: 12),
+                  if (SyncService.syncWarning.isNotEmpty) ...[
+                    _buildSyncWarningBanner(SyncService.syncWarning),
+                    const SizedBox(height: 12),
+                  ],
                   // 使用 FocusTraversalGroup 隔离整个同步区域的焦点
                   FocusTraversalGroup(
                     child: Column(
@@ -1354,6 +1380,38 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  Widget _buildSyncWarningBanner(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: context.appColors.warning.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: context.appColors.warning.withOpacity(0.6)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppIcon(
+            AppIcons.warning,
+            size: AppIconSizes.compact,
+            color: context.appColors.warning,
+          ),
+          const SizedBox(width: AppIconSpacing.compactGap),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12,
+                color: context.appColors.text,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildTextSetting({
     required String label,
     required TextEditingController controller,
@@ -1670,22 +1728,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final result = await taskNotifier.sync();
 
       if (result.tokenExpired) {
+        final warning = SyncService.syncWarning.isNotEmpty
+            ? SyncService.syncWarning
+            : '登录已过期，请重新登录';
         setState(() {
-          _isLoggedIn = false;
-          _syncStatus = '登录已过期，请重新登录';
+          _isLoggedIn = SyncService.isLoggedIn;
+          _syncStatus = warning;
         });
-        _showSnackBar('登录已过期，请重新登录', isError: true);
+        _showSnackBar(warning, isError: true);
       } else if (result.success) {
         final lastSync = SyncService.lastSyncTime;
         setState(() {
+          _isLoggedIn = SyncService.isLoggedIn;
           _lastSyncTime = lastSync > 0 ? lastSync : null;
           _syncStatus = '同步完成';
         });
       } else {
-        setState(() => _syncStatus = '同步失败或未配置');
+        setState(() => _syncStatus = SyncService.lastSyncError ?? '同步失败或未配置');
+        _showSnackBar(_syncStatus, isError: true);
       }
     } catch (e) {
-      setState(() => _syncStatus = '同步失败');
+      setState(() => _syncStatus = '同步失败: $e');
+      _showSnackBar(_syncStatus, isError: true);
     }
 
     setState(() => _isSyncing = false);
@@ -1850,7 +1914,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   void _clearStatusAfterDelay([int milliseconds = 3000]) {
     Future.delayed(Duration(milliseconds: milliseconds), () {
-      if (mounted) setState(() => _syncStatus = '');
+      if (!mounted || SyncService.syncWarning.isNotEmpty) return;
+      setState(() => _syncStatus = '');
     });
   }
 }

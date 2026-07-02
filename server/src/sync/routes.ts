@@ -1,6 +1,12 @@
 import { Router, Response } from 'express'
 import { AuthRequest, authMiddleware } from '../auth/middleware'
-import { applyClientRecords, getServerChanges, logSync, resetUserData } from './algorithm'
+import {
+  applyClientRecords,
+  getCurrentServerCursor,
+  getServerChanges,
+  logSync,
+  resetUserData
+} from './algorithm'
 import { TableName, ALL_TABLES, SyncTables } from './types'
 
 const router = Router()
@@ -42,9 +48,10 @@ router.post('/', (req: AuthRequest, res: Response) => {
       }
     }
 
-    // Get changes from server
+    // Get changes from server using the server-side change cursor. Client
+    // edit timestamps are still used inside each record for conflict handling.
     const serverChanges = getServerChanges(userId, lastSyncTime)
-    const serverLastSync = Date.now()
+    const serverLastSync = getCurrentServerCursor()
 
     // Build response
     const responseTables: SyncTables = {} as SyncTables

@@ -31,6 +31,7 @@ export function initDatabase(): void {
       record_id TEXT NOT NULL,
       data_json TEXT NOT NULL,
       updated_at INTEGER NOT NULL,
+      server_updated_at INTEGER NOT NULL DEFAULT 0,
       deleted INTEGER NOT NULL DEFAULT 0,
       UNIQUE(user_id, table_name, record_id),
       FOREIGN KEY (user_id) REFERENCES users(id)
@@ -38,7 +39,26 @@ export function initDatabase(): void {
 
     CREATE INDEX IF NOT EXISTS idx_sync_user_table ON sync_records(user_id, table_name);
     CREATE INDEX IF NOT EXISTS idx_sync_updated ON sync_records(user_id, updated_at);
+
+    CREATE TABLE IF NOT EXISTS sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      sync_time INTEGER NOT NULL,
+      client_last_sync INTEGER NOT NULL,
+      records_sent INTEGER NOT NULL,
+      records_received INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sync_log_user_time ON sync_log(user_id, sync_time);
   `)
+
+  const columns = db.prepare('PRAGMA table_info(sync_records)').all() as Array<{ name: string }>
+  if (!columns.some((column) => column.name === 'server_updated_at')) {
+    db.exec('ALTER TABLE sync_records ADD COLUMN server_updated_at INTEGER NOT NULL DEFAULT 0')
+    db.exec('UPDATE sync_records SET server_updated_at = updated_at WHERE server_updated_at = 0')
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_sync_server_updated ON sync_records(user_id, server_updated_at)')
 }
 
 export function getDatabase(): Database.Database {

@@ -54,6 +54,13 @@ void main() {
     expect(data['archived'], false);
     expect(data['archivedAt'], isNull);
     expect(data['deleted'], false);
+    expect(data['_fieldUpdatedAt'], isA<Map>());
+    final fieldUpdatedAt = Map<String, dynamic>.from(
+      data['_fieldUpdatedAt'] as Map,
+    );
+    expect(fieldUpdatedAt['title'], isA<int>());
+    expect(fieldUpdatedAt['notes'], isA<int>());
+    expect(fieldUpdatedAt['reminderAt'], isA<int>());
 
     await AppDatabase.applySyncChanges({
       'tasks': [
@@ -94,6 +101,60 @@ void main() {
     await AppDatabase.deleteTask(taskId);
   });
 
+  test('任务字段级合并会保留本机较新的字段并套用远端较新的字段', () async {
+    final task = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '原始标题',
+      notes: '原始备注',
+    );
+    final taskId = task['id'] as String;
+
+    final basePayload = await AppDatabase.getSyncPayload(0);
+    final baseRecord = basePayload['tasks']!.firstWhere(
+      (record) => record['id'] == taskId,
+    );
+    final baseData =
+        Map<String, dynamic>.from(baseRecord['data'] as Map<String, dynamic>);
+    final baseFieldUpdatedAt = Map<String, dynamic>.from(
+      baseData['_fieldUpdatedAt'] as Map,
+    );
+
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await AppDatabase.updateTask(taskId, {'title': '本机新标题'});
+    await AppDatabase.updateTaskCalendarEventId(taskId, 'local-calendar-id');
+    final localTask = await AppDatabase.getTaskById(taskId);
+    final localTitleUpdatedAt = localTask!['updatedAt'] as int;
+    final remoteNotesUpdatedAt = localTitleUpdatedAt + 10;
+
+    await AppDatabase.applySyncChanges({
+      'tasks': [
+        {
+          'id': taskId,
+          'updatedAt': remoteNotesUpdatedAt,
+          'deleted': false,
+          'data': {
+            ...baseData,
+            'title': '远端旧标题',
+            'notes': '远端新备注',
+            'updatedAt': remoteNotesUpdatedAt,
+            '_fieldUpdatedAt': {
+              ...baseFieldUpdatedAt,
+              'title': baseFieldUpdatedAt['title'],
+              'notes': remoteNotesUpdatedAt,
+            },
+          },
+        }
+      ],
+    });
+
+    final mergedTask = await AppDatabase.getTaskById(taskId);
+    expect(mergedTask!['title'], '本机新标题');
+    expect(mergedTask['notes'], '远端新备注');
+    expect(mergedTask['calendarEventId'], 'local-calendar-id');
+
+    await AppDatabase.deleteTask(taskId);
+  });
+
   test('本机日历事件 ID 更新不会触发任务同步', () async {
     final task = await AppDatabase.createTask(
       listId: 'system-all-tasks',
@@ -115,5 +176,32 @@ void main() {
     );
 
     await AppDatabase.deleteTask(taskId);
+  });
+
+  test('本机同步凭据和服务端游标不会进入 settings 同步负载', () async {
+    await AppDatabase.setSetting('syncToken', 'local-token');
+    await AppDatabase.setSetting('syncUserId', 'local-user');
+    await AppDatabase.setSetting('syncUsername', 'alice');
+    await AppDatabase.setSetting('syncFakePassword', '••••••••');
+    await AppDatabase.setSetting('syncRealPassword', 'encrypted-password');
+    await AppDatabase.setSetting('lastSyncTime', '123');
+    await AppDatabase.setSetting('lastServerSyncCursor', '456');
+    await AppDatabase.setSetting('deepseekApiKey', 'local-ai-key');
+    await AppDatabase.setSetting('themeScheme', 'twilight');
+
+    final payload = await AppDatabase.getSyncPayload(0);
+    final settingKeys = payload['settings']!
+        .map((record) => (record['data'] as Map<String, dynamic>)['key'])
+        .toSet();
+
+    expect(settingKeys, contains('themeScheme'));
+    expect(settingKeys, isNot(contains('syncToken')));
+    expect(settingKeys, isNot(contains('syncUserId')));
+    expect(settingKeys, isNot(contains('syncUsername')));
+    expect(settingKeys, isNot(contains('syncFakePassword')));
+    expect(settingKeys, isNot(contains('syncRealPassword')));
+    expect(settingKeys, isNot(contains('lastSyncTime')));
+    expect(settingKeys, isNot(contains('lastServerSyncCursor')));
+    expect(settingKeys, isNot(contains('deepseekApiKey')));
   });
 }

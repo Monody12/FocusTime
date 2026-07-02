@@ -32,6 +32,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   late TextEditingController _expectedMinutesController;
   late TextEditingController _dueDateController;
   late TextEditingController _dueTimeController;
+  late UndoHistoryController _titleUndoController;
+  late UndoHistoryController _notesUndoController;
   String? _dueDate;
   String? _dueTime;
   bool _showRecurrencePicker = false;
@@ -40,6 +42,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   TaskItem? _cachedTask;
   late final TaskNotifier _taskNotifier;
   bool _confirmingExpectedMinutes = false;
+  bool _confirmingTitle = false;
 
   // FocusNode 用于监听焦点变化，实现鼠标离开自动保存
   late FocusNode _titleFocusNode;
@@ -55,6 +58,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     _expectedMinutesController = TextEditingController();
     _dueDateController = TextEditingController();
     _dueTimeController = TextEditingController();
+    _titleUndoController = UndoHistoryController();
+    _notesUndoController = UndoHistoryController();
     _taskNotifier = ref.read(taskProvider.notifier);
     _titleFocusNode = FocusNode();
     _notesFocusNode = FocusNode();
@@ -68,7 +73,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   @override
   void dispose() {
-    _saveAllEdits();
+    _saveAllEdits(taskId: widget.taskId, showUndo: false);
     WidgetsBinding.instance.removeObserver(this);
     _titleFocusNode.removeListener(_onTitleFocusChange);
     _notesFocusNode.removeListener(_onNotesFocusChange);
@@ -78,6 +83,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     _expectedMinutesFocusNode.dispose();
     _titleController.dispose();
     _notesController.dispose();
+    _titleUndoController.dispose();
+    _notesUndoController.dispose();
     _expectedMinutesController.dispose();
     _dueDateController.dispose();
     _dueTimeController.dispose();
@@ -87,6 +94,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   // 标题输入框焦点变化时自动保存
   void _onTitleFocusChange() {
     if (!_titleFocusNode.hasFocus) {
+      if (_confirmingTitle) return;
       _saveTitle(widget.taskId);
     }
   }
@@ -108,7 +116,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
-      _saveAllEdits();
+      _saveAllEdits(taskId: widget.taskId, showUndo: false);
     }
   }
 
@@ -116,11 +124,15 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   void didUpdateWidget(TaskDetailPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.taskId != widget.taskId) {
+      _saveAllEdits(taskId: oldWidget.taskId);
       _loadTaskData();
     }
   }
 
-  void _saveAllEdits() {
+  void _saveAllEdits({
+    required String taskId,
+    bool showUndo = true,
+  }) {
     final task = _cachedTask;
     if (task == null) return;
 
@@ -128,23 +140,35 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     if (_titleController.text.trim().isNotEmpty &&
         _titleController.text.trim() != task.title) {
       _taskNotifier.updateTask(
-        widget.taskId,
+        taskId,
         {'title': _titleController.text.trim()},
       );
+      if (showUndo) {
+        _showUndoSnackBar(
+          message: '任务标题已保存',
+          onUndo: () => _restoreTaskTitle(taskId, task.title),
+        );
+      }
     }
 
     // Save notes if changed
     if (_notesController.text.trim() != (task.notes ?? '')) {
       _taskNotifier.updateTask(
-        widget.taskId,
+        taskId,
         {'notes': _notesController.text.trim()},
       );
+      if (showUndo) {
+        _showUndoSnackBar(
+          message: '任务备注已保存',
+          onUndo: () => _restoreTaskNotes(taskId, task.notes),
+        );
+      }
     }
 
     // Save expected minutes if changed
     final mins = int.tryParse(_expectedMinutesController.text);
     if (mins != null && mins != task.expectedMinutes) {
-      _taskNotifier.updateTask(widget.taskId, {'expectedMinutes': mins});
+      _taskNotifier.updateTask(taskId, {'expectedMinutes': mins});
     }
   }
 
@@ -181,10 +205,19 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
     if (task != null && mounted) {
       final currentTask = task;
+      final oldTitleController = _titleController;
+      final oldNotesController = _notesController;
+      final oldTitleUndoController = _titleUndoController;
+      final oldNotesUndoController = _notesUndoController;
+      final newTitleController = TextEditingController(text: currentTask.title);
+      final newNotesController =
+          TextEditingController(text: currentTask.notes ?? '');
       setState(() {
         _cachedTask = currentTask;
-        _titleController.text = currentTask.title;
-        _notesController.text = currentTask.notes ?? '';
+        _titleController = newTitleController;
+        _notesController = newNotesController;
+        _titleUndoController = UndoHistoryController();
+        _notesUndoController = UndoHistoryController();
         _expectedMinutesController.text =
             currentTask.expectedMinutes?.toString() ?? '';
         _dueDate = currentTask.dueDate;
@@ -192,6 +225,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         _dueDateController.text = currentTask.dueDate ?? '';
         _dueTimeController.text = currentTask.dueTime ?? '';
         _recurrenceConfig = currentTask.recurrenceConfig;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        oldTitleController.dispose();
+        oldNotesController.dispose();
+        oldTitleUndoController.dispose();
+        oldNotesUndoController.dispose();
       });
 
       // Load focus sessions
@@ -305,6 +344,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                         child: TextField(
                           controller: _titleController,
                           focusNode: _titleFocusNode,
+                          undoController: _titleUndoController,
                           decoration: InputDecoration(
                             border: InputBorder.none,
                             enabledBorder: UnderlineInputBorder(
@@ -332,8 +372,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                                 ? (context.appColors.textSecondary)
                                 : (context.appColors.text),
                           ),
-                          maxLines: null,
-                          onSubmitted: (_) => _saveTitle(task.id),
+                          maxLines: 1,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _confirmTitle(task.id),
                         ),
                       ),
                     ],
@@ -468,6 +509,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   TextField(
                     controller: _notesController,
                     focusNode: _notesFocusNode,
+                    undoController: _notesUndoController,
                     decoration: InputDecoration(
                       hintText: '添加备注...',
                       isDense: true,
@@ -767,15 +809,31 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               icon: AppIcons.calendar,
               label: '选择日期和时间',
               onTap: () async {
+                final reminderBase = task.reminderAt != null
+                    ? AppTime.fromMillisecondsSinceEpoch(task.reminderAt!)
+                    : now.add(const Duration(hours: 1));
+                final today = AppTime.create(now.year, now.month, now.day);
+                final initialDate = AppTime.create(
+                  reminderBase.year,
+                  reminderBase.month,
+                  reminderBase.day,
+                );
+                final firstDate =
+                    initialDate.isBefore(today) ? initialDate : today;
+                final defaultLastDate = now.add(const Duration(days: 365));
+                final lastDate = initialDate.isAfter(defaultLastDate)
+                    ? initialDate
+                    : defaultLastDate;
+
                 // 先关闭底部菜单
                 Navigator.pop(sheetContext);
 
                 // 使用页面级的 context 弹出日期选择器
                 final date = await showDatePicker(
                   context: context,
-                  initialDate: now,
-                  firstDate: now,
-                  lastDate: now.add(const Duration(days: 365)),
+                  initialDate: initialDate,
+                  firstDate: firstDate,
+                  lastDate: lastDate,
                 );
 
                 if (!mounted || date == null) return;
@@ -783,8 +841,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                 // 使用页面级的 context 弹出时间选择器
                 final time = await showTimePicker(
                   context: context,
-                  initialTime:
-                      TimeOfDay.fromDateTime(now.add(const Duration(hours: 1))),
+                  initialTime: TimeOfDay.fromDateTime(reminderBase),
                 );
 
                 if (!mounted || time == null) return;
@@ -1036,18 +1093,137 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     }
   }
 
-  void _saveTitle(String taskId) {
-    if (_titleController.text.trim().isNotEmpty) {
-      ref
-          .read(taskProvider.notifier)
-          .updateTask(taskId, {'title': _titleController.text.trim()});
+  TaskItem? _taskSnapshot(String taskId) {
+    final cachedTask = _cachedTask;
+    if (cachedTask != null && cachedTask.id == taskId) return cachedTask;
+    return ref
+        .read(taskProvider)
+        .tasks
+        .where((t) => t.id == taskId)
+        .firstOrNull;
+  }
+
+  Future<void> _saveTitle(String taskId, {bool showUndo = true}) async {
+    final newTitle = _titleController.text.trim();
+    if (newTitle.isEmpty) return;
+
+    final task = _taskSnapshot(taskId);
+    final previousTitle = task?.title;
+    if (previousTitle == newTitle) return;
+
+    await ref.read(taskProvider.notifier).updateTask(taskId, {
+      'title': newTitle,
+    });
+
+    if (_cachedTask?.id == taskId) {
+      _cachedTask = _cachedTask!.copyWith(title: newTitle);
+    }
+
+    if (showUndo && previousTitle != null && mounted) {
+      _showUndoSnackBar(
+        message: '任务标题已保存',
+        onUndo: () => _restoreTaskTitle(taskId, previousTitle),
+      );
     }
   }
 
-  void _saveNotes(String taskId) {
-    ref
-        .read(taskProvider.notifier)
-        .updateTask(taskId, {'notes': _notesController.text.trim()});
+  void _confirmTitle(String taskId) {
+    _confirmingTitle = true;
+    _saveTitle(taskId);
+    _titleFocusNode.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _confirmingTitle = false;
+    });
+  }
+
+  Future<void> _saveNotes(String taskId, {bool showUndo = true}) async {
+    final newNotes = _notesController.text.trim();
+    final task = _taskSnapshot(taskId);
+    final previousNotes = task?.notes;
+    if (newNotes == (previousNotes ?? '')) return;
+
+    await ref.read(taskProvider.notifier).updateTask(taskId, {
+      'notes': newNotes,
+    });
+
+    if (_cachedTask?.id == taskId) {
+      _cachedTask = _cachedTask!.copyWith(notes: newNotes);
+    }
+
+    if (showUndo && task != null && mounted) {
+      _showUndoSnackBar(
+        message: '任务备注已保存',
+        onUndo: () => _restoreTaskNotes(taskId, previousNotes),
+      );
+    }
+  }
+
+  void _showUndoSnackBar({
+    required String message,
+    required VoidCallback onUndo,
+  }) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: onUndo,
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
+  Future<void> _restoreTaskTitle(String taskId, String title) async {
+    await ref.read(taskProvider.notifier).updateTask(taskId, {'title': title});
+    if (!mounted) return;
+
+    if (widget.taskId == taskId) {
+      setState(() {
+        _titleController.text = title;
+        _titleController.selection = TextSelection.collapsed(
+          offset: _titleController.text.length,
+        );
+        if (_cachedTask?.id == taskId) {
+          _cachedTask = _cachedTask!.copyWith(title: title);
+        }
+      });
+    }
+    _showRestoredSnackBar('已撤销标题修改');
+  }
+
+  Future<void> _restoreTaskNotes(String taskId, String? notes) async {
+    await ref.read(taskProvider.notifier).updateTask(taskId, {'notes': notes});
+    if (!mounted) return;
+
+    if (widget.taskId == taskId) {
+      setState(() {
+        _notesController.text = notes ?? '';
+        _notesController.selection = TextSelection.collapsed(
+          offset: _notesController.text.length,
+        );
+        if (_cachedTask?.id == taskId) {
+          _cachedTask = _cachedTask!.copyWith(
+            notes: notes,
+            clearNotes: notes == null,
+          );
+        }
+      });
+    }
+    _showRestoredSnackBar('已撤销备注修改');
+  }
+
+  void _showRestoredSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
   }
 
   void _saveExpectedMinutes(String taskId) {

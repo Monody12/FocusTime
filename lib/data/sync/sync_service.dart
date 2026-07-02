@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:focus_my_time/data/database/app_database.dart';
 
@@ -14,15 +15,20 @@ class SyncService {
   static String _username = '';
   static String _fakePassword = ''; // 用于在 UI 中显示的虚拟密码
   static String _realPassword = ''; // 真实的密码明文缓存
-  static int _lastSyncTime = 0;
+  static int _lastSyncTime = 0; // 本地成功同步时间，用于筛选本机待上传变更
+  static int _lastServerSyncCursor = 0; // 服务端权威变更游标，用于拉取远端增量
+  static String? _lastSyncError;
   static bool _syncing = false; // 防止并发同步
   static bool _syncRequested = false; // 同步过程中如有新请求，结束后补跑一次
   static Completer<({bool success, bool tokenExpired})>? _activeSyncCompleter;
   static Timer? _debouncedSyncTimer;
   static Timer? _autoSyncTimer;
+  static final ValueNotifier<String> _syncWarningNotifier =
+      ValueNotifier<String>('');
   static final Set<FutureOr<void> Function()> _syncCompletedListeners = {};
 
   static const String _encryptionKey = 'FocusMyTimeSecretKey!';
+  static const String _fakePasswordMask = '••••••••';
 
   static String _encrypt(String text) {
     if (text.isEmpty) return '';
@@ -77,6 +83,17 @@ class SyncService {
     final lastSync = await AppDatabase.getSetting('lastSyncTime');
     if (lastSync != null) _lastSyncTime = int.tryParse(lastSync) ?? 0;
 
+    final serverCursor = await AppDatabase.getSetting('lastServerSyncCursor');
+    if (serverCursor != null) {
+      _lastServerSyncCursor = int.tryParse(serverCursor) ?? 0;
+    } else {
+      _lastServerSyncCursor = _lastSyncTime;
+    }
+
+    if (_token.isEmpty && _username.isNotEmpty) {
+      _setSyncWarning('同步登录已失效，请在设置中重新登录');
+    }
+
     // 数据恢复检测：如果 DB 被意外清空但 lastSyncTime 非零，
     // 重置为 0 以触发全量同步从服务器恢复数据
     await _recoverIfDataLost();
@@ -92,7 +109,9 @@ class SyncService {
       final taskCount = (result.first['cnt'] as int?) ?? 0;
       if (taskCount == 0) {
         _lastSyncTime = 0;
+        _lastServerSyncCursor = 0;
         await AppDatabase.setSetting('lastSyncTime', '0');
+        await AppDatabase.setSetting('lastServerSyncCursor', '0');
       }
     } catch (_) {
       // 恢复检测失败不影响正常启动
@@ -106,6 +125,11 @@ class SyncService {
   static String get fakePassword => _fakePassword;
   static String get realPassword => _realPassword;
   static int get lastSyncTime => _lastSyncTime;
+  static int get lastServerSyncCursor => _lastServerSyncCursor;
+  static String? get lastSyncError => _lastSyncError;
+  static ValueListenable<String> get syncWarningListenable =>
+      _syncWarningNotifier;
+  static String get syncWarning => _syncWarningNotifier.value;
 
   static void addSyncCompletedListener(FutureOr<void> Function() listener) {
     _syncCompletedListeners.add(listener);
@@ -130,7 +154,7 @@ class SyncService {
     // 如果提供了用户名，说明是登录或注册成功，保存用户名和虚拟密码
     if (username != null) {
       _username = username;
-      _fakePassword = '••••••••'; // 使用固定掩码字符
+      _fakePassword = _fakePasswordMask; // 使用固定长度掩码，避免暴露真实密码长度
       await AppDatabase.setSetting('syncUsername', _username);
       await AppDatabase.setSetting('syncFakePassword', _fakePassword);
     }
@@ -141,19 +165,25 @@ class SyncService {
       final encrypted = _encrypt(password);
       await AppDatabase.setSetting('syncRealPassword', encrypted);
     }
+
+    _setSyncWarning('');
   }
 
-  static Future<void> _clearToken() async {
+  static Future<void> _clearSession(
+      {required bool clearSavedCredentials}) async {
     _token = '';
     _userId = '';
-    _username = '';
-    _fakePassword = '';
-    _realPassword = '';
     await AppDatabase.setSetting('syncToken', '');
     await AppDatabase.setSetting('syncUserId', '');
-    await AppDatabase.setSetting('syncUsername', '');
-    await AppDatabase.setSetting('syncFakePassword', '');
-    await AppDatabase.setSetting('syncRealPassword', '');
+    if (clearSavedCredentials) {
+      _username = '';
+      _fakePassword = '';
+      _realPassword = '';
+      await AppDatabase.setSetting('syncUsername', '');
+      await AppDatabase.setSetting('syncFakePassword', '');
+      await AppDatabase.setSetting('syncRealPassword', '');
+      _setSyncWarning('');
+    }
   }
 
   static Future<
@@ -246,15 +276,25 @@ class SyncService {
 
   /// 登出：清除内存中的凭证并重置本地存储
   static Future<void> logout() async {
-    await _clearToken();
+    await _clearSession(clearSavedCredentials: true);
   }
 
   /// 检查当前是否已登录（通过判断是否有 Token）
   static bool get isLoggedIn => _token.isNotEmpty;
 
   /// 更新本地记录的上次同步时间
-  static Future<void> updateLastSyncTime() async {
-    _lastSyncTime = DateTime.now().millisecondsSinceEpoch;
+  static Future<void> updateLastSyncTime({
+    int? serverCursor,
+    int? localSyncTime,
+  }) async {
+    _lastSyncTime = localSyncTime ?? DateTime.now().millisecondsSinceEpoch;
+    if (serverCursor != null && serverCursor > _lastServerSyncCursor) {
+      _lastServerSyncCursor = serverCursor;
+      await AppDatabase.setSetting(
+        'lastServerSyncCursor',
+        _lastServerSyncCursor.toString(),
+      );
+    }
     await AppDatabase.setSetting('lastSyncTime', _lastSyncTime.toString());
   }
 
@@ -262,7 +302,9 @@ class SyncService {
   static Future<({bool success, bool tokenExpired})> fullSync({
     bool notifyListeners = true,
   }) async {
+    _setLastSyncError(null);
     if (!isLoggedIn) {
+      _setLastSyncError('未登录或登录已失效');
       return (success: false, tokenExpired: false);
     }
 
@@ -280,18 +322,25 @@ class SyncService {
     _activeSyncCompleter = completer;
     var syncResult = (success: false, tokenExpired: false);
     try {
+      final localSyncCutoff = DateTime.now().millisecondsSinceEpoch;
       // Upload local changes
       final uploadResult = await _syncToServer();
       if (!uploadResult.success) {
+        if (uploadResult.tokenExpired == true) {
+          _setLastSyncError(syncWarning.isNotEmpty ? syncWarning : '登录已过期');
+        }
         syncResult =
             (success: false, tokenExpired: uploadResult.tokenExpired ?? false);
         return syncResult;
       }
 
-      // Download remote changes（使用 _lastSyncTime 而非 serverLastSync，
-      // 确保当本地 _lastSyncTime 很旧时能拉取到全部历史数据）
-      final downloadResult = await _downloadFromServer(_lastSyncTime);
+      // Download remote changes using the server-side cursor. Local dirty
+      // records still use _lastSyncTime because those timestamps are local.
+      final downloadResult = await _downloadFromServer(_lastServerSyncCursor);
       if (!downloadResult.success) {
+        if (downloadResult.tokenExpired == true) {
+          _setLastSyncError(syncWarning.isNotEmpty ? syncWarning : '登录已过期');
+        }
         syncResult = (
           success: false,
           tokenExpired: downloadResult.tokenExpired ?? false
@@ -299,13 +348,18 @@ class SyncService {
         return syncResult;
       }
 
-      await updateLastSyncTime();
+      await updateLastSyncTime(
+        serverCursor:
+            downloadResult.serverLastSync ?? uploadResult.serverLastSync,
+        localSyncTime: localSyncCutoff,
+      );
       if (notifyListeners) {
         await _notifySyncCompleted();
       }
       syncResult = (success: true, tokenExpired: false);
       return syncResult;
-    } catch (_) {
+    } catch (e) {
+      _setLastSyncError('同步异常: $e');
       syncResult = (success: false, tokenExpired: false);
       return syncResult;
     } finally {
@@ -320,6 +374,77 @@ class SyncService {
     }
   }
 
+  static void _setSyncWarning(String message) {
+    if (_syncWarningNotifier.value == message) return;
+    _syncWarningNotifier.value = message;
+  }
+
+  static void _setLastSyncError(String? message) {
+    _lastSyncError = message;
+  }
+
+  static String _serverErrorMessage(
+    String stage,
+    http.Response response,
+  ) {
+    String detail = response.body;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map && decoded['error'] != null) {
+        detail = decoded['error'].toString();
+      }
+    } catch (_) {
+      // 使用原始 body。
+    }
+    if (detail.length > 180) {
+      detail = '${detail.substring(0, 180)}...';
+    }
+    return '$stage 失败: HTTP ${response.statusCode} $detail';
+  }
+
+  static Future<bool> _tryAutoLogin() async {
+    if (_username.isEmpty || _realPassword.isEmpty) {
+      await _markAuthExpired('同步登录已失效，请在设置中重新登录');
+      _setLastSyncError(syncWarning);
+      return false;
+    }
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_serverUrl/api/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body:
+                jsonEncode({'username': _username, 'password': _realPassword}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        await _saveToken(data['token'] as String, data['userId'] as String);
+        return true;
+      }
+
+      await _markAuthExpired('自动重新登录失败，请在设置中确认密码后重新登录');
+      _setLastSyncError(syncWarning);
+      return false;
+    } catch (_) {
+      await _markAuthExpired('自动重新登录失败，请检查网络后在设置中重新登录');
+      _setLastSyncError(syncWarning);
+      return false;
+    }
+  }
+
+  static Future<void> _markAuthExpired(String message) async {
+    await _clearSession(clearSavedCredentials: false);
+    if (_username.isNotEmpty && _fakePassword.isEmpty) {
+      _fakePassword = _fakePasswordMask;
+      await AppDatabase.setSetting('syncFakePassword', _fakePassword);
+    }
+    _setSyncWarning(message);
+    stopAutoSync();
+  }
+
   static Future<void> _notifySyncCompleted() async {
     for (final listener
         in List<FutureOr<void> Function()>.from(_syncCompletedListeners)) {
@@ -332,7 +457,7 @@ class SyncService {
   }
 
   static Future<({bool success, bool? tokenExpired, int? serverLastSync})>
-      _syncToServer() async {
+      _syncToServer({bool allowAutoLogin = true}) async {
     try {
       final payload = await AppDatabase.getSyncPayload(_lastSyncTime);
 
@@ -344,15 +469,22 @@ class SyncService {
               'Content-Type': 'application/json',
             },
             body: jsonEncode({
-              'lastSyncTime': _lastSyncTime,
+              'lastSyncTime': _lastServerSyncCursor,
               'tables': payload,
             }),
           )
           .timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 401) {
-        await logout();
+        if (allowAutoLogin && await _tryAutoLogin()) {
+          return _syncToServer(allowAutoLogin: false);
+        }
         return (success: false, tokenExpired: true, serverLastSync: null);
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        _setLastSyncError(_serverErrorMessage('上传同步', response));
+        return (success: false, tokenExpired: false, serverLastSync: null);
       }
 
       final data = jsonDecode(response.body);
@@ -363,14 +495,19 @@ class SyncService {
           serverLastSync: data['serverLastSync'] as int?
         );
       }
+      _setLastSyncError('上传同步失败: 服务器响应缺少 serverLastSync');
       return (success: false, tokenExpired: false, serverLastSync: null);
     } catch (e) {
+      _setLastSyncError('上传同步异常: $e');
       return (success: false, tokenExpired: null, serverLastSync: null);
     }
   }
 
   static Future<({bool success, bool? tokenExpired, int? serverLastSync})>
-      _downloadFromServer(int syncTimeForDownload) async {
+      _downloadFromServer(
+    int syncTimeForDownload, {
+    bool allowAutoLogin = true,
+  }) async {
     try {
       final response = await http
           .post(
@@ -393,13 +530,26 @@ class SyncService {
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 401) {
-        await logout();
+        if (allowAutoLogin && await _tryAutoLogin()) {
+          return _downloadFromServer(
+            syncTimeForDownload,
+            allowAutoLogin: false,
+          );
+        }
         return (success: false, tokenExpired: true, serverLastSync: null);
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        _setLastSyncError(_serverErrorMessage('下载同步', response));
+        return (success: false, tokenExpired: false, serverLastSync: null);
       }
 
       final data = jsonDecode(response.body);
       if (data['tables'] != null) {
         await AppDatabase.applySyncChanges(data['tables']);
+      } else {
+        _setLastSyncError('下载同步失败: 服务器响应缺少 tables');
+        return (success: false, tokenExpired: false, serverLastSync: null);
       }
 
       return (
@@ -408,6 +558,7 @@ class SyncService {
         serverLastSync: data['serverLastSync'] as int?
       );
     } catch (e) {
+      _setLastSyncError('下载同步异常: $e');
       return (success: false, tokenExpired: null, serverLastSync: null);
     }
   }
