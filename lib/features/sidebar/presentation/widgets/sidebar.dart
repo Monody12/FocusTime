@@ -22,7 +22,11 @@ class Sidebar extends ConsumerStatefulWidget {
 
 class _SidebarState extends ConsumerState<Sidebar> {
   bool _showNewList = false;
+  bool _isCreatingList = false;
   final _newListController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _newListKey = GlobalKey();
+  final _editListKey = GlobalKey();
   String? _editingListId;
   final _editController = TextEditingController();
   String? _dragHoverListId;
@@ -42,6 +46,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
   void dispose() {
     _newListFocusNode.removeListener(_onNewListFocusChange);
     _newListFocusNode.dispose();
+    _scrollController.dispose();
     _newListController.dispose();
     _editController.dispose();
     super.dispose();
@@ -63,11 +68,47 @@ class _SidebarState extends ConsumerState<Sidebar> {
     }
   }
 
+  bool get _isMobile =>
+      Theme.of(context).platform == TargetPlatform.android ||
+      Theme.of(context).platform == TargetPlatform.iOS;
+
+  void _startCreatingList() {
+    setState(() => _showNewList = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _newListFocusNode.requestFocus();
+      _ensureInputVisible(_newListKey);
+    });
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _ensureInputVisible(_newListKey);
+    });
+  }
+
+  void _ensureInputVisible(GlobalKey key) {
+    final inputContext = key.currentContext;
+    if (inputContext == null) return;
+    Scrollable.ensureVisible(
+      inputContext,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      alignment: 0.85,
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final taskState = ref.watch(taskProvider);
     final taskNotifier = ref.read(taskProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isMobile = _isMobile;
+    final keyboardBottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
     final systemLists = taskState.lists.where((l) => l.isSystem).toList();
     final customLists = taskState.lists.where((l) => !l.isSystem).toList();
@@ -89,7 +130,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
           SizedBox(height: widget.topPadding),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              controller: _scrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                  0, 8, 0, 8 + (isMobile ? keyboardBottomInset : 0)),
               children: [
                 _buildListItem(
                   context,
@@ -165,10 +209,6 @@ class _SidebarState extends ConsumerState<Sidebar> {
                     }
                     // 用 ReorderableDragStartListener 包裹整个项目，鼠标按住即可拖动排序
                     // 根据平台选择拖拽监听器：移动端使用长按触发，防止干扰滑动翻页；桌面端使用立即触发。
-                    final isMobile =
-                        Theme.of(context).platform == TargetPlatform.android ||
-                            Theme.of(context).platform == TargetPlatform.iOS;
-
                     final Widget listItem = _buildDraggableListItem(
                       context,
                       list: list,
@@ -184,11 +224,16 @@ class _SidebarState extends ConsumerState<Sidebar> {
                         });
                       },
                       onAccept: (taskId) async {
-                        await taskNotifier
-                            .updateTask(taskId, {'listId': list.id});
-                        widget.onListChanged?.call();
+                        try {
+                          await taskNotifier
+                              .updateTask(taskId, {'listId': list.id});
+                          widget.onListChanged?.call();
+                        } catch (_) {
+                          _showErrorSnackBar('移动任务失败，请重试');
+                        }
                       },
                       isDark: isDark,
+                      isMobile: isMobile,
                     );
 
                     if (isMobile) {
@@ -210,6 +255,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 // New list input
                 if (_showNewList)
                   Padding(
+                    key: _newListKey,
                     padding:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: TextField(
@@ -309,6 +355,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
     required Function(bool) onHover,
     required Function(String) onAccept,
     required bool isDark,
+    required bool isMobile,
   }) {
     return DragTarget<String>(
       onWillAcceptWithDetails: (details) {
@@ -324,8 +371,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
       },
       builder: (context, candidateData, rejectedData) {
         return GestureDetector(
-          onSecondaryTapDown: (details) => _showContextMenu(
-              context, details.globalPosition, list.id, list.name),
+          onSecondaryTapDown: isMobile
+              ? null
+              : (details) => _showContextMenu(
+                  context, details.globalPosition, list.id, list.name),
           child: Material(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(8),
@@ -373,6 +422,20 @@ class _SidebarState extends ConsumerState<Sidebar> {
                         size: AppIconSizes.nav,
                         color: context.appColors.accent,
                       ),
+                    if (isMobile)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () =>
+                            _showListActionsSheet(context, list.id, list.name),
+                        child: Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: AppIcon(
+                            AppIcons.more,
+                            size: AppIconSizes.nav,
+                            color: context.appColors.textSecondary,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -386,6 +449,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
   // 编辑中清单项（内联输入框）
   Widget _buildEditingItem(String listId, String currentName, bool isDark) {
     return Padding(
+      key: _editListKey,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: TextField(
         controller: _editController,
@@ -474,12 +538,67 @@ class _SidebarState extends ConsumerState<Sidebar> {
     });
   }
 
+  void _showListActionsSheet(
+      BuildContext context, String listId, String listName) {
+    final parentContext = context;
+    showModalBottomSheet<void>(
+      context: parentContext,
+      backgroundColor: context.appColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const AppIcon(AppIcons.edit),
+                title: const Text('重命名'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future.delayed(Duration.zero, () {
+                    if (mounted) _startEditing(listId, listName);
+                  });
+                },
+              ),
+              ListTile(
+                leading: const AppIcon(AppIcons.archive),
+                title: const Text('归档'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future.delayed(Duration.zero, () {
+                    if (mounted) {
+                      _confirmArchiveList(parentContext, listId, listName);
+                    }
+                  });
+                },
+              ),
+              ListTile(
+                leading: const AppIcon(AppIcons.delete, color: Colors.red),
+                title: const Text('删除', style: TextStyle(color: Colors.red)),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future.delayed(Duration.zero, () {
+                    if (mounted) {
+                      _confirmDeleteList(parentContext, listId, listName);
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   // 新建清单按钮
   Widget _buildAddButton(bool isDark) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => setState(() => _showNewList = true),
+        onTap: _startCreatingList,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
@@ -575,48 +694,74 @@ class _SidebarState extends ConsumerState<Sidebar> {
       _editingListId = listId;
       _editController.text = currentName;
     });
-  }
-
-  void _renameList(String listId) async {
-    if (_editController.text.trim().isNotEmpty) {
-      await ref
-          .read(taskProvider.notifier)
-          .updateList(listId, _editController.text.trim());
-    }
-    setState(() {
-      _editingListId = null;
-      _editController.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _ensureInputVisible(_editListKey);
+    });
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _ensureInputVisible(_editListKey);
     });
   }
 
-  void _deleteList(String listId) async {
-    await ref.read(taskProvider.notifier).deleteList(listId);
-    final taskState = ref.read(taskProvider);
-    if (taskState.currentListId == listId) {
-      await ref
-          .read(taskProvider.notifier)
-          .setCurrentList('system-my-day', 'my-day');
+  void _renameList(String listId) async {
+    final name = _editController.text.trim();
+    if (name.isEmpty) {
+      setState(() {
+        _editingListId = null;
+        _editController.clear();
+      });
+      return;
     }
-    widget.onListChanged?.call();
+
+    try {
+      await ref.read(taskProvider.notifier).updateList(listId, name);
+      if (!mounted) return;
+      setState(() {
+        _editingListId = null;
+        _editController.clear();
+      });
+    } catch (_) {
+      _showErrorSnackBar('重命名清单失败，请重试');
+    }
+  }
+
+  void _deleteList(String listId) async {
+    try {
+      await ref.read(taskProvider.notifier).deleteList(listId);
+      if (!mounted) return;
+      final taskState = ref.read(taskProvider);
+      if (taskState.currentListId == listId) {
+        await ref
+            .read(taskProvider.notifier)
+            .setCurrentList('system-my-day', 'my-day');
+      }
+      widget.onListChanged?.call();
+    } catch (_) {
+      _showErrorSnackBar('删除清单失败，请重试');
+    }
   }
 
   Future<void> _archiveList(String listId) async {
-    await ref.read(taskProvider.notifier).archiveList(listId);
-    if (!mounted) return;
-    final taskState = ref.read(taskProvider);
-    if (taskState.currentListId == listId) {
-      await ref
-          .read(taskProvider.notifier)
-          .setCurrentList('system-my-day', 'my-day');
+    try {
+      await ref.read(taskProvider.notifier).archiveList(listId);
+      if (!mounted) return;
+      final taskState = ref.read(taskProvider);
+      if (taskState.currentListId == listId) {
+        await ref
+            .read(taskProvider.notifier)
+            .setCurrentList('system-my-day', 'my-day');
+      }
+      widget.onListChanged?.call();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('清单已归档，可在设置中恢复')),
+      );
+    } catch (_) {
+      _showErrorSnackBar('归档清单失败，请重试');
     }
-    widget.onListChanged?.call();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('清单已归档，可在设置中恢复')),
-    );
   }
 
   void _createList() async {
+    if (_isCreatingList) return;
     if (_newListController.text.trim().isEmpty) {
       setState(() {
         _showNewList = false;
@@ -629,6 +774,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
 
     // 先关闭输入框，防止重复创建
     setState(() {
+      _isCreatingList = true;
       _showNewList = false;
       _newListController.clear();
     });
@@ -636,10 +782,26 @@ class _SidebarState extends ConsumerState<Sidebar> {
     // 使用短延迟确保 UI 先更新
     await Future.delayed(const Duration(milliseconds: 50));
 
-    if (!mounted) return;
-    final list = await ref.read(taskProvider.notifier).createList(name);
-    if (!mounted) return;
-    await ref.read(taskProvider.notifier).setCurrentList(list.id, 'custom');
-    widget.onListChanged?.call();
+    try {
+      if (!mounted) return;
+      final list = await ref.read(taskProvider.notifier).createList(name);
+      if (!mounted) return;
+      await ref.read(taskProvider.notifier).setCurrentList(list.id, 'custom');
+      widget.onListChanged?.call();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _showNewList = true;
+        _newListController.text = name;
+      });
+      _showErrorSnackBar('创建清单失败，请重试');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ensureInputVisible(_newListKey);
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isCreatingList = false);
+      }
+    }
   }
 }

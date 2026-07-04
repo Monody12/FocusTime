@@ -573,14 +573,45 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                   // Task timestamps
                   _buildTimestampInfo(task, isDark),
 
-                  // Delete button
+                  // Archive and delete buttons
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        try {
+                          await taskNotifier.archiveTask(task.id);
+                          if (!context.mounted) return;
+                          widget.onClose();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('任务已归档，可在设置中恢复')),
+                          );
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('归档任务失败，请重试')),
+                          );
+                        }
+                      },
+                      icon: const AppIcon(AppIcons.archive),
+                      label: const Text('归档任务'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {
-                        taskNotifier.deleteTask(task.id);
-                        widget.onClose();
+                      onPressed: () async {
+                        try {
+                          await taskNotifier.deleteTask(task.id);
+                          if (!context.mounted) return;
+                          widget.onClose();
+                        } catch (_) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('删除任务失败，请重试')),
+                          );
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,

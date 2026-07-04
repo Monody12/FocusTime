@@ -15,6 +15,7 @@ class AppIconSpacing {
 
 class AppIcons {
   static const IconData menu = Icons.menu;
+  static const IconData more = Icons.more_vert;
   static const IconData lightMode = Icons.light_mode;
   static const IconData darkMode = Icons.dark_mode;
   static const IconData ai = Icons.smart_toy_outlined;

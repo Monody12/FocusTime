@@ -34,13 +34,16 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
   Widget build(BuildContext context) {
     final taskNotifier = ref.read(taskProvider.notifier);
     final isOverdue = _isOverdue(widget.task.dueDate);
+    final isMobile = Theme.of(context).platform == TargetPlatform.android ||
+        Theme.of(context).platform == TargetPlatform.iOS;
 
     // 任务项内容 widget
     final Widget content = GestureDetector(
       // 拖拽状态时禁用点击，防止误触发（长按后即使没移动也会触发 drag）
       onTap: _isDragging ? null : widget.onTap,
-      onSecondaryTapDown: (details) =>
-          _showContextMenu(context, details.globalPosition),
+      onSecondaryTapDown: isMobile
+          ? null
+          : (details) => _showContextMenu(context, details.globalPosition),
       behavior: HitTestBehavior.opaque,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
@@ -160,6 +163,19 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                       : (context.appColors.accent),
                 ),
               ),
+            if (isMobile)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showTaskActionsSheet(context),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: AppIcon(
+                    AppIcons.more,
+                    size: AppIconSizes.nav,
+                    color: context.appColors.textSecondary,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -240,9 +256,6 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     // 当在 ReorderableListView 中时，根据平台选择拖拽监听器。
     // 移动端 (Android/iOS) 使用长按触发 (Delayed)，防止与滑动翻页冲突；桌面端使用立即触发。
     if (widget.index != null) {
-      final isMobile = Theme.of(context).platform == TargetPlatform.android ||
-          Theme.of(context).platform == TargetPlatform.iOS;
-
       if (isMobile) {
         return ReorderableDelayedDragStartListener(
           index: widget.index!,
@@ -348,12 +361,13 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         ),
         PopupMenuItem<dynamic>(
           height: 38,
-          onTap: () => _setDueDate(AppTime.now()),
+          onTap: () => _setDueDate(context, AppTime.now()),
           child: _buildMenuItem(AppIcons.today, '今天', null, isDark),
         ),
         PopupMenuItem<dynamic>(
           height: 38,
-          onTap: () => _setDueDate(AppTime.now().add(const Duration(days: 1))),
+          onTap: () =>
+              _setDueDate(context, AppTime.now().add(const Duration(days: 1))),
           child: _buildMenuItem(AppIcons.tomorrow, '明天', null, isDark),
         ),
         PopupMenuItem<dynamic>(
@@ -384,12 +398,196 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     );
   }
 
-  Future<void> _archiveTask(BuildContext context) async {
-    await ref.read(taskProvider.notifier).archiveTask(widget.task.id);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('任务已归档，可在设置中恢复')),
+  void _showTaskActionsSheet(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.appColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildSheetAction(
+                  icon: AppIcons.myDay,
+                  label: widget.task.isMyDay ? '从“我的一天”中移除' : '添加到“我的一天”',
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    if (widget.task.isMyDay) {
+                      _runTaskAction(
+                        context,
+                        () => ref
+                            .read(taskProvider.notifier)
+                            .removeFromMyDay(widget.task.id),
+                        '更新“我的一天”失败，请重试',
+                      );
+                    } else {
+                      _runTaskAction(
+                        context,
+                        () => ref
+                            .read(taskProvider.notifier)
+                            .addToMyDay(widget.task.id),
+                        '更新“我的一天”失败，请重试',
+                      );
+                    }
+                  },
+                ),
+                _buildSheetAction(
+                  icon: widget.task.isImportant
+                      ? AppIcons.importantFilled
+                      : AppIcons.important,
+                  label: widget.task.isImportant ? '取消标记为重要' : '标记为重要',
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _runTaskAction(
+                      context,
+                      () => ref
+                          .read(taskProvider.notifier)
+                          .toggleTaskImportant(widget.task.id),
+                      '更新重要状态失败，请重试',
+                    );
+                  },
+                ),
+                _buildSheetAction(
+                  icon: widget.task.completed
+                      ? AppIcons.taskComplete
+                      : AppIcons.taskIncomplete,
+                  label: widget.task.completed ? '标记为未完成' : '标记为已完成',
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _runTaskAction(
+                      context,
+                      () => ref
+                          .read(taskProvider.notifier)
+                          .toggleTaskComplete(widget.task.id),
+                      '更新完成状态失败，请重试',
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+                _buildSheetAction(
+                  icon: AppIcons.today,
+                  label: '到期日：今天',
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _setDueDate(context, AppTime.now());
+                  },
+                ),
+                _buildSheetAction(
+                  icon: AppIcons.tomorrow,
+                  label: '到期日：明天',
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _setDueDate(
+                        context, AppTime.now().add(const Duration(days: 1)));
+                  },
+                ),
+                _buildSheetAction(
+                  icon: AppIcons.calendar,
+                  label: '选择到期日',
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    Future.delayed(Duration.zero, () {
+                      if (mounted) _pickDate(context);
+                    });
+                  },
+                ),
+                const Divider(height: 1),
+                _buildSheetAction(
+                  icon: AppIcons.move,
+                  label: '移动任务到...',
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    Future.delayed(Duration.zero, () {
+                      if (mounted) _showMoveToDialog(context);
+                    });
+                  },
+                ),
+                _buildSheetAction(
+                  icon: AppIcons.archive,
+                  label: '归档任务',
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _archiveTask(context);
+                  },
+                ),
+                _buildSheetAction(
+                  icon: AppIcons.delete,
+                  label: '删除任务',
+                  isDark: isDark,
+                  isDanger: true,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    Future.delayed(Duration.zero, () {
+                      if (mounted) _confirmDelete(context);
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  Widget _buildSheetAction({
+    required IconData icon,
+    required String label,
+    required bool isDark,
+    required VoidCallback onTap,
+    bool isDanger = false,
+  }) {
+    final color =
+        isDanger ? Colors.red : (isDark ? Colors.white : Colors.black87);
+    return ListTile(
+      leading: AppIcon(icon, color: color),
+      title: Text(label, style: TextStyle(color: color)),
+      onTap: onTap,
+    );
+  }
+
+  Future<void> _runTaskAction(
+    BuildContext context,
+    Future<void> Function() action,
+    String errorMessage,
+  ) async {
+    try {
+      await action();
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage)),
+      );
+    }
+  }
+
+  Future<void> _archiveTask(BuildContext context) async {
+    try {
+      await ref.read(taskProvider.notifier).archiveTask(widget.task.id);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('任务已归档，可在设置中恢复')),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('归档任务失败，请重试')),
+      );
+    }
   }
 
   void _confirmDelete(BuildContext context) {
@@ -405,9 +603,19 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () {
-              ref.read(taskProvider.notifier).deleteTask(widget.task.id);
-              Navigator.pop(context);
+            onPressed: () async {
+              try {
+                await ref
+                    .read(taskProvider.notifier)
+                    .deleteTask(widget.task.id);
+                if (context.mounted) Navigator.pop(context);
+              } catch (_) {
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('删除任务失败，请重试')),
+                );
+              }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('删除'),
@@ -448,9 +656,17 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
               return ListTile(
                 title: Text(list.name),
                 leading: const Icon(AppIcons.list),
-                onTap: () {
-                  taskNotifier.moveTaskToList(widget.task.id, list.id);
-                  Navigator.pop(context);
+                onTap: () async {
+                  try {
+                    await taskNotifier.moveTaskToList(widget.task.id, list.id);
+                    if (context.mounted) Navigator.pop(context);
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('移动任务失败，请重试')),
+                    );
+                  }
                 },
               );
             },
@@ -493,11 +709,15 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     );
   }
 
-  void _setDueDate(DateTime date) {
+  void _setDueDate(BuildContext context, DateTime date) {
     final dateStr = AppTime.formatDate(date);
-    ref
-        .read(taskProvider.notifier)
-        .updateTask(widget.task.id, {'dueDate': dateStr});
+    _runTaskAction(
+      context,
+      () => ref
+          .read(taskProvider.notifier)
+          .updateTask(widget.task.id, {'dueDate': dateStr}),
+      '设置到期日失败，请重试',
+    );
   }
 
   Future<void> _pickDate(BuildContext context) async {
@@ -510,7 +730,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       lastDate: DateTime(2100),
     );
     if (picked != null) {
-      _setDueDate(picked);
+      if (!context.mounted) return;
+      _setDueDate(context, picked);
     }
   }
 }

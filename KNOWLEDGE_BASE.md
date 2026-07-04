@@ -898,3 +898,31 @@ onPressed: () async {
 - 敏感配置（如 Token、加密密码）在登出时必须做全面、彻底的物理清理，避免信息残留。
 
 *最后更新日期：2026-05-29*
+
+---
+
+## 25. Android 任务清单触控操作与软键盘遮挡修复
+
+### 25.1 问题现象
+- Android 端自定义清单较多时，点击“新建清单”后输入框位于侧栏底部，软键盘弹出会遮挡输入内容。
+- Android 端长按任务或自定义清单已经用于拖拽排序/跨清单移动，无法像桌面鼠标一样通过右键打开归档、删除菜单。
+- 用户在触屏设备上难以完成清单归档、删除，任务归档入口也不够明显。
+
+### 25.2 根因分析
+1. `sidebar.dart` 中新建/重命名清单是侧栏 `ListView` 内的内联 `TextField`，原实现只设置 `autofocus`，没有根据 `MediaQuery.viewInsets` 增加键盘避让空间，也没有在输入框出现后调用 `Scrollable.ensureVisible`。
+2. 任务和自定义清单的管理菜单只绑定到 `onSecondaryTapDown`。这适合桌面右键，但普通 Android 触控没有二级点击。
+3. 移动端长按手势已经被 `ReorderableDelayedDragStartListener` 和 `LongPressDraggable` 占用，不能再安全地复用为上下文菜单，否则会与排序和跨清单拖拽冲突。
+
+### 25.3 修复方案
+1. 侧栏 `ListView` 增加 `ScrollController`、键盘底部 padding 和 `keyboardDismissBehavior`，新建/重命名输入框出现后通过 `Scrollable.ensureVisible` 自动滚动到可见位置。
+2. Android/iOS 自定义清单行尾新增“更多操作”入口，使用 bottom sheet 暴露重命名、归档、删除操作；桌面端继续保留右键菜单。
+3. Android/iOS 任务行尾新增“更多操作”入口，使用 bottom sheet 暴露“我的一天”、重要、完成、到期日、移动、归档、删除等操作；长按继续保留给拖拽。
+4. 任务详情页补齐“归档任务”按钮，并为本次触及的异步清单/任务操作增加 `try-catch` 与 SnackBar 反馈。
+5. README 新增待发布条目，记录 Android 清单输入和触控操作优化，便于下次发版说明。
+
+### 25.4 教训
+- 移动端触控交互不能简单复用桌面右键菜单；当长按已有拖拽语义时，应提供显式按钮或移动端操作面板。
+- 抽屉、侧栏等内嵌滚动区域里的自动聚焦输入框，需要同时处理键盘 inset 和滚动可见性，不能只依赖 Activity 的 `adjustResize`。
+- 归档、删除、移动等涉及数据库/提醒/日历后处理的异步操作都应给用户明确成功或失败反馈，避免“点击无效”的体验。
+
+*最后更新日期：2026-07-04*
