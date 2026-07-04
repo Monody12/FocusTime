@@ -8,6 +8,22 @@ void main() {
     databaseFactory = databaseFactoryFfi;
   });
 
+  Future<Map<String, dynamic>> syncRecord(String table, String id) async {
+    final payload = await AppDatabase.getSyncPayload(0);
+    return payload[table]!.firstWhere((record) => record['id'] == id);
+  }
+
+  Map<String, dynamic> syncData(Map<String, dynamic> record) {
+    return Map<String, dynamic>.from(record['data'] as Map<String, dynamic>);
+  }
+
+  Future<Map<String, dynamic>> rawRow(String table, String id) async {
+    final db = await AppDatabase.database;
+    final rows = await db.query(table, where: 'id = ?', whereArgs: [id]);
+    expect(rows, isNotEmpty);
+    return rows.first;
+  }
+
   test('任务同步负载包含所有任务字段并可应用备注变更', () async {
     final reminderAt = DateTime(2026, 6, 10, 9).millisecondsSinceEpoch;
     final task = await AppDatabase.createTask(
@@ -203,5 +219,239 @@ void main() {
     expect(settingKeys, isNot(contains('lastSyncTime')));
     expect(settingKeys, isNot(contains('lastServerSyncCursor')));
     expect(settingKeys, isNot(contains('deepseekApiKey')));
+  });
+
+  test('清单归档和恢复会推进子任务归档字段版本', () async {
+    final list = await AppDatabase.createList('字段版本清单');
+    final listId = list['id'] as String;
+    final task = await AppDatabase.createTask(
+      listId: listId,
+      title: '跟随清单归档的任务',
+    );
+    final taskId = task['id'] as String;
+
+    final baseData = syncData(await syncRecord('tasks', taskId));
+    final baseVersions =
+        Map<String, dynamic>.from(baseData['_fieldUpdatedAt'] as Map);
+
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await AppDatabase.archiveList(listId);
+
+    final archivedData = syncData(await syncRecord('tasks', taskId));
+    final archivedVersions =
+        Map<String, dynamic>.from(archivedData['_fieldUpdatedAt'] as Map);
+    expect(archivedData['archived'], true);
+    expect(archivedData['archivedAt'], isA<int>());
+    expect(archivedVersions['archived'],
+        greaterThan(baseVersions['archived'] as int));
+    expect(archivedVersions['archivedAt'],
+        greaterThan(baseVersions['archivedAt'] as int));
+
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await AppDatabase.restoreList(listId);
+
+    final restoredData = syncData(await syncRecord('tasks', taskId));
+    final restoredVersions =
+        Map<String, dynamic>.from(restoredData['_fieldUpdatedAt'] as Map);
+    expect(restoredData['archived'], false);
+    expect(restoredData['archivedAt'], isNull);
+    expect(restoredVersions['archived'],
+        greaterThan(archivedVersions['archived'] as int));
+    expect(restoredVersions['archivedAt'],
+        greaterThan(archivedVersions['archivedAt'] as int));
+
+    await AppDatabase.deleteList(listId);
+  });
+
+  test('远端任务删除会保留本地墓碑并继续进入同步负载', () async {
+    final task = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '远端删除墓碑任务',
+    );
+    final taskId = task['id'] as String;
+    final record = await syncRecord('tasks', taskId);
+    final data = syncData(record);
+    final remoteDeletedAt = (record['updatedAt'] as int) + 10;
+
+    await AppDatabase.applySyncChanges({
+      'tasks': [
+        {
+          'id': taskId,
+          'updatedAt': remoteDeletedAt,
+          'deleted': true,
+          'data': {
+            ...data,
+            'updatedAt': remoteDeletedAt,
+            'deleted': true,
+          },
+        }
+      ],
+    });
+
+    expect(await AppDatabase.getTaskById(taskId), isNull);
+    final row = await rawRow('tasks', taskId);
+    expect(row['deleted'], 1);
+
+    final payload = await AppDatabase.getSyncPayload(remoteDeletedAt + 1);
+    final tombstone = payload['tasks']!.firstWhere(
+      (item) => item['id'] == taskId,
+    );
+    expect(tombstone['deleted'], true);
+  });
+
+  test('远端任务删除优先于本地较新未删除更新', () async {
+    final task = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '本地较新但应被删除',
+    );
+    final taskId = task['id'] as String;
+    final baseRecord = await syncRecord('tasks', taskId);
+    final baseData = syncData(baseRecord);
+
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await AppDatabase.updateTask(taskId, {'title': '本地较新标题'});
+    final localRow = await rawRow('tasks', taskId);
+    final localUpdatedAt = localRow['updated_at'] as int;
+    final remoteDeletedAt = localUpdatedAt - 1;
+
+    await AppDatabase.applySyncChanges({
+      'tasks': [
+        {
+          'id': taskId,
+          'updatedAt': remoteDeletedAt,
+          'deleted': true,
+          'data': {
+            ...baseData,
+            'updatedAt': remoteDeletedAt,
+            'deleted': true,
+          },
+        }
+      ],
+    });
+
+    expect(await AppDatabase.getTaskById(taskId), isNull);
+    final deletedRow = await rawRow('tasks', taskId);
+    expect(deletedRow['deleted'], 1);
+    expect(deletedRow['updated_at'], localUpdatedAt);
+  });
+
+  test('本地任务墓碑不会被远端较新非删除记录复活', () async {
+    final task = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '禁止复活任务',
+    );
+    final taskId = task['id'] as String;
+    final record = await syncRecord('tasks', taskId);
+    final data = syncData(record);
+
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await AppDatabase.deleteTask(taskId);
+    final deletedRow = await rawRow('tasks', taskId);
+    final remoteUpdatedAt = (deletedRow['updated_at'] as int) + 100;
+
+    await AppDatabase.applySyncChanges({
+      'tasks': [
+        {
+          'id': taskId,
+          'updatedAt': remoteUpdatedAt,
+          'deleted': false,
+          'data': {
+            ...data,
+            'title': '远端复活标题',
+            'updatedAt': remoteUpdatedAt,
+            'deleted': false,
+          },
+        }
+      ],
+    });
+
+    expect(await AppDatabase.getTaskById(taskId), isNull);
+    final row = await rawRow('tasks', taskId);
+    expect(row['deleted'], 1);
+    expect(row['title'], '禁止复活任务');
+  });
+
+  test('远端清单归档会防御性级联归档本地子任务', () async {
+    final list = await AppDatabase.createList('远端归档清单');
+    final listId = list['id'] as String;
+    final task = await AppDatabase.createTask(
+      listId: listId,
+      title: '应随清单归档',
+    );
+    final taskId = task['id'] as String;
+    final listRecord = await syncRecord('lists', listId);
+    final listData = syncData(listRecord);
+    final remoteArchivedAt = (listRecord['updatedAt'] as int) + 20;
+
+    await AppDatabase.applySyncChanges({
+      'lists': [
+        {
+          'id': listId,
+          'updatedAt': remoteArchivedAt,
+          'deleted': false,
+          'data': {
+            ...listData,
+            'archived': true,
+            'archivedAt': remoteArchivedAt,
+            'updatedAt': remoteArchivedAt,
+          },
+        }
+      ],
+    });
+
+    expect(await AppDatabase.getTasksByList(listId), isEmpty);
+    final archivedTasks = await AppDatabase.getArchivedTasks(
+      excludeTasksInArchivedLists: false,
+    );
+    expect(archivedTasks.any((item) => item['id'] == taskId), true);
+    final taskData = syncData(await syncRecord('tasks', taskId));
+    final versions =
+        Map<String, dynamic>.from(taskData['_fieldUpdatedAt'] as Map);
+    expect(taskData['archived'], true);
+    expect(versions['archived'], remoteArchivedAt);
+  });
+
+  test('远端清单删除会防御性级联软删除本地子任务和会话', () async {
+    final list = await AppDatabase.createList('远端删除清单');
+    final listId = list['id'] as String;
+    final task = await AppDatabase.createTask(
+      listId: listId,
+      title: '应随清单删除',
+    );
+    final taskId = task['id'] as String;
+    final session = await AppDatabase.addFocusSession(
+      taskId: taskId,
+      taskTitle: '应随清单删除',
+      timerMode: 'single',
+      durationSeconds: 60,
+      plannedDurationSeconds: 60,
+      completed: true,
+      startedAt: DateTime(2026, 7, 4, 9).millisecondsSinceEpoch,
+      completedAt: DateTime(2026, 7, 4, 9, 1).millisecondsSinceEpoch,
+    );
+    final sessionId = session['id'] as String;
+    final listRecord = await syncRecord('lists', listId);
+    final listData = syncData(listRecord);
+    final remoteDeletedAt = (listRecord['updatedAt'] as int) + 20;
+
+    await AppDatabase.applySyncChanges({
+      'lists': [
+        {
+          'id': listId,
+          'updatedAt': remoteDeletedAt,
+          'deleted': true,
+          'data': {
+            ...listData,
+            'updatedAt': remoteDeletedAt,
+            'deleted': true,
+          },
+        }
+      ],
+    });
+
+    expect(await AppDatabase.getTasksByList(listId), isEmpty);
+    expect((await rawRow('lists', listId))['deleted'], 1);
+    expect((await rawRow('tasks', taskId))['deleted'], 1);
+    expect((await rawRow('sessions', sessionId))['deleted'], 1);
   });
 }

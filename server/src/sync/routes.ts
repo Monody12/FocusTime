@@ -1,7 +1,7 @@
 import { Router, Response } from 'express'
 import { AuthRequest, authMiddleware } from '../auth/middleware'
 import {
-  applyClientRecords,
+  applyClientTables,
   getCurrentServerCursor,
   getServerChanges,
   logSync,
@@ -39,14 +39,8 @@ router.post('/', (req: AuthRequest, res: Response) => {
       }
     }
 
-    // Apply incoming records from client
-    let recordsReceived = 0
-    for (const tableName of ALL_TABLES) {
-      const records = tables[tableName]
-      if (Array.isArray(records)) {
-        recordsReceived += applyClientRecords(userId, tableName as TableName, records)
-      }
-    }
+    // Apply incoming records from client in a single transaction.
+    const recordsReceived = applyClientTables(userId, tables)
 
     // Get changes from server using the server-side change cursor. Client
     // edit timestamps are still used inside each record for conflict handling.

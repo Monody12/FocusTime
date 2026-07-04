@@ -1,5 +1,5 @@
 import { db } from '../db/schema'
-import { SyncRecord, TableName, ALL_TABLES, UserRecord } from './types'
+import { SyncRecord, SyncTables, TableName, ALL_TABLES, UserRecord } from './types'
 
 let lastIssuedServerTime = 0
 
@@ -98,7 +98,8 @@ export function getCurrentServerCursor(): number {
 }
 
 /**
- * Apply incoming records from client using Last-Write-Wins (LWW) conflict resolution.
+ * Apply incoming records from client. Deleted records are terminal tombstones;
+ * ordinary updates cannot resurrect them.
  * Returns the number of records processed.
  */
 export function applyClientRecords(
@@ -110,8 +111,17 @@ export function applyClientRecords(
   if (tableName === 'tasks') {
     return applyClientTaskRecords(userId, records)
   }
+  if (tableName === 'settings') {
+    return applyClientSettingsRecords(userId, records)
+  }
 
-  const stmt = db.prepare(`
+  const selectStmt = db.prepare(`
+    SELECT record_id, data_json, updated_at, deleted, server_updated_at
+    FROM sync_records
+    WHERE user_id = ? AND table_name = ? AND record_id = ?
+  `)
+
+  const insertStmt = db.prepare(`
     INSERT INTO sync_records (
       user_id,
       table_name,
@@ -122,6 +132,89 @@ export function applyClientRecords(
       deleted
     )
     VALUES (?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  const updateStmt = db.prepare(`
+    UPDATE sync_records
+    SET data_json = ?,
+        updated_at = ?,
+        server_updated_at = ?,
+        deleted = ?
+    WHERE user_id = ? AND table_name = ? AND record_id = ?
+  `)
+
+  let count = 0
+  for (const record of records) {
+    const existing = selectStmt.get(userId, tableName, record.id) as UserRecord | undefined
+    const incomingDeleted = record.deleted === true
+
+    if (!existing) {
+      insertStmt.run(
+        userId,
+        tableName,
+        record.id,
+        JSON.stringify({ ...record.data, updatedAt: record.updatedAt, deleted: incomingDeleted }),
+        record.updatedAt,
+        nextServerChangeTime(),
+        incomingDeleted ? 1 : 0
+      )
+      count++
+      continue
+    }
+
+    if (incomingDeleted) {
+      if (existing.deleted === 1 && record.updatedAt <= existing.updated_at) {
+        count++
+        continue
+      }
+      const tombstoneUpdatedAt = Math.max(existing.updated_at, record.updatedAt)
+      updateStmt.run(
+        JSON.stringify({ ...record.data, updatedAt: tombstoneUpdatedAt, deleted: true }),
+        tombstoneUpdatedAt,
+        nextServerChangeTime(),
+        1,
+        userId,
+        tableName,
+        record.id
+      )
+      count++
+      continue
+    }
+
+    if (existing.deleted === 1) {
+      count++
+      continue
+    }
+
+    if (record.updatedAt > existing.updated_at) {
+      updateStmt.run(
+        JSON.stringify({ ...record.data, updatedAt: record.updatedAt, deleted: false }),
+        record.updatedAt,
+        nextServerChangeTime(),
+        0,
+        userId,
+        tableName,
+        record.id
+      )
+    }
+    count++
+  }
+
+  return count
+}
+
+function applyClientSettingsRecords(userId: string, records: SyncRecord[]): number {
+  const stmt = db.prepare(`
+    INSERT INTO sync_records (
+      user_id,
+      table_name,
+      record_id,
+      data_json,
+      updated_at,
+      server_updated_at,
+      deleted
+    )
+    VALUES (?, 'settings', ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, table_name, record_id) DO UPDATE SET
       data_json = CASE
         WHEN excluded.updated_at > sync_records.updated_at THEN excluded.data_json
@@ -143,21 +236,33 @@ export function applyClientRecords(
 
   let count = 0
   for (const record of records) {
-    const dataJson = JSON.stringify(record.data)
-    const deleted = record.deleted ? 1 : 0
     stmt.run(
       userId,
-      tableName,
       record.id,
-      dataJson,
+      JSON.stringify(record.data),
       record.updatedAt,
       nextServerChangeTime(),
-      deleted
+      record.deleted ? 1 : 0
     )
     count++
   }
 
   return count
+}
+
+export function applyClientTables(userId: string, tables: Partial<SyncTables>): number {
+  const applyTables = db.transaction(() => {
+    let recordsReceived = 0
+    for (const tableName of ALL_TABLES) {
+      const records = tables[tableName]
+      if (Array.isArray(records)) {
+        recordsReceived += applyClientRecords(userId, tableName, records)
+      }
+    }
+    return recordsReceived
+  })
+
+  return applyTables()
 }
 
 function applyClientTaskRecords(userId: string, records: SyncRecord[]): number {
@@ -215,43 +320,30 @@ function applyClientTaskRecords(userId: string, records: SyncRecord[]): number {
     }
 
     if (incomingDeleted) {
-      if (record.updatedAt > existing.updated_at) {
-        const normalizedData = withTaskFieldVersions(
-          record.data,
-          incomingVersions,
-          record.updatedAt,
-          true
-        )
-        updateStmt.run(
-          JSON.stringify(normalizedData),
-          record.updatedAt,
-          nextServerChangeTime(),
-          1,
-          userId,
-          record.id
-        )
+      if (existing.deleted === 1 && record.updatedAt <= existing.updated_at) {
+        count++
+        continue
       }
+      const tombstoneUpdatedAt = Math.max(existing.updated_at, record.updatedAt)
+      const normalizedData = withTaskFieldVersions(
+        record.data,
+        incomingVersions,
+        tombstoneUpdatedAt,
+        true
+      )
+      updateStmt.run(
+        JSON.stringify(normalizedData),
+        tombstoneUpdatedAt,
+        nextServerChangeTime(),
+        1,
+        userId,
+        record.id
+      )
       count++
       continue
     }
 
     if (existing.deleted === 1) {
-      if (record.updatedAt > existing.updated_at) {
-        const normalizedData = withTaskFieldVersions(
-          record.data,
-          incomingVersions,
-          record.updatedAt,
-          false
-        )
-        updateStmt.run(
-          JSON.stringify(normalizedData),
-          record.updatedAt,
-          nextServerChangeTime(),
-          0,
-          userId,
-          record.id
-        )
-      }
       count++
       continue
     }

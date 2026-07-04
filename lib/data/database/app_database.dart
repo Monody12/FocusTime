@@ -539,6 +539,122 @@ class AppDatabase {
     };
   }
 
+  static int _maxTimestamp(int a, int b) => a > b ? a : b;
+
+  static Future<List<String>> _getActiveTaskIdsForList(
+    DatabaseExecutor db,
+    String listId,
+  ) async {
+    final rows = await db.query(
+      'tasks',
+      columns: ['id'],
+      where: 'list_id = ? AND deleted = 0',
+      whereArgs: [listId],
+    );
+    return rows.map((row) => row['id'] as String).toList();
+  }
+
+  static Future<void> _setTaskFieldVersionsForIds(
+    DatabaseExecutor db,
+    Iterable<String> taskIds,
+    Iterable<String> fieldNames,
+    int updatedAt,
+  ) async {
+    for (final taskId in taskIds) {
+      await _setFieldVersions(db, 'tasks', taskId, fieldNames, updatedAt);
+    }
+  }
+
+  static Future<void> _softDeleteSessionsForTaskIds(
+    DatabaseExecutor db,
+    Iterable<String> taskIds,
+    int updatedAt,
+  ) async {
+    final ids = taskIds.toList();
+    if (ids.isEmpty) return;
+    await db.update(
+      'sessions',
+      {'deleted': 1, 'updated_at': updatedAt},
+      where:
+          'task_id IN (${List.filled(ids.length, '?').join(',')}) AND deleted = 0',
+      whereArgs: ids,
+    );
+  }
+
+  static Future<void> _cascadeListDeleted(
+    DatabaseExecutor db,
+    String listId,
+    int updatedAt,
+  ) async {
+    final taskIds = await _getActiveTaskIdsForList(db, listId);
+    if (taskIds.isEmpty) return;
+    await _softDeleteSessionsForTaskIds(db, taskIds, updatedAt);
+    await db.rawUpdate(
+      '''
+      UPDATE tasks
+      SET deleted = 1,
+          updated_at = CASE WHEN updated_at > ? THEN updated_at ELSE ? END
+      WHERE list_id = ? AND deleted = 0
+      ''',
+      [updatedAt, updatedAt, listId],
+    );
+    await _setTaskFieldVersionsForIds(
+      db,
+      taskIds,
+      _taskSyncFields.keys,
+      updatedAt,
+    );
+  }
+
+  static Future<void> _cascadeListArchived(
+    DatabaseExecutor db,
+    String listId, {
+    required bool archived,
+    required int updatedAt,
+    int? archivedAt,
+  }) async {
+    final taskRows = await db.query(
+      'tasks',
+      columns: ['id', 'updated_at'],
+      where: 'list_id = ? AND deleted = 0',
+      whereArgs: [listId],
+    );
+    final taskIds = <String>[];
+    for (final row in taskRows) {
+      final taskId = row['id'] as String;
+      final fallbackUpdatedAt = row['updated_at'] as int? ?? 0;
+      final versions = await _getFieldVersions(db, 'tasks', taskId);
+      final archivedVersion = versions['archived'] ?? fallbackUpdatedAt;
+      final archivedAtVersion = versions['archivedAt'] ?? fallbackUpdatedAt;
+      if (archivedVersion <= updatedAt && archivedAtVersion <= updatedAt) {
+        taskIds.add(taskId);
+      }
+    }
+    if (taskIds.isEmpty) return;
+    await db.rawUpdate(
+      '''
+      UPDATE tasks
+      SET archived = ?,
+          archived_at = ?,
+          updated_at = CASE WHEN updated_at > ? THEN updated_at ELSE ? END
+      WHERE id IN (${List.filled(taskIds.length, '?').join(',')}) AND deleted = 0
+      ''',
+      [
+        archived ? 1 : 0,
+        archived ? archivedAt : null,
+        updatedAt,
+        updatedAt,
+        ...taskIds,
+      ],
+    );
+    await _setTaskFieldVersionsForIds(
+      db,
+      taskIds,
+      ['archived', 'archivedAt'],
+      updatedAt,
+    );
+  }
+
   // ========== 清单 ==========
 
   static Future<List<Map<String, dynamic>>> getLists() async {
@@ -634,15 +750,13 @@ class AppDatabase {
           where: 'id = ? AND deleted = 0 AND is_system = 0',
           whereArgs: [id]);
       if (updatedLists == 0) return;
-      await txn.update(
-          'tasks',
-          {
-            'archived': 1,
-            'archived_at': now,
-            'updated_at': now,
-          },
-          where: 'list_id = ? AND deleted = 0',
-          whereArgs: [id]);
+      await _cascadeListArchived(
+        txn,
+        id,
+        archived: true,
+        archivedAt: now,
+        updatedAt: now,
+      );
     });
   }
 
@@ -650,7 +764,7 @@ class AppDatabase {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
-      await txn.update(
+      final updatedLists = await txn.update(
           'lists',
           {
             'archived': 0,
@@ -659,15 +773,13 @@ class AppDatabase {
           },
           where: 'id = ? AND deleted = 0',
           whereArgs: [id]);
-      await txn.update(
-          'tasks',
-          {
-            'archived': 0,
-            'archived_at': null,
-            'updated_at': now,
-          },
-          where: 'list_id = ? AND deleted = 0',
-          whereArgs: [id]);
+      if (updatedLists == 0) return;
+      await _cascadeListArchived(
+        txn,
+        id,
+        archived: false,
+        updatedAt: now,
+      );
     });
   }
 
@@ -675,11 +787,11 @@ class AppDatabase {
   static Future<void> deleteList(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    // 仅更新未删除的任务，防止更新已删除记录的 updated_at 导致重复同步
-    await db.update('tasks', {'deleted': 1, 'updated_at': now},
-        where: 'list_id = ? AND deleted = 0', whereArgs: [id]);
-    await db.update('lists', {'deleted': 1, 'updated_at': now},
-        where: 'id = ?', whereArgs: [id]);
+    await db.transaction((txn) async {
+      await _cascadeListDeleted(txn, id, now);
+      await txn.update('lists', {'deleted': 1, 'updated_at': now},
+          where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   // ========== 任务 ==========
@@ -1005,11 +1117,17 @@ class AppDatabase {
   static Future<void> deleteTask(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    // 仅更新未删除的会话，防止更新已删除记录的 updated_at 导致重复同步
-    await db.update('sessions', {'deleted': 1, 'updated_at': now},
-        where: 'task_id = ? AND deleted = 0', whereArgs: [id]);
-    await db.update('tasks', {'deleted': 1, 'updated_at': now},
-        where: 'id = ?', whereArgs: [id]);
+    await db.transaction((txn) async {
+      // 仅更新未删除的会话，防止更新已删除记录的 updated_at 导致重复同步
+      await txn.update('sessions', {'deleted': 1, 'updated_at': now},
+          where: 'task_id = ? AND deleted = 0', whereArgs: [id]);
+      final updatedRows = await txn.update(
+          'tasks', {'deleted': 1, 'updated_at': now},
+          where: 'id = ?', whereArgs: [id]);
+      if (updatedRows > 0) {
+        await _setFieldVersions(txn, 'tasks', id, _taskSyncFields.keys, now);
+      }
+    });
   }
 
   static Future<void> toggleTaskComplete(String id) async {
@@ -1424,41 +1542,61 @@ class AppDatabase {
     if (records is! List) return;
     for (final item in records) {
       final id = item['id'] as String;
+      final remoteUpdatedAt = item['updatedAt'] as int? ?? 0;
       if (table == 'tasks') {
         await _applyTaskChange(txn, item);
         continue;
       }
+
       if (item['deleted'] == true) {
         final localRows = await txn.query(table,
             where: 'id = ?', whereArgs: [id], columns: ['updated_at']);
         final localUpdatedAt = localRows.isEmpty
             ? 0
             : (localRows.first['updated_at'] as int? ?? 0);
-        final serverUpdatedAt = item['updatedAt'] as int? ?? 0;
-        if (localUpdatedAt > serverUpdatedAt) continue;
-        await txn.delete(table, where: 'id = ?', whereArgs: [id]);
-      } else {
-        // 服务器端未删除：检查本地是否已有更新的删除记录，防止复活
-        final localRows = await txn.query(table,
-            where: 'id = ? AND deleted = 1',
-            whereArgs: [id],
-            columns: ['updated_at']);
-        if (localRows.isNotEmpty) {
-          final localUpdatedAt = localRows.first['updated_at'] as int;
-          final serverUpdatedAt = item['updatedAt'] as int? ?? 0;
-          // 本地删除时间 ≥ 服务器版本时间 → 保留本地删除，不复活
-          if (localUpdatedAt >= serverUpdatedAt) {
-            continue;
-          }
-          // 服务器版本更新 → 服务器胜出，允许复活（可能是在其他设备上撤销了删除）
-        }
-
-        final data = item['data'] as Map<String, dynamic>;
-        final row = unmapper(data);
-        row['updated_at'] = item['updatedAt'];
-        row['deleted'] = 0;
+        final data = item['data'] as Map<String, dynamic>?;
+        final row = data == null ? <String, dynamic>{'id': id} : unmapper(data);
+        row['updated_at'] = _maxTimestamp(localUpdatedAt, remoteUpdatedAt);
+        row['deleted'] = 1;
         await txn.insert(table, row,
             conflictAlgorithm: ConflictAlgorithm.replace);
+        if (table == 'lists') {
+          await _cascadeListDeleted(txn, id, row['updated_at'] as int);
+        }
+        continue;
+      }
+
+      final localRows = await txn.query(
+        table,
+        where: 'id = ?',
+        whereArgs: [id],
+        columns: table == 'lists' ? ['deleted', 'archived'] : ['deleted'],
+      );
+      if (localRows.isNotEmpty &&
+          (localRows.first['deleted'] as int? ?? 0) == 1) {
+        continue;
+      }
+      final localListWasArchived = table == 'lists' &&
+          localRows.isNotEmpty &&
+          (localRows.first['archived'] as int? ?? 0) == 1;
+
+      final data = item['data'] as Map<String, dynamic>;
+      final row = unmapper(data);
+      row['updated_at'] = remoteUpdatedAt;
+      row['deleted'] = 0;
+      await txn.insert(table, row,
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      if (table == 'lists') {
+        final archived = (data['archived'] ?? false) == true;
+        if (archived || localListWasArchived) {
+          await _cascadeListArchived(
+            txn,
+            id,
+            archived: archived,
+            archivedAt: data['archivedAt'] as int?,
+            updatedAt: remoteUpdatedAt,
+          );
+        }
       }
     }
   }
@@ -1470,14 +1608,27 @@ class AppDatabase {
     final localRows =
         await txn.query('tasks', where: 'id = ?', whereArgs: [id]);
     if (item['deleted'] == true) {
+      final data =
+          Map<String, dynamic>.from(item['data'] as Map? ?? {'id': id});
       final localUpdatedAt =
           localRows.isEmpty ? 0 : (localRows.first['updated_at'] as int? ?? 0);
-      if (localUpdatedAt > remoteUpdatedAt) return;
-      await txn.delete('tasks', where: 'id = ?', whereArgs: [id]);
-      await txn.delete(
-        'sync_field_versions',
-        where: 'table_name = ? AND record_id = ?',
-        whereArgs: ['tasks', id],
+      final tombstoneUpdatedAt = _maxTimestamp(localUpdatedAt, remoteUpdatedAt);
+      final row = _unmapTask(data);
+      row['updated_at'] = tombstoneUpdatedAt;
+      row['deleted'] = 1;
+      row['calendar_event_id'] =
+          localRows.isNotEmpty ? localRows.first['calendar_event_id'] : null;
+      await txn.insert(
+        'tasks',
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await _setFieldVersions(
+        txn,
+        'tasks',
+        id,
+        _taskSyncFields.keys,
+        tombstoneUpdatedAt,
       );
       return;
     }
@@ -1491,7 +1642,7 @@ class AppDatabase {
       final localRow = localRows.first;
       final localDeleted = (localRow['deleted'] as int? ?? 0) == 1;
       final localUpdatedAt = localRow['updated_at'] as int? ?? 0;
-      if (localDeleted && localUpdatedAt >= remoteUpdatedAt) return;
+      if (localDeleted) return;
 
       final localVersions = await _getFieldVersions(txn, 'tasks', id);
       for (final fieldName in _taskSyncFields.keys) {
