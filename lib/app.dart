@@ -240,6 +240,14 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                         color: context.appColors.text,
                       ),
                       const SizedBox(width: 4),
+                      IconButton(
+                        icon:
+                            const Icon(AppIcons.reset, size: AppIconSizes.nav),
+                        onPressed: () => _syncNow(),
+                        tooltip: '同步',
+                        color: context.appColors.text,
+                      ),
+                      const SizedBox(width: 4),
                       // AI Assistant button
                       TextButton.icon(
                         onPressed: () => setState(() => _showAiChat = true),
@@ -294,10 +302,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                             // Footer
                             Container(
                               padding: EdgeInsets.fromLTRB(
-                                16,
-                                8,
-                                16,
-                                bottomInset + 8,
+                                isMobile ? 14 : 16,
+                                isMobile ? 10 : 8,
+                                isMobile ? 14 : 16,
+                                bottomInset + (isMobile ? 14 : 8),
                               ),
                               decoration: BoxDecoration(
                                 color: context.appColors.background,
@@ -624,6 +632,14 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _syncNow() async {
+    final result = await ref.read(taskProvider.notifier).sync();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.success ? '同步完成' : '同步失败，请检查登录和网络')),
     );
   }
 

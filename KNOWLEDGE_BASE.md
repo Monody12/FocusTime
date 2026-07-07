@@ -929,6 +929,67 @@ onPressed: () async {
 
 ---
 
+## 27. Android 重复任务、防重复日历账号与清单取消体验修复
+
+### 27.1 问题现象
+- Android 勾选过期重复任务时界面像卡住一样没有即时反馈，连续点击后会生成多个下一次重复任务。
+- Android 平板横屏创建任务清单时，输入框无法通过点击空白处或关闭输入法取消；竖屏时还可能被软键盘遮挡。
+- Android 系统日历中可能出现多个 `FocusMyTime` 本地账号/日历，用户需要手动清理。
+
+### 27.2 根因分析
+1. 重复任务完成流程在 Provider 层分多步执行：清除原任务重复配置、切换完成、查询原任务、复制下一次任务、刷新 UI、再调度提醒。Android 日历/通知调度较慢时，UI 刷新被后置，用户连续点击会触发多次生成。
+2. 新建清单输入框仅依赖 `FocusNode` 失焦逻辑，Android 平板横屏关闭输入法时焦点可能仍停留在输入框，点击其它区域也不一定触发预期失焦。
+3. Android 日历创建仍依赖 `device_calendar.createCalendar`；虽然 Dart 层会按名称复用已有日历，但历史版本或部分系统 Provider 行为可能仍残留多个本地账号/日历。
+
+### 27.3 修复方案
+1. 新增 `AppDatabase.completeRecurringTaskAndCreateNext`，在 SQLite 事务中原子完成旧重复任务并创建下一次任务；只有当旧任务仍是未完成且带重复配置时才会创建下一条。
+2. `TaskNotifier.toggleTaskComplete` 增加 `_completionInProgress` 防重入集合，并先做乐观完成状态更新；提醒和日历调度放到 UI 刷新之后执行。
+3. 重复规则扩展为支持间隔、周几复选、每月按日期/星期、缺失日期回退/跳过、结束日期和结束次数。
+4. 新建清单改为“提交才创建，失焦/点外部/关闭输入法只取消并保留草稿”，并继续使用键盘 inset 与 `Scrollable.ensureVisible` 保证输入框可见。
+5. Android 日历桥接新增 `ensureLocalCalendar`，通过 `CalendarContract.Calendars` 按 `ACCOUNT_NAME = FocusMyTime`、`ACCOUNT_TYPE_LOCAL` 和日历名精确查询，存在则复用，不存在才通过 SyncAdapter URI 插入。
+
+### 27.4 验证
+- `flutter analyze` 无问题。
+- `flutter test` 全量通过，并新增重复日期规则、清单置顶同步字段、自动归档相关单测。
+- `flutter build apk --debug` 成功，Android 原生日历桥接通过编译；构建过程仅提示现有插件建议升级 compileSdk/NDK。
+
+### 27.5 教训
+- 移动端任何会触发外部系统 Provider 的交互，都应先保证本地 UI 和数据库状态快速、原子地落地，再异步处理外部集成。
+- 重复任务生成必须有数据库层幂等保护，不能只依赖 UI 防抖。
+- Android 软键盘收起不等于输入框失焦，取消输入类交互应同时监听点外部、焦点变化和窗口 inset 变化。
+- 系统日历账号/日历属于外部持久状态，创建前应按账号类型和名称精确查询复用，不能只依赖上层插件的封装行为。
+
+*最后更新日期：2026-07-07*
+
+---
+
+## 28. Android 16 更新弹窗无法跳转浏览器
+
+### 28.1 问题现象
+- APP 检查到 GitHub Releases 新版本后显示更新弹窗。
+- 在 Android 16 手机上点击“立即下载”，弹窗直接消失，但没有跳转到浏览器下载页面。
+- 用户没有收到失败提示，容易误以为按钮无效或更新流程中断。
+
+### 28.2 根因分析
+1. 更新弹窗按钮先调用 `canLaunchUrl` 判断是否能打开下载链接，再调用 `launchUrl`；无论判断或打开是否成功，最后都会关闭弹窗。
+2. Android 11+ 引入包可见性限制，应用如果没有在 `AndroidManifest.xml` 的 `<queries>` 中声明 `ACTION_VIEW` + `http/https`，`canLaunchUrl` 可能返回 `false`，即使系统实际存在浏览器。
+3. 旧逻辑没有对外部浏览器打开失败提供 SnackBar 反馈，导致 Android 16 上表现为“点击后弹窗消失但没有任何事发生”。
+
+### 28.3 修复方案
+1. `AndroidManifest.xml` 的 `<queries>` 增加 `android.intent.action.VIEW` 对 `https` 和 `http` scheme 的查询声明，满足 Android 11+ 包可见性要求。
+2. 更新弹窗不再用 `canLaunchUrl` 作为门禁，改为直接 `launchUrl(url, mode: LaunchMode.externalApplication)` 尝试打开外部浏览器。
+3. 只有浏览器成功唤起后才关闭弹窗；打开失败或链接异常时保留弹窗，并通过 SnackBar 告知用户失败原因。
+4. “立即下载”打开过程中禁用弹窗其它操作，避免用户连续点击造成重复状态变化。
+
+### 28.4 教训
+- 在 Android 11+ 上，`canLaunchUrl` 的结果会受到包可见性声明影响，不能把它作为唯一的外部跳转门禁。
+- 外部应用跳转类交互必须“成功后再关闭当前 UI”，失败时应保留上下文并给用户明确反馈。
+- 更新、浏览器、日历、通知等依赖系统 Provider/Intent 的功能，在新版 Android 上要优先检查 Manifest 权限、queries 与系统行为变更。
+
+*最后更新日期：2026-07-07*
+
+---
+
 ## 26. 跨设备归档/删除同步可靠性修复
 
 ### 26.1 问题现象

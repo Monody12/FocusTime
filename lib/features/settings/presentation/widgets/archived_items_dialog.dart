@@ -70,25 +70,19 @@ class _ArchivedItemsDialogState extends ConsumerState<ArchivedItemsDialog> {
           ),
           const Spacer(),
           IconButton(
-            tooltip: '刷新',
-            onPressed: _loadArchivedItems,
-            icon: const Icon(AppIcons.reset),
+            tooltip: '关闭',
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(AppIcons.close),
           ),
         ],
       ),
       content: SizedBox(
-        width: 720,
-        height: 520,
+        width: 820,
+        height: 620,
         child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _buildContent(),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('关闭'),
-        ),
-      ],
     );
   }
 
@@ -116,29 +110,69 @@ class _ArchivedItemsDialogState extends ConsumerState<ArchivedItemsDialog> {
       );
     }
 
+    final grouped = _groupByArchiveDate();
     return ListView(
-      children: [
-        _buildSectionHeader(
-          title: '归档清单',
-          subtitle: '恢复清单会同时恢复其中的任务',
-          count: _archivedLists.length,
-        ),
-        if (_archivedLists.isEmpty)
-          _buildEmptyLine('暂无归档清单')
-        else
-          ..._archivedLists.map(_buildArchivedListTile),
-        const SizedBox(height: 18),
-        _buildSectionHeader(
-          title: '单独归档的任务',
-          subtitle: '不包含已经随清单一起归档的任务',
-          count: _archivedTasks.length,
-        ),
-        if (_archivedTasks.isEmpty)
-          _buildEmptyLine('暂无单独归档的任务')
-        else
-          ..._archivedTasks.map(_buildArchivedTaskTile),
-      ],
+      children: grouped.entries.map((monthEntry) {
+        return ExpansionTile(
+          initiallyExpanded: true,
+          tilePadding: EdgeInsets.zero,
+          title: Text(
+            monthEntry.key,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: context.appColors.text,
+            ),
+          ),
+          children: monthEntry.value.entries.map((dayEntry) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionHeader(
+                    title: dayEntry.key,
+                    subtitle: '按归档时间整理的清单和任务',
+                    count: dayEntry.value.length,
+                  ),
+                  ...dayEntry.value.map(_buildArchivedEntryTile),
+                ],
+              ),
+            );
+          }).toList(),
+        );
+      }).toList(),
     );
+  }
+
+  Map<String, Map<String, List<Map<String, dynamic>>>> _groupByArchiveDate() {
+    final entries = <Map<String, dynamic>>[
+      ..._archivedLists.map((item) => {...item, '_type': 'list'}),
+      ..._archivedTasks.map((item) => {...item, '_type': 'task'}),
+    ];
+    entries.sort((a, b) => ((b['archivedAt'] as int?) ?? 0)
+        .compareTo((a['archivedAt'] as int?) ?? 0));
+
+    final result = <String, Map<String, List<Map<String, dynamic>>>>{};
+    for (final entry in entries) {
+      final date = entry['archivedAt'] is int
+          ? AppTime.fromMillisecondsSinceEpoch(entry['archivedAt'] as int)
+          : null;
+      final month = date == null
+          ? '归档时间未知'
+          : '${date.year}年${date.month.toString().padLeft(2, '0')}月';
+      final day =
+          date == null ? '未知日期' : '${date.day.toString().padLeft(2, '0')}日';
+      result.putIfAbsent(month, () => <String, List<Map<String, dynamic>>>{});
+      result[month]!.putIfAbsent(day, () => <Map<String, dynamic>>[]);
+      result[month]![day]!.add(entry);
+    }
+    return result;
+  }
+
+  Widget _buildArchivedEntryTile(Map<String, dynamic> item) {
+    if (item['_type'] == 'list') return _buildArchivedListTile(item);
+    return _buildArchivedTaskTile(item);
   }
 
   Widget _buildSectionHeader({
@@ -203,21 +237,6 @@ class _ArchivedItemsDialogState extends ConsumerState<ArchivedItemsDialog> {
       isCompleted: task['completed'] == true,
       onRestore: () => _restoreTask(task['id'] as String),
       onDelete: () => _confirmDeleteTask(task),
-    );
-  }
-
-  Widget _buildEmptyLine(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(
-        color: context.appColors.surfaceElevated,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.appColors.border),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 13, color: context.appColors.textSecondary),
-      ),
     );
   }
 

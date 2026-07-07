@@ -454,4 +454,89 @@ void main() {
     expect((await rawRow('tasks', taskId))['deleted'], 1);
     expect((await rawRow('sessions', sessionId))['deleted'], 1);
   });
+
+  test('清单置顶、图标和隐藏字段会进入同步负载并可应用远端变更', () async {
+    final list = await AppDatabase.createList('置顶同步清单');
+    final listId = list['id'] as String;
+
+    await AppDatabase.updateListCustomization(
+      listId,
+      iconKey: 'work',
+      pinned: true,
+      topOrder: 3,
+      hidden: false,
+    );
+
+    final listRecord = await syncRecord('lists', listId);
+    final data = syncData(listRecord);
+    expect(data['iconKey'], 'work');
+    expect(data['pinned'], true);
+    expect(data['topOrder'], 3);
+    expect(data['hidden'], false);
+
+    final remoteUpdatedAt = (listRecord['updatedAt'] as int) + 10;
+    await AppDatabase.applySyncChanges({
+      'lists': [
+        {
+          'id': listId,
+          'updatedAt': remoteUpdatedAt,
+          'deleted': false,
+          'data': {
+            ...data,
+            'iconKey': 'book',
+            'pinned': false,
+            'topOrder': null,
+            'hidden': true,
+            'updatedAt': remoteUpdatedAt,
+          },
+        }
+      ],
+    });
+
+    final rows = await AppDatabase.getLists();
+    final updated = rows.firstWhere((item) => item['id'] == listId);
+    expect(updated['iconKey'], 'book');
+    expect(updated['pinned'], false);
+    expect(updated['topOrder'], isNull);
+    expect(updated['hidden'], true);
+
+    await AppDatabase.deleteList(listId);
+  });
+
+  test('自动归档同一清单内超出保留数量的已完成同名任务', () async {
+    final list = await AppDatabase.createList('自动归档清单');
+    final listId = list['id'] as String;
+    final taskIds = <String>[];
+
+    for (var i = 0; i < 5; i++) {
+      final task = await AppDatabase.createTask(
+        listId: listId,
+        title: '重复完成项',
+      );
+      final taskId = task['id'] as String;
+      taskIds.add(taskId);
+      await AppDatabase.toggleTaskComplete(taskId);
+      await Future<void>.delayed(const Duration(milliseconds: 2));
+    }
+
+    final archivedCount =
+        await AppDatabase.autoArchiveCompletedTasks(keepCount: 3);
+    expect(archivedCount, 2);
+
+    final activeTasks = await AppDatabase.getTasksByList(listId);
+    expect(
+      activeTasks
+          .where(
+              (item) => item['title'] == '重复完成项' && item['completed'] == true)
+          .length,
+      3,
+    );
+    final archivedTasks = await AppDatabase.getArchivedTasks();
+    expect(
+      archivedTasks.where((item) => taskIds.contains(item['id'])).length,
+      2,
+    );
+
+    await AppDatabase.deleteList(listId);
+  });
 }

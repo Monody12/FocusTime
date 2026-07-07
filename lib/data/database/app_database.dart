@@ -3,9 +3,11 @@ import 'package:path/path.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:focus_my_time/core/utils/app_time.dart';
+import 'package:uuid/uuid.dart';
 
 class AppDatabase {
   static Database? _database;
+  static const _uuid = Uuid();
   static const Map<String, String> _taskSyncFields = {
     'listId': 'list_id',
     'title': 'title',
@@ -99,7 +101,7 @@ class AppDatabase {
   ///
   /// 检查项：
   /// 1. 文件是否存在
-  /// 2. 数据库版本号是否在支持范围内（≤ 当前版本 9）
+  /// 2. 数据库版本号是否在支持范围内（≤ 当前版本 12）
   /// 3. 必要的数据表是否存在（lists, tasks, sessions, settings）
   static Future<void> validateBackupFile(String backupPath) async {
     final backupFile = File(backupPath);
@@ -112,7 +114,7 @@ class AppDatabase {
       // 以只读模式打开备份文件进行校验，不修改原始备份
       backupDb = await openDatabase(backupPath, readOnly: true);
       final version = await backupDb.getVersion();
-      if (version > 11) {
+      if (version > 12) {
         throw Exception('备份数据库版本过高: $version');
       }
 
@@ -147,7 +149,7 @@ class AppDatabase {
 
     return await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -160,6 +162,10 @@ class AppDatabase {
         name TEXT NOT NULL,
         is_system INTEGER NOT NULL DEFAULT 0,
         sort_order INTEGER NOT NULL DEFAULT 0,
+        icon_key TEXT NOT NULL DEFAULT 'list',
+        pinned INTEGER NOT NULL DEFAULT 0,
+        top_order INTEGER,
+        hidden INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         archived INTEGER NOT NULL DEFAULT 0,
@@ -283,6 +289,10 @@ class AppDatabase {
       'name': '我的一天',
       'is_system': 1,
       'sort_order': 0,
+      'icon_key': 'myDay',
+      'pinned': 1,
+      'top_order': 0,
+      'hidden': 0,
       'created_at': now,
       'updated_at': now,
     });
@@ -291,6 +301,10 @@ class AppDatabase {
       'name': '重要',
       'is_system': 1,
       'sort_order': 1,
+      'icon_key': 'important',
+      'pinned': 1,
+      'top_order': 1,
+      'hidden': 0,
       'created_at': now,
       'updated_at': now,
     });
@@ -299,6 +313,10 @@ class AppDatabase {
       'name': '任务',
       'is_system': 1,
       'sort_order': 2,
+      'icon_key': 'tasks',
+      'pinned': 1,
+      'top_order': 2,
+      'hidden': 0,
       'created_at': now,
       'updated_at': now,
     });
@@ -424,6 +442,42 @@ class AppDatabase {
       await _createSyncFieldVersionsTable(db);
       await _backfillTaskFieldVersions(db);
     }
+
+    if (oldVersion < 12) {
+      await _addListCustomizationColumns(db);
+    }
+  }
+
+  static Future<void> _addListCustomizationColumns(DatabaseExecutor db) async {
+    final migrations = [
+      "ALTER TABLE lists ADD COLUMN icon_key TEXT NOT NULL DEFAULT 'list'",
+      'ALTER TABLE lists ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
+      'ALTER TABLE lists ADD COLUMN top_order INTEGER',
+      'ALTER TABLE lists ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0',
+    ];
+    for (final sql in migrations) {
+      try {
+        await db.execute(sql);
+      } catch (_) {
+        // Column already exists in partially migrated databases.
+      }
+    }
+
+    await db.update(
+      'lists',
+      {'icon_key': 'myDay', 'pinned': 1, 'top_order': 0, 'hidden': 0},
+      where: "id = 'system-my-day'",
+    );
+    await db.update(
+      'lists',
+      {'icon_key': 'important', 'pinned': 1, 'top_order': 1, 'hidden': 0},
+      where: "id = 'system-important'",
+    );
+    await db.update(
+      'lists',
+      {'icon_key': 'tasks', 'pinned': 1, 'top_order': 2, 'hidden': 0},
+      where: "id = 'system-all-tasks'",
+    );
   }
 
   static Future<void> _createSyncFieldVersionsTable(DatabaseExecutor db) async {
@@ -692,6 +746,10 @@ class AppDatabase {
       // 数据库存储为 0/1，这里转换为布尔值
       'isSystem': (row['is_system'] as int) == 1,
       'sortOrder': row['sort_order'],
+      'iconKey': row['icon_key'] as String? ?? 'list',
+      'pinned': (row['pinned'] as int? ?? 0) == 1,
+      'topOrder': row['top_order'],
+      'hidden': (row['hidden'] as int? ?? 0) == 1,
       'createdAt': row['created_at'],
       'updatedAt': row['updated_at'],
       'archived': (row['archived'] as int? ?? 0) == 1,
@@ -706,13 +764,17 @@ class AppDatabase {
     final count = Sqflite.firstIntValue(await db.rawQuery(
             'SELECT COUNT(*) FROM lists WHERE deleted = 0 AND archived = 0')) ??
         0;
-    final id = 'list-${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'list-${_uuid.v4()}';
 
     await db.insert('lists', {
       'id': id,
       'name': name,
       'is_system': 0,
       'sort_order': count,
+      'icon_key': 'list',
+      'pinned': 0,
+      'top_order': null,
+      'hidden': 0,
       'created_at': now,
       'updated_at': now,
     });
@@ -722,6 +784,10 @@ class AppDatabase {
       'name': name,
       'isSystem': false,
       'sortOrder': count,
+      'iconKey': 'list',
+      'pinned': false,
+      'topOrder': null,
+      'hidden': false,
       'createdAt': now,
       'updatedAt': now,
       'archived': false,
@@ -736,6 +802,100 @@ class AppDatabase {
         where: 'id = ? AND deleted = 0 AND archived = 0', whereArgs: [id]);
   }
 
+  static Future<void> updateListCustomization(
+    String id, {
+    String? iconKey,
+    bool? pinned,
+    int? topOrder,
+    bool? hidden,
+    bool clearTopOrder = false,
+  }) async {
+    final db = await database;
+    final updates = <String, dynamic>{};
+    if (iconKey != null) updates['icon_key'] = iconKey;
+    if (pinned != null) updates['pinned'] = pinned ? 1 : 0;
+    if (topOrder != null || clearTopOrder) updates['top_order'] = topOrder;
+    if (hidden != null) updates['hidden'] = hidden ? 1 : 0;
+    if (updates.isEmpty) return;
+    updates['updated_at'] = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      'lists',
+      updates,
+      where: 'id = ? AND deleted = 0 AND archived = 0',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<void> reorderTopLists(List<String> listIds) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final batch = db.batch();
+    for (var i = 0; i < listIds.length; i++) {
+      batch.update(
+        'lists',
+        {
+          'pinned': 1,
+          'top_order': i,
+          'updated_at': now,
+        },
+        where: 'id = ? AND deleted = 0 AND archived = 0',
+        whereArgs: [listIds[i]],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  static Future<void> resetListIcons() async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      await txn.update('lists', {'icon_key': 'list', 'updated_at': now},
+          where: 'deleted = 0 AND is_system = 0');
+      await txn.update('lists', {'icon_key': 'myDay', 'updated_at': now},
+          where: "id = 'system-my-day'");
+      await txn.update('lists', {'icon_key': 'important', 'updated_at': now},
+          where: "id = 'system-important'");
+      await txn.update('lists', {'icon_key': 'tasks', 'updated_at': now},
+          where: "id = 'system-all-tasks'");
+    });
+  }
+
+  static Future<void> resetTopListOrder() async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.transaction((txn) async {
+      await txn.update(
+        'lists',
+        {'pinned': 1, 'top_order': 0, 'hidden': 0, 'updated_at': now},
+        where: "id = 'system-my-day'",
+      );
+      await txn.update(
+        'lists',
+        {'pinned': 1, 'top_order': 1, 'hidden': 0, 'updated_at': now},
+        where: "id = 'system-important'",
+      );
+      await txn.update(
+        'lists',
+        {'pinned': 1, 'top_order': 2, 'hidden': 0, 'updated_at': now},
+        where: "id = 'system-all-tasks'",
+      );
+      final pinnedCustomLists = await txn.query(
+        'lists',
+        columns: ['id'],
+        where: 'deleted = 0 AND archived = 0 AND is_system = 0 AND pinned = 1',
+        orderBy: 'sort_order ASC, created_at ASC',
+      );
+      for (var i = 0; i < pinnedCustomLists.length; i++) {
+        await txn.update(
+          'lists',
+          {'top_order': i + 3, 'updated_at': now},
+          where: 'id = ?',
+          whereArgs: [pinnedCustomLists[i]['id']],
+        );
+      }
+    });
+  }
+
   static Future<void> archiveList(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -747,7 +907,7 @@ class AppDatabase {
             'archived_at': now,
             'updated_at': now,
           },
-          where: 'id = ? AND deleted = 0 AND is_system = 0',
+          where: 'id = ? AND deleted = 0 AND is_system = 0 AND pinned = 0',
           whereArgs: [id]);
       if (updatedLists == 0) return;
       await _cascadeListArchived(
@@ -788,9 +948,11 @@ class AppDatabase {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
+      final updatedLists = await txn.update(
+          'lists', {'deleted': 1, 'updated_at': now},
+          where: 'id = ? AND is_system = 0 AND pinned = 0', whereArgs: [id]);
+      if (updatedLists == 0) return;
       await _cascadeListDeleted(txn, id, now);
-      await txn.update('lists', {'deleted': 1, 'updated_at': now},
-          where: 'id = ?', whereArgs: [id]);
     });
   }
 
@@ -887,7 +1049,7 @@ class AppDatabase {
             'SELECT COUNT(*) FROM tasks WHERE list_id = ? AND deleted = 0 AND archived = 0',
             [listId])) ??
         0;
-    final id = 'task-${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'task-${_uuid.v4()}';
 
     await db.insert('tasks', {
       'id': id,
@@ -942,7 +1104,7 @@ class AppDatabase {
   ) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final id = 'task-${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'task-${_uuid.v4()}';
 
     // The oldTask is already mapped (camelCase keys), but we need snake_case for DB insertion.
     final dbInsertMap = {
@@ -993,6 +1155,86 @@ class AppDatabase {
       'archived': false,
       'archivedAt': null,
     };
+  }
+
+  /// 原子完成一个重复任务并创建下一次实例。
+  ///
+  /// 只有当原任务仍处于“未完成且仍带重复配置”状态时才会生成下一次任务，
+  /// 用来防止移动端连续点击 checkbox 时重复创建多个下一次任务。
+  static Future<Map<String, dynamic>?> completeRecurringTaskAndCreateNext({
+    required String id,
+    required String newDueDate,
+    required int? newReminderAt,
+    Map<String, dynamic>? nextRecurrenceConfig,
+  }) async {
+    final db = await database;
+    return db.transaction<Map<String, dynamic>?>((txn) async {
+      final rows = await txn.query(
+        'tasks',
+        where:
+            'id = ? AND deleted = 0 AND archived = 0 AND completed = 0 AND recurrence_config IS NOT NULL',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+
+      final oldRow = rows.first;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final newId = 'task-${_uuid.v4()}';
+
+      final updatedRows = await txn.update(
+        'tasks',
+        {
+          'completed': 1,
+          'completed_at': now,
+          'recurrence_config': null,
+          'updated_at': now,
+        },
+        where:
+            'id = ? AND deleted = 0 AND archived = 0 AND completed = 0 AND recurrence_config IS NOT NULL',
+        whereArgs: [id],
+      );
+      if (updatedRows == 0) return null;
+
+      await _setFieldVersions(
+        txn,
+        'tasks',
+        id,
+        ['completed', 'completedAt', 'recurrenceConfig'],
+        now,
+      );
+
+      final dbInsertMap = {
+        'id': newId,
+        'list_id': oldRow['list_id'],
+        'title': oldRow['title'],
+        'notes': oldRow['notes'],
+        'completed': 0,
+        'completed_at': null,
+        'due_date': newDueDate,
+        'due_time': oldRow['due_time'],
+        'sort_order': oldRow['sort_order'],
+        'is_my_day': oldRow['is_my_day'],
+        'my_day_added_at': oldRow['my_day_added_at'],
+        'recurrence_config': nextRecurrenceConfig != null
+            ? _encodeJson(nextRecurrenceConfig)
+            : oldRow['recurrence_config'],
+        'expected_minutes': oldRow['expected_minutes'],
+        'is_important': oldRow['is_important'],
+        'reminder_at': newReminderAt,
+        'calendar_event_id': null,
+        'created_at': now,
+        'updated_at': now,
+        'archived': 0,
+        'archived_at': null,
+        'deleted': 0,
+      };
+
+      await txn.insert('tasks', dbInsertMap);
+      await _setFieldVersions(txn, 'tasks', newId, _taskSyncFields.keys, now);
+
+      return _mapTask(dbInsertMap);
+    });
   }
 
   static Future<void> updateTask(
@@ -1094,6 +1336,56 @@ class AppDatabase {
     if (updatedRows > 0) {
       await _setFieldVersions(db, 'tasks', id, ['archived', 'archivedAt'], now);
     }
+  }
+
+  static Future<int> autoArchiveCompletedTasks({
+    required int keepCount,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final groups = await db.rawQuery('''
+      SELECT list_id, title, COUNT(*) AS count
+      FROM tasks
+      WHERE deleted = 0 AND archived = 0 AND completed = 1
+      GROUP BY list_id, title
+      HAVING count > ?
+    ''', [keepCount]);
+
+    var archivedCount = 0;
+    for (final group in groups) {
+      final rows = await db.rawQuery('''
+        SELECT id
+        FROM tasks
+        WHERE deleted = 0
+          AND archived = 0
+          AND completed = 1
+          AND list_id = ?
+          AND title = ?
+        ORDER BY completed_at DESC, updated_at DESC
+        LIMIT -1 OFFSET ?
+      ''', [group['list_id'], group['title'], keepCount]);
+      final ids = rows.map((row) => row['id'] as String).toList();
+      if (ids.isEmpty) continue;
+      await db.update(
+        'tasks',
+        {
+          'archived': 1,
+          'archived_at': now,
+          'updated_at': now,
+        },
+        where:
+            'id IN (${List.filled(ids.length, '?').join(',')}) AND deleted = 0',
+        whereArgs: ids,
+      );
+      await _setTaskFieldVersionsForIds(
+        db,
+        ids,
+        ['archived', 'archivedAt'],
+        now,
+      );
+      archivedCount += ids.length;
+    }
+    return archivedCount;
   }
 
   static Future<void> restoreTask(String id) async {
@@ -1253,7 +1545,7 @@ class AppDatabase {
   }) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final id = 'session-${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'session-${_uuid.v4()}';
 
     await db.insert('sessions', {
       'id': id,
@@ -1332,7 +1624,7 @@ class AppDatabase {
           where: 'id = ?', whereArgs: [existing.first['id']]);
       return false;
     } else {
-      final id = 'rc-${DateTime.now().millisecondsSinceEpoch}';
+      final id = 'rc-${_uuid.v4()}';
       final now = DateTime.now().millisecondsSinceEpoch;
       await db.insert('task_recurrence_completions', {
         'id': id,
@@ -1768,6 +2060,10 @@ class AppDatabase {
       'name': data['name'],
       'is_system': (data['isSystem'] ?? false) ? 1 : 0,
       'sort_order': data['sortOrder'] ?? 0,
+      'icon_key': data['iconKey'] ?? 'list',
+      'pinned': (data['pinned'] ?? false) ? 1 : 0,
+      'top_order': data['topOrder'],
+      'hidden': (data['hidden'] ?? false) ? 1 : 0,
       'created_at': data['createdAt'],
       'archived': (data['archived'] ?? false) ? 1 : 0,
       'archived_at': data['archivedAt'],
@@ -1868,7 +2164,7 @@ class AppDatabase {
       {String? title}) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final id = 'conv-${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'conv-${_uuid.v4()}';
     await db.insert('ai_conversations', {
       'id': id,
       'title': title,
@@ -1927,7 +2223,7 @@ class AppDatabase {
   }) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final id = 'msg-${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'msg-${_uuid.v4()}';
     await db.insert('ai_messages', {
       'id': id,
       'conversation_id': conversationId,
@@ -1978,7 +2274,7 @@ class AppDatabase {
   }) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final id = 'aio-${DateTime.now().millisecondsSinceEpoch}';
+    final id = 'aio-${_uuid.v4()}';
     await db.insert('ai_operations', {
       'id': id,
       'message_id': messageId,

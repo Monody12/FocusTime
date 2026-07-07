@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Sidebar extends ConsumerStatefulWidget {
   final VoidCallback? onListChanged;
@@ -20,10 +21,12 @@ class Sidebar extends ConsumerStatefulWidget {
   ConsumerState<Sidebar> createState() => _SidebarState();
 }
 
-class _SidebarState extends ConsumerState<Sidebar> {
+class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
   bool _showNewList = false;
   bool _isCreatingList = false;
   final _newListController = TextEditingController();
+  String _newListDraft = '';
+  bool _keyboardWasVisible = false;
   final _scrollController = ScrollController();
   final _newListKey = GlobalKey();
   final _editListKey = GlobalKey();
@@ -37,13 +40,15 @@ class _SidebarState extends ConsumerState<Sidebar> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _newListFocusNode = FocusNode();
-    // 监听新建清单输入框的失焦事件：空内容时还原状态，有内容时创建清单
+    // 监听新建清单输入框的失焦事件：取消输入框并保留草稿，提交动作才真正创建。
     _newListFocusNode.addListener(_onNewListFocusChange);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _newListFocusNode.removeListener(_onNewListFocusChange);
     _newListFocusNode.dispose();
     _scrollController.dispose();
@@ -54,18 +59,21 @@ class _SidebarState extends ConsumerState<Sidebar> {
 
   // 新建清单输入框失焦时的处理逻辑
   void _onNewListFocusChange() {
-    if (!_newListFocusNode.hasFocus && _showNewList) {
-      // 失焦时检查是否有内容
-      if (_newListController.text.trim().isNotEmpty) {
-        _createList();
-      } else {
-        // 空内容则还原为未点击状态
-        setState(() {
-          _showNewList = false;
-          _newListController.clear();
-        });
-      }
+    if (!_newListFocusNode.hasFocus && _showNewList && !_isCreatingList) {
+      _cancelCreatingList();
     }
+  }
+
+  @override
+  void didChangeMetrics() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_showNewList || !_isMobile) return;
+      final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+      if (_keyboardWasVisible && !keyboardVisible) {
+        _cancelCreatingList(unfocus: false);
+      }
+      _keyboardWasVisible = keyboardVisible;
+    });
   }
 
   bool get _isMobile =>
@@ -73,10 +81,17 @@ class _SidebarState extends ConsumerState<Sidebar> {
       Theme.of(context).platform == TargetPlatform.iOS;
 
   void _startCreatingList() {
-    setState(() => _showNewList = true);
+    setState(() {
+      _showNewList = true;
+      _newListController.text = _newListDraft;
+      _newListController.selection = TextSelection.collapsed(
+        offset: _newListController.text.length,
+      );
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _newListFocusNode.requestFocus();
+      _keyboardWasVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
       _ensureInputVisible(_newListKey);
     });
     Future.delayed(const Duration(milliseconds: 300), () {
@@ -91,8 +106,17 @@ class _SidebarState extends ConsumerState<Sidebar> {
       inputContext,
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOut,
-      alignment: 0.85,
+      alignment: _isMobile ? 0.45 : 0.85,
     );
+  }
+
+  void _cancelCreatingList({bool unfocus = true}) {
+    _newListDraft = _newListController.text;
+    if (unfocus) {
+      _newListFocusNode.unfocus();
+    }
+    if (!mounted) return;
+    setState(() => _showNewList = false);
   }
 
   void _showErrorSnackBar(String message) {
@@ -111,7 +135,13 @@ class _SidebarState extends ConsumerState<Sidebar> {
     final keyboardBottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
     final systemLists = taskState.lists.where((l) => l.isSystem).toList();
-    final customLists = taskState.lists.where((l) => !l.isSystem).toList();
+    final topLists = taskState.lists
+        .where((l) => l.pinned && !l.hidden)
+        .toList()
+      ..sort((a, b) =>
+          (a.topOrder ?? a.sortOrder).compareTo(b.topOrder ?? b.sortOrder));
+    final customLists =
+        taskState.lists.where((l) => !l.isSystem && !l.pinned).toList();
 
     return Container(
       width: double.infinity,
@@ -135,40 +165,50 @@ class _SidebarState extends ConsumerState<Sidebar> {
               padding: EdgeInsets.fromLTRB(
                   0, 8, 0, 8 + (isMobile ? keyboardBottomInset : 0)),
               children: [
-                _buildListItem(
-                  context,
-                  icon: AppIcons.myDay,
-                  label: '我的一天',
-                  isSelected: taskState.currentListId == 'system-my-day',
-                  onTap: () {
-                    taskNotifier.setCurrentList('system-my-day', 'my-day');
-                    widget.onListChanged?.call();
+                ReorderableListView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  buildDefaultDragHandles: false,
+                  onReorder: (oldIndex, newIndex) {
+                    if (newIndex > oldIndex) newIndex -= 1;
+                    final listIds = topLists.map((l) => l.id).toList();
+                    final item = listIds.removeAt(oldIndex);
+                    listIds.insert(newIndex, item);
+                    taskNotifier.reorderTopLists(listIds);
                   },
-                  isDark: isDark,
-                ),
-                _buildListItem(
-                  context,
-                  icon: AppIcons.important,
-                  label: '重要',
-                  isSelected: taskState.currentListId == 'system-important',
-                  onTap: () {
-                    taskNotifier.setCurrentList(
-                        'system-important', 'important');
-                    widget.onListChanged?.call();
-                  },
-                  isDark: isDark,
-                ),
-                _buildListItem(
-                  context,
-                  icon: AppIcons.tasks,
-                  label: '任务',
-                  isSelected: taskState.currentListId == 'system-all-tasks',
-                  onTap: () {
-                    taskNotifier.setCurrentList(
-                        'system-all-tasks', 'all-tasks');
-                    widget.onListChanged?.call();
-                  },
-                  isDark: isDark,
+                  children: topLists.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final list = entry.value;
+                    final item = _buildListItem(
+                      context,
+                      icon: AppIcons.taskListIcon(list.iconKey),
+                      label: list.name,
+                      isSelected: taskState.currentListId == list.id,
+                      onTap: () {
+                        taskNotifier.setCurrentList(
+                            list.id, _viewTypeForList(list));
+                        widget.onListChanged?.call();
+                      },
+                      onLongPress: () =>
+                          _showTopListActionsSheet(context, list),
+                      onSecondaryTapDown: (position) =>
+                          _showTopListContextMenu(context, position, list),
+                      isDark: isDark,
+                      isMobile: isMobile,
+                    );
+                    if (isMobile) {
+                      return ReorderableDelayedDragStartListener(
+                        key: ValueKey('top-${list.id}'),
+                        index: index,
+                        child: item,
+                      );
+                    }
+                    return ReorderableDragStartListener(
+                      key: ValueKey('top-${list.id}'),
+                      index: index,
+                      child: item,
+                    );
+                  }).toList(),
                 ),
 
                 const SizedBox(height: 16),
@@ -272,7 +312,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                         ),
                       ),
                       onSubmitted: (_) => _createList(),
-                      onEditingComplete: _createList,
+                      onTapOutside: (_) => _cancelCreatingList(),
                     ),
                   )
                 else
@@ -293,10 +333,15 @@ class _SidebarState extends ConsumerState<Sidebar> {
     required bool isSelected,
     required VoidCallback onTap,
     VoidCallback? onLongPress,
+    ValueChanged<Offset>? onSecondaryTapDown,
     required bool isDark,
+    required bool isMobile,
   }) {
     return GestureDetector(
       onLongPress: onLongPress,
+      onSecondaryTapDown: isMobile || onSecondaryTapDown == null
+          ? null
+          : (details) => onSecondaryTapDown(details.globalPosition),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
@@ -343,6 +388,19 @@ class _SidebarState extends ConsumerState<Sidebar> {
         ),
       ),
     );
+  }
+
+  String _viewTypeForList(TaskList list) {
+    switch (list.id) {
+      case 'system-my-day':
+        return 'my-day';
+      case 'system-important':
+        return 'important';
+      case 'system-all-tasks':
+        return 'all-tasks';
+      default:
+        return 'custom';
+    }
   }
 
   // 自定义清单项（可作为拖拽目标接收任务）
@@ -397,7 +455,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
                 child: Row(
                   children: [
                     AppIcon(
-                      AppIcons.list,
+                      AppIcons.taskListIcon(list.iconKey),
                       size: AppIconSizes.nav,
                       color: isSelected
                           ? context.appColors.text
@@ -470,6 +528,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
   /// 显示右键菜单（适用于桌面端）
   void _showContextMenu(BuildContext context, Offset globalPosition,
       String listId, String listName) {
+    final taskState = ref.read(taskProvider);
+    final list = taskState.lists.where((l) => l.id == listId).firstOrNull;
+    if (list == null) return;
     // 获取 Overlay 的 RenderBox 以计算相对位置
     final RenderBox overlay =
         Overlay.of(context).context.findRenderObject() as RenderBox;
@@ -498,6 +559,35 @@ class _SidebarState extends ConsumerState<Sidebar> {
             ],
           ),
         ),
+        PopupMenuItem<String>(
+          value: 'pin',
+          height: 36,
+          child: Row(
+            children: [
+              AppIcon(AppIcons.playlistAdd,
+                  size: AppIconSizes.compact, color: context.appColors.text),
+              const SizedBox(width: AppIconSpacing.labelGap),
+              Text('置顶到顶部',
+                  style:
+                      TextStyle(fontSize: 13, color: context.appColors.text)),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'icon',
+          height: 36,
+          child: Row(
+            children: [
+              AppIcon(AppIcons.flag,
+                  size: AppIconSizes.compact, color: context.appColors.text),
+              const SizedBox(width: AppIconSpacing.labelGap),
+              Text('更换图标',
+                  style:
+                      TextStyle(fontSize: 13, color: context.appColors.text)),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
         PopupMenuItem<String>(
           value: 'archive',
           height: 36,
@@ -530,6 +620,10 @@ class _SidebarState extends ConsumerState<Sidebar> {
       if (!mounted) return;
       if (value == 'rename') {
         _startEditing(listId, listName);
+      } else if (value == 'pin') {
+        _pinList(list);
+      } else if (value == 'icon') {
+        _showIconPicker(list);
       } else if (value == 'archive') {
         _confirmArchiveList(context, listId, listName);
       } else if (value == 'delete') {
@@ -541,6 +635,9 @@ class _SidebarState extends ConsumerState<Sidebar> {
   void _showListActionsSheet(
       BuildContext context, String listId, String listName) {
     final parentContext = context;
+    final list =
+        ref.read(taskProvider).lists.where((l) => l.id == listId).firstOrNull;
+    if (list == null) return;
     showModalBottomSheet<void>(
       context: parentContext,
       backgroundColor: context.appColors.surface,
@@ -562,6 +659,27 @@ class _SidebarState extends ConsumerState<Sidebar> {
                   });
                 },
               ),
+              ListTile(
+                leading: const AppIcon(AppIcons.playlistAdd),
+                title: const Text('置顶到顶部'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future.delayed(Duration.zero, () {
+                    if (mounted) _pinList(list);
+                  });
+                },
+              ),
+              ListTile(
+                leading: const AppIcon(AppIcons.flag),
+                title: const Text('更换图标'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future.delayed(Duration.zero, () {
+                    if (mounted) _showIconPicker(list);
+                  });
+                },
+              ),
+              const Divider(height: 1),
               ListTile(
                 leading: const AppIcon(AppIcons.archive),
                 title: const Text('归档'),
@@ -591,6 +709,125 @@ class _SidebarState extends ConsumerState<Sidebar> {
         );
       },
     );
+  }
+
+  void _showTopListContextMenu(
+    BuildContext context,
+    Offset globalPosition,
+    TaskList list,
+  ) {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(40, 40),
+        Offset.zero & overlay.size,
+      ),
+      color: context.appColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      elevation: 8,
+      items: [
+        _topMenuItem('rename', AppIcons.edit, '重命名'),
+        _topMenuItem('icon', AppIcons.flag, '更换图标'),
+        if (list.isSystem)
+          _topMenuItem('hide', AppIcons.playlistRemove, '隐藏预设清单')
+        else
+          _topMenuItem('unpin', AppIcons.playlistRemove, '取消置顶'),
+      ],
+    ).then((value) {
+      if (!mounted || value == null) return;
+      _handleTopListAction(context, list, value);
+    });
+  }
+
+  PopupMenuItem<String> _topMenuItem(
+      String value, IconData icon, String label) {
+    return PopupMenuItem<String>(
+      value: value,
+      height: 36,
+      child: Row(
+        children: [
+          AppIcon(icon,
+              size: AppIconSizes.compact, color: context.appColors.text),
+          const SizedBox(width: AppIconSpacing.labelGap),
+          Text(label,
+              style: TextStyle(fontSize: 13, color: context.appColors.text)),
+        ],
+      ),
+    );
+  }
+
+  void _showTopListActionsSheet(BuildContext context, TaskList list) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.appColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const AppIcon(AppIcons.edit),
+                title: const Text('重命名'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future.delayed(Duration.zero, () {
+                    if (mounted) _startEditing(list.id, list.name);
+                  });
+                },
+              ),
+              ListTile(
+                leading: const AppIcon(AppIcons.flag),
+                title: const Text('更换图标'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future.delayed(Duration.zero, () {
+                    if (mounted) _showIconPicker(list);
+                  });
+                },
+              ),
+              ListTile(
+                leading: const AppIcon(AppIcons.playlistRemove),
+                title: Text(list.isSystem ? '隐藏预设清单' : '取消置顶'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  Future.delayed(Duration.zero, () {
+                    if (mounted) {
+                      _handleTopListAction(
+                        context,
+                        list,
+                        list.isSystem ? 'hide' : 'unpin',
+                      );
+                    }
+                  });
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _handleTopListAction(
+    BuildContext context,
+    TaskList list,
+    String action,
+  ) {
+    if (action == 'rename') {
+      _startEditing(list.id, list.name);
+    } else if (action == 'icon') {
+      _showIconPicker(list);
+    } else if (action == 'hide') {
+      _hideSystemList(context, list);
+    } else if (action == 'unpin') {
+      _unpinList(list);
+    }
   }
 
   // 新建清单按钮
@@ -760,13 +997,165 @@ class _SidebarState extends ConsumerState<Sidebar> {
     }
   }
 
+  Future<bool> _showTopListFeatureIntro() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('topListCustomizationIntroDismissed') == true) {
+      return true;
+    }
+    if (!mounted) return false;
+    var dontShowAgain = false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: context.appColors.surface,
+          title:
+              Text('顶部清单自定义', style: TextStyle(color: context.appColors.text)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '你可以把常用自定义清单置顶到“我的一天、重要、任务”所在区域，给它们换图标并拖动排序。隐藏系统预设清单后，可在设置中的任务栏设置恢复。置顶清单会同步到账号数据，多端同步后立即生效。',
+                style: TextStyle(color: context.appColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: dontShowAgain,
+                onChanged: (value) {
+                  setDialogState(() => dontShowAgain = value == true);
+                },
+                title: Text('不再显示',
+                    style: TextStyle(color: context.appColors.text)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (accepted == true && dontShowAgain) {
+      await prefs.setBool('topListCustomizationIntroDismissed', true);
+    }
+    return accepted == true;
+  }
+
+  Future<void> _pinList(TaskList list) async {
+    final accepted = await _showTopListFeatureIntro();
+    if (!accepted) return;
+    try {
+      await ref.read(taskProvider.notifier).pinList(list.id);
+      _showErrorSnackBar('已置顶到顶部清单');
+    } catch (_) {
+      _showErrorSnackBar('置顶清单失败，请重试');
+    }
+  }
+
+  Future<void> _unpinList(TaskList list) async {
+    try {
+      await ref.read(taskProvider.notifier).unpinList(list.id);
+      _showErrorSnackBar('已取消置顶');
+    } catch (_) {
+      _showErrorSnackBar('取消置顶失败，请重试');
+    }
+  }
+
+  Future<void> _hideSystemList(BuildContext context, TaskList list) async {
+    final accepted = await _showTopListFeatureIntro();
+    if (!accepted) return;
+    try {
+      await ref.read(taskProvider.notifier).hideSystemList(list.id);
+      if (!mounted) return;
+      _showErrorSnackBar('已隐藏预设清单，可在设置的任务栏设置中恢复');
+    } catch (_) {
+      _showErrorSnackBar('隐藏预设清单失败，请重试');
+    }
+  }
+
+  Future<void> _showIconPicker(TaskList list) async {
+    const iconOptions = [
+      'list',
+      'home',
+      'work',
+      'book',
+      'shopping',
+      'health',
+      'fitness',
+      'finance',
+      'travel',
+      'idea',
+      'project',
+      'flag',
+      'calendar',
+    ];
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: context.appColors.surface,
+        title: Text('选择清单图标', style: TextStyle(color: context.appColors.text)),
+        content: SizedBox(
+          width: 320,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: iconOptions.map((key) {
+              final selected = key == list.iconKey;
+              return InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.of(dialogContext).pop(key),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? context.appColors.surfaceElevated
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: selected
+                          ? context.appColors.accent
+                          : context.appColors.border,
+                    ),
+                  ),
+                  child: Center(
+                    child: AppIcon(
+                      AppIcons.taskListIcon(key),
+                      color: selected
+                          ? context.appColors.accent
+                          : context.appColors.textSecondary,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+    );
+    if (selected == null) return;
+    try {
+      await ref.read(taskProvider.notifier).updateListIcon(list.id, selected);
+    } catch (_) {
+      _showErrorSnackBar('更新清单图标失败，请重试');
+    }
+  }
+
   void _createList() async {
     if (_isCreatingList) return;
     if (_newListController.text.trim().isEmpty) {
-      setState(() {
-        _showNewList = false;
-        _newListController.clear();
-      });
+      _newListDraft = '';
+      _cancelCreatingList();
       return;
     }
 
@@ -777,6 +1166,7 @@ class _SidebarState extends ConsumerState<Sidebar> {
       _isCreatingList = true;
       _showNewList = false;
       _newListController.clear();
+      _newListDraft = '';
     });
 
     // 使用短延迟确保 UI 先更新

@@ -133,74 +133,86 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
         Expanded(
           child: taskState.isLoading
               ? const Center(child: CircularProgressIndicator())
-              : taskState.tasks.isEmpty
-                  ? _buildEmptyState(isDark)
-                  : ListView(
-                      children: [
-                        // Incomplete tasks
-                        ReorderableListView(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          // 由 TaskItemWidget 内的 ReorderableDragStartListener 接管拖拽
-                          buildDefaultDragHandles: false,
-                          onReorder: (oldIndex, newIndex) {
-                            if (newIndex > oldIndex) newIndex -= 1;
-                            final taskIds =
-                                incompleteTasks.map((t) => t.id).toList();
-                            final item = taskIds.removeAt(oldIndex);
-                            taskIds.insert(newIndex, item);
-                            taskNotifier.reorderTasks(taskIds);
-                          },
+              : RefreshIndicator(
+                  onRefresh: _syncNow,
+                  child: taskState.tasks.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           children: [
-                            for (int i = 0; i < incompleteTasks.length; i++)
-                              TaskItemWidget(
-                                key: ValueKey(incompleteTasks[i].id),
-                                task: incompleteTasks[i],
-                                index: i,
-                                isSelected: taskState.selectedTaskId ==
-                                    incompleteTasks[i].id,
-                                onTap: () {
-                                  taskNotifier
-                                      .setSelectedTask(incompleteTasks[i].id);
-                                },
-                              ),
+                            SizedBox(
+                              height: MediaQuery.sizeOf(context).height * 0.45,
+                              child: _buildEmptyState(isDark),
+                            ),
                           ],
-                        ),
-
-                        // Completed tasks
-                        if (completedTasks.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Padding(
-                            key: const ValueKey('completed_header'),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            child: Row(
+                        )
+                      : ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            // Incomplete tasks
+                            ReorderableListView(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              // 由 TaskItemWidget 内的 ReorderableDragStartListener 接管拖拽
+                              buildDefaultDragHandles: false,
+                              onReorder: (oldIndex, newIndex) {
+                                if (newIndex > oldIndex) newIndex -= 1;
+                                final taskIds =
+                                    incompleteTasks.map((t) => t.id).toList();
+                                final item = taskIds.removeAt(oldIndex);
+                                taskIds.insert(newIndex, item);
+                                taskNotifier.reorderTasks(taskIds);
+                              },
                               children: [
-                                Text(
-                                  '已完成 (${completedTasks.length})',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: context.appColors.textSecondary,
+                                for (int i = 0; i < incompleteTasks.length; i++)
+                                  TaskItemWidget(
+                                    key: ValueKey(incompleteTasks[i].id),
+                                    task: incompleteTasks[i],
+                                    index: i,
+                                    isSelected: taskState.selectedTaskId ==
+                                        incompleteTasks[i].id,
+                                    onTap: () {
+                                      taskNotifier.setSelectedTask(
+                                          incompleteTasks[i].id);
+                                    },
                                   ),
-                                ),
                               ],
                             ),
-                          ),
-                          for (int i = 0; i < completedTasks.length; i++)
-                            TaskItemWidget(
-                              key: ValueKey(completedTasks[i].id),
-                              task: completedTasks[i],
-                              isSelected: taskState.selectedTaskId ==
-                                  completedTasks[i].id,
-                              onTap: () {
-                                taskNotifier
-                                    .setSelectedTask(completedTasks[i].id);
-                              },
-                            ),
-                        ],
-                      ],
-                    ),
+
+                            // Completed tasks
+                            if (completedTasks.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Padding(
+                                key: const ValueKey('completed_header'),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      '已完成 (${completedTasks.length})',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: context.appColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              for (int i = 0; i < completedTasks.length; i++)
+                                TaskItemWidget(
+                                  key: ValueKey(completedTasks[i].id),
+                                  task: completedTasks[i],
+                                  isSelected: taskState.selectedTaskId ==
+                                      completedTasks[i].id,
+                                  onTap: () {
+                                    taskNotifier
+                                        .setSelectedTask(completedTasks[i].id);
+                                  },
+                                ),
+                            ],
+                          ],
+                        ),
+                ),
         ),
       ],
     );
@@ -239,5 +251,13 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
           );
       _newTaskController.clear();
     }
+  }
+
+  Future<void> _syncNow() async {
+    final result = await ref.read(taskProvider.notifier).sync();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.success ? '同步完成' : '同步失败，请检查登录和网络')),
+    );
   }
 }

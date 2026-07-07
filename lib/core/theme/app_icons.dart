@@ -34,6 +34,16 @@ class AppIcons {
   static const IconData list = Icons.folder_outlined;
   static const IconData listAdd = Icons.add;
   static const IconData listReceive = Icons.add_circle_outline;
+  static const IconData listHome = Icons.home_outlined;
+  static const IconData listWork = Icons.work_outline;
+  static const IconData listBook = Icons.menu_book_outlined;
+  static const IconData listShopping = Icons.shopping_bag_outlined;
+  static const IconData listHealth = Icons.favorite_border;
+  static const IconData listFitness = Icons.fitness_center_outlined;
+  static const IconData listFinance = Icons.account_balance_wallet_outlined;
+  static const IconData listTravel = Icons.flight_takeoff_outlined;
+  static const IconData listIdea = Icons.lightbulb_outline;
+  static const IconData listProject = Icons.view_kanban_outlined;
 
   static const IconData addTask = Icons.add;
   static const IconData taskDone = Icons.check;
@@ -79,6 +89,29 @@ class AppIcons {
   static const IconData hidden = Icons.visibility_off;
   static const IconData warning = Icons.warning_amber_rounded;
   static const IconData emptyTasks = Icons.assignment_outlined;
+
+  static const Map<String, IconData> taskListIcons = {
+    'myDay': myDay,
+    'important': important,
+    'tasks': tasks,
+    'list': list,
+    'home': listHome,
+    'work': listWork,
+    'book': listBook,
+    'shopping': listShopping,
+    'health': listHealth,
+    'fitness': listFitness,
+    'finance': listFinance,
+    'travel': listTravel,
+    'idea': listIdea,
+    'project': listProject,
+    'flag': flag,
+    'calendar': calendar,
+  };
+
+  static IconData taskListIcon(String? key) {
+    return taskListIcons[key] ?? list;
+  }
 }
 
 class AppIcon extends StatelessWidget {

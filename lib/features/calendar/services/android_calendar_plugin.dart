@@ -11,6 +11,20 @@ class AndroidCalendarPlugin {
   static const MethodChannel _channel =
       MethodChannel('com.focusmytime.android_calendar');
 
+  Future<Result<String>> ensureLocalCalendar(String name) async {
+    final result = Result<String>();
+    try {
+      final calendarId = await _channel.invokeMethod<String>(
+        'ensureLocalCalendar',
+        {'name': name},
+      );
+      result.data = calendarId;
+    } catch (e) {
+      result.errors.add(ResultError(0, e.toString()));
+    }
+    return result;
+  }
+
   Future<Result<String>> createOrUpdateEvent(Event event) async {
     final result = Result<String>();
     try {

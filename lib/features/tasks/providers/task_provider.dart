@@ -13,6 +13,10 @@ class TaskList {
   final String name;
   final bool isSystem;
   final int sortOrder;
+  final String iconKey;
+  final bool pinned;
+  final int? topOrder;
+  final bool hidden;
   final int createdAt;
   final int updatedAt;
   final bool archived;
@@ -23,6 +27,10 @@ class TaskList {
     required this.name,
     required this.isSystem,
     required this.sortOrder,
+    this.iconKey = 'list',
+    this.pinned = false,
+    this.topOrder,
+    this.hidden = false,
     required this.createdAt,
     required this.updatedAt,
     this.archived = false,
@@ -34,6 +42,10 @@ class TaskList {
     String? name,
     bool? isSystem,
     int? sortOrder,
+    String? iconKey,
+    bool? pinned,
+    int? topOrder,
+    bool? hidden,
     int? createdAt,
     int? updatedAt,
     bool? archived,
@@ -44,6 +56,10 @@ class TaskList {
         name: name ?? this.name,
         isSystem: isSystem ?? this.isSystem,
         sortOrder: sortOrder ?? this.sortOrder,
+        iconKey: iconKey ?? this.iconKey,
+        pinned: pinned ?? this.pinned,
+        topOrder: topOrder ?? this.topOrder,
+        hidden: hidden ?? this.hidden,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
         archived: archived ?? this.archived,
@@ -188,6 +204,7 @@ class TaskState {
 
 class TaskNotifier extends StateNotifier<TaskState> {
   final Map<String, TaskItem> _knownReminderTasks = {};
+  final Set<String> _completionInProgress = {};
   late final Future<void> Function() _syncCompletedListener;
 
   TaskNotifier() : super(TaskState()) {
@@ -212,6 +229,10 @@ class TaskNotifier extends StateNotifier<TaskState> {
       name: m['name'] as String,
       isSystem: m['isSystem'] == true,
       sortOrder: m['sortOrder'] as int,
+      iconKey: m['iconKey'] as String? ?? 'list',
+      pinned: m['pinned'] == true,
+      topOrder: m['topOrder'] as int?,
+      hidden: m['hidden'] == true,
       createdAt: m['createdAt'] as int,
       updatedAt: m['updatedAt'] as int,
       archived: m['archived'] == true,
@@ -242,6 +263,19 @@ class TaskNotifier extends StateNotifier<TaskState> {
       archived: m['archived'] == true,
       archivedAt: m['archivedAt'] as int?,
     );
+  }
+
+  static String _viewTypeForList(TaskList list) {
+    switch (list.id) {
+      case 'system-my-day':
+        return 'my-day';
+      case 'system-important':
+        return 'important';
+      case 'system-all-tasks':
+        return 'all-tasks';
+      default:
+        return 'custom';
+    }
   }
 
   Future<void> loadLists() async {
@@ -307,6 +341,89 @@ class TaskNotifier extends StateNotifier<TaskState> {
         .map((l) => l.id == id ? l.copyWith(name: name) : l)
         .toList();
     state = state.copyWith(lists: lists);
+    _triggerSync();
+  }
+
+  Future<void> updateListIcon(String id, String iconKey) async {
+    await AppDatabase.updateListCustomization(id, iconKey: iconKey);
+    state = state.copyWith(
+      lists: state.lists
+          .map((l) => l.id == id ? l.copyWith(iconKey: iconKey) : l)
+          .toList(),
+    );
+    _triggerSync();
+  }
+
+  Future<void> pinList(String id) async {
+    final visibleTopLists =
+        state.lists.where((l) => l.pinned && !l.hidden).toList();
+    final topOrder = visibleTopLists.length;
+    await AppDatabase.updateListCustomization(
+      id,
+      pinned: true,
+      hidden: false,
+      topOrder: topOrder,
+    );
+    await loadLists();
+    _triggerSync();
+  }
+
+  Future<void> unpinList(String id) async {
+    await AppDatabase.updateListCustomization(
+      id,
+      pinned: false,
+      clearTopOrder: true,
+    );
+    await loadLists();
+    _triggerSync();
+  }
+
+  Future<void> hideSystemList(String id) async {
+    await AppDatabase.updateListCustomization(id, hidden: true);
+    await loadLists();
+    if (state.currentListId == id) {
+      final fallback = state.lists
+          .where((list) => list.pinned && !list.hidden)
+          .toList()
+        ..sort((a, b) =>
+            (a.topOrder ?? a.sortOrder).compareTo(b.topOrder ?? b.sortOrder));
+      if (fallback.isNotEmpty) {
+        await setCurrentList(
+            fallback.first.id, _viewTypeForList(fallback.first));
+      } else {
+        await setCurrentList('system-all-tasks', 'all-tasks');
+      }
+    }
+    _triggerSync();
+  }
+
+  Future<void> reorderTopLists(List<String> listIds) async {
+    final lists = [...state.lists];
+    final idToIndex = {for (int i = 0; i < listIds.length; i++) listIds[i]: i};
+    lists.sort((a, b) {
+      final indexA = idToIndex[a.id];
+      final indexB = idToIndex[b.id];
+      if (indexA != null && indexB != null) return indexA.compareTo(indexB);
+      if (indexA != null) return -1;
+      if (indexB != null) return 1;
+      return a.sortOrder.compareTo(b.sortOrder);
+    });
+    state = state.copyWith(lists: lists);
+
+    await AppDatabase.reorderTopLists(listIds);
+    await loadLists();
+    _triggerSync();
+  }
+
+  Future<void> resetListIcons() async {
+    await AppDatabase.resetListIcons();
+    await loadLists();
+    _triggerSync();
+  }
+
+  Future<void> resetTopListOrder() async {
+    await AppDatabase.resetTopListOrder();
+    await loadLists();
     _triggerSync();
   }
 
@@ -674,112 +791,142 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> toggleTaskComplete(String id) async {
+    if (_completionInProgress.contains(id)) return;
+
     final task = state.tasks.where((t) => t.id == id).firstOrNull;
     if (task == null) return;
 
-    final willComplete = !task.completed;
+    _completionInProgress.add(id);
+    try {
+      final willComplete = !task.completed;
+      TaskItem? newRecurringTask;
 
-    if (willComplete && task.recurrenceConfig != null) {
-      // 1. Calculate next date
-      final config = RecurrenceConfig.fromJson(task.recurrenceConfig!);
-      final currentDue =
-          task.dueDate != null ? DateTime.parse(task.dueDate!) : AppTime.now();
-      final nextDue = getNextDate(currentDue, config);
-      final newDueDateStr =
-          '${nextDue.year}-${nextDue.month.toString().padLeft(2, '0')}-${nextDue.day.toString().padLeft(2, '0')}';
+      if (willComplete && task.recurrenceConfig != null) {
+        final now = AppTime.now();
+        final config = RecurrenceConfig.fromJson(task.recurrenceConfig!);
+        if (config.endsAfterOccurrences != null &&
+            config.endsAfterOccurrences! <= 1) {
+          await AppDatabase.updateTask(id, {'recurrenceConfig': null});
+          await AppDatabase.toggleTaskComplete(id);
+          await loadTasks(showLoading: false);
+          _triggerSync();
+          return;
+        }
 
-      // 2. Calculate next reminder time if exists
-      int? newReminderAt;
-      if (task.reminderAt != null) {
-        final currentReminder =
-            AppTime.fromMillisecondsSinceEpoch(task.reminderAt!);
-        final newReminder = AppTime.create(
+        state = state.copyWith(
+          tasks: state.tasks
+              .map((t) => t.id == id
+                  ? t.copyWith(
+                      completed: true,
+                      completedAt: now.millisecondsSinceEpoch,
+                    )
+                  : t)
+              .toList(),
+        );
+
+        final currentDue = task.dueDate != null
+            ? DateTime.parse(task.dueDate!)
+            : AppTime.now();
+        final nextDue = getNextDateOnOrAfter(currentDue, config, now);
+        if (config.endsAt != null &&
+            nextDue.isAfter(DateTime.parse(config.endsAt!))) {
+          await AppDatabase.updateTask(id, {'recurrenceConfig': null});
+          await AppDatabase.toggleTaskComplete(id);
+          await loadTasks(showLoading: false);
+          _triggerSync();
+          return;
+        }
+        final newDueDateStr = AppTime.formatDate(nextDue);
+
+        int? newReminderAt;
+        if (task.reminderAt != null) {
+          final currentReminder =
+              AppTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+          final newReminder = AppTime.create(
             nextDue.year,
             nextDue.month,
             nextDue.day,
             currentReminder.hour,
             currentReminder.minute,
-            currentReminder.second);
-        newReminderAt = newReminder.millisecondsSinceEpoch;
-      }
-
-      // 3. Clear current task's recurrence config
-      await AppDatabase.updateTask(id, {'recurrenceConfig': null});
-
-      // 4. Mark current task completed
-      await AppDatabase.toggleTaskComplete(id);
-
-      // 5. Generate new task for recurrence
-      final dbTask = await AppDatabase.getTaskById(id);
-      if (dbTask != null) {
-        dbTask['recurrenceConfig'] = task.recurrenceConfig;
-        final newDbTask = await AppDatabase.duplicateTaskForRecurrence(
-            dbTask, newDueDateStr, newReminderAt);
-
-        final newTask = TaskItem(
-          id: newDbTask['id'] as String,
-          listId: newDbTask['listId'] as String,
-          title: newDbTask['title'] as String,
-          notes: newDbTask['notes'] as String?,
-          completed: newDbTask['completed'] == true,
-          completedAt: newDbTask['completedAt'] as int?,
-          dueDate: newDbTask['dueDate'] as String?,
-          dueTime: newDbTask['dueTime'] as String?,
-          sortOrder: newDbTask['sortOrder'] as int,
-          isMyDay: newDbTask['isMyDay'] == true,
-          myDayAddedAt: newDbTask['myDayAddedAt'] as int?,
-          recurrenceConfig:
-              newDbTask['recurrenceConfig'] as Map<String, dynamic>?,
-          expectedMinutes: newDbTask['expectedMinutes'] as int?,
-          isImportant: newDbTask['isImportant'] == true,
-          reminderAt: newDbTask['reminderAt'] as int?,
-          calendarEventId: newDbTask['calendarEventId'] as String?,
-          createdAt: newDbTask['createdAt'] as int,
-          updatedAt: newDbTask['updatedAt'] as int,
-        );
-
-        // Schedule reminders and calendar event for the newly created task
-        final newEventId =
-            await ReminderService.scheduleUnifiedReminders(newTask);
-        if (newEventId != null) {
-          await AppDatabase.updateTaskCalendarEventId(newTask.id, newEventId);
+            currentReminder.second,
+          );
+          newReminderAt = newReminder.millisecondsSinceEpoch;
         }
-        _rememberTaskIntegration(newTask.copyWith(
-          calendarEventId: newEventId,
-          clearCalendarEventId: newEventId == null,
-        ));
+
+        final newDbTask = await AppDatabase.completeRecurringTaskAndCreateNext(
+          id: id,
+          newDueDate: newDueDateStr,
+          newReminderAt: newReminderAt,
+          nextRecurrenceConfig: _nextRecurrenceConfig(task.recurrenceConfig!),
+        );
+        if (newDbTask != null) {
+          newRecurringTask = _taskFromMap(newDbTask);
+        }
+      } else {
+        await AppDatabase.toggleTaskComplete(id);
       }
-    } else {
-      await AppDatabase.toggleTaskComplete(id);
-    }
 
-    await loadTasks(showLoading: false);
+      await loadTasks(showLoading: false);
 
-    // 处理原任务的提醒取消/重新调度
-    final updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
-    if (updatedTask != null) {
-      final eventId =
-          await ReminderService.scheduleUnifiedReminders(updatedTask);
-      if (eventId != null && eventId != updatedTask.calendarEventId) {
-        await AppDatabase.updateTaskCalendarEventId(id, eventId);
+      if (newRecurringTask != null) {
+        await _scheduleTaskIntegration(newRecurringTask);
+        await _runAutoArchiveIfNeeded();
       }
-      state = state.copyWith(
-        tasks: state.tasks
-            .map((t) => t.id == id
-                ? t.copyWith(
-                    calendarEventId: eventId,
-                    clearCalendarEventId: eventId == null,
-                  )
-                : t)
-            .toList(),
-      );
-      _rememberTaskIntegration(updatedTask.copyWith(
-        calendarEventId: eventId,
-        clearCalendarEventId: eventId == null,
-      ));
-    }
 
-    _triggerSync();
+      // 处理原任务的提醒取消/重新调度
+      final updatedTask = state.tasks.where((t) => t.id == id).firstOrNull;
+      if (updatedTask != null) {
+        await _scheduleTaskIntegration(updatedTask);
+      }
+
+      _triggerSync();
+    } finally {
+      _completionInProgress.remove(id);
+    }
+  }
+
+  Future<void> _scheduleTaskIntegration(TaskItem task) async {
+    final eventId = await ReminderService.scheduleUnifiedReminders(task);
+    if (eventId != task.calendarEventId) {
+      await AppDatabase.updateTaskCalendarEventId(task.id, eventId);
+    }
+    state = state.copyWith(
+      tasks: state.tasks
+          .map((t) => t.id == task.id
+              ? t.copyWith(
+                  calendarEventId: eventId,
+                  clearCalendarEventId: eventId == null,
+                )
+              : t)
+          .toList(),
+    );
+    _rememberTaskIntegration(task.copyWith(
+      calendarEventId: eventId,
+      clearCalendarEventId: eventId == null,
+    ));
+  }
+
+  Future<void> _runAutoArchiveIfNeeded() async {
+    final enabled =
+        (await AppDatabase.getSetting('autoArchiveCompletedTasks')) == 'true';
+    if (!enabled) return;
+    final keepRaw = await AppDatabase.getSetting('autoArchiveKeepCount');
+    final keepCount = (int.tryParse(keepRaw ?? '') ?? 3).clamp(0, 9);
+    final archived =
+        await AppDatabase.autoArchiveCompletedTasks(keepCount: keepCount);
+    if (archived > 0) {
+      await loadTasks(showLoading: false);
+    }
+  }
+
+  Map<String, dynamic> _nextRecurrenceConfig(Map<String, dynamic> rawConfig) {
+    final config = RecurrenceConfig.fromJson(rawConfig);
+    final occurrences = config.endsAfterOccurrences;
+    if (occurrences == null) return rawConfig;
+    final nextOccurrences = occurrences - 1;
+    return config
+        .copyWith(endsAfterOccurrences: nextOccurrences.clamp(1, 99))
+        .toJson();
   }
 
   Future<void> addToMyDay(String taskId) async {

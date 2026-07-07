@@ -255,6 +255,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     final task = latestTask ?? _cachedTask;
     final taskNotifier = _taskNotifier;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isMobile = MediaQuery.sizeOf(context).width < 800;
 
     if (task == null) {
       return Container(
@@ -273,358 +274,375 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     final currentList =
         taskState.lists.where((l) => l.id == task.listId).firstOrNull;
 
-    return Container(
-      width: 320,
-      decoration: BoxDecoration(
-        color: context.appColors.surface,
-        border: Border(
-          left: BorderSide(color: context.appColors.border),
+    return SafeArea(
+      top: isMobile,
+      bottom: isMobile,
+      child: Container(
+        width: isMobile ? double.infinity : 320,
+        decoration: BoxDecoration(
+          color: context.appColors.surface,
+          border: isMobile
+              ? null
+              : Border(
+                  left: BorderSide(color: context.appColors.border),
+                ),
         ),
-      ),
-      child: Column(
-        children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                const Text(
-                  '任务详情',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(AppIcons.close, size: AppIconSizes.nav),
-                  onPressed: widget.onClose,
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-
-          // Content
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: EdgeInsets.fromLTRB(16, isMobile ? 12 : 16, 12, 12),
+              child: Row(
                 children: [
-                  // Title with checkbox
-                  Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => taskNotifier.toggleTaskComplete(task.id),
-                        child: Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: task.completed
-                                ? (context.appColors.accent)
-                                : Colors.transparent,
-                            border: Border.all(
-                              color: task.completed
-                                  ? (context.appColors.accent)
-                                  : context.appColors.border,
-                              width: 2,
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: task.completed
-                              ? const Icon(AppIcons.taskDone,
-                                  size: AppIconSizes.compact,
-                                  color: Colors.white)
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _titleController,
-                          focusNode: _titleFocusNode,
-                          undoController: _titleUndoController,
-                          decoration: InputDecoration(
-                            border: InputBorder.none,
-                            enabledBorder: UnderlineInputBorder(
-                              borderSide: BorderSide(
-                                color: context.appColors.border,
-                              ),
-                            ),
-                            focusedBorder: UnderlineInputBorder(
-                              borderSide: BorderSide(
-                                color: context.appColors.accent,
-                              ),
-                            ),
-                            hintText: '任务标题',
-                            isDense: true,
-                            contentPadding:
-                                const EdgeInsets.symmetric(vertical: 8),
-                          ),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            decoration: task.completed
-                                ? TextDecoration.lineThrough
-                                : null,
-                            color: task.completed
-                                ? (context.appColors.textSecondary)
-                                : (context.appColors.text),
-                          ),
-                          maxLines: 1,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => _confirmTitle(task.id),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // My Day button
-                  _buildActionButton(
-                    icon: AppIcons.myDay,
-                    label: task.isMyDay ? '已添加到"我的一天"' : '添加到"我的一天"',
-                    isActive: task.isMyDay,
-                    onTap: () {
-                      if (task.isMyDay) {
-                        taskNotifier.removeFromMyDay(task.id);
-                      } else {
-                        taskNotifier.addToMyDay(task.id);
-                      }
-                    },
-                    isDark: isDark,
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // Start focus button
-                  _buildActionButton(
-                    icon: AppIcons.focus,
-                    label: '开始专注',
-                    isActive: false,
-                    onTap: () {
-                      ref.read(timerProvider.notifier).startFocus(
-                            taskTitle: task.title,
-                            taskId: task.id,
-                          );
-                    },
-                    isDark: isDark,
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Due date
-                  _buildSectionLabel('截止日期', isDark),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _dueDateController,
-                          decoration: InputDecoration(
-                            hintText: '日期',
-                            isDense: true,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          readOnly: true,
-                          onTap: () => _selectDueDate(context),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: _dueTimeController,
-                          decoration: InputDecoration(
-                            hintText: '时间',
-                            isDense: true,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          readOnly: true,
-                          onTap: () => _selectDueTime(context),
-                        ),
-                      ),
-                      if (_dueDate != null || _dueTime != null)
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _dueDate = null;
-                              _dueTime = null;
-                              _dueDateController.clear();
-                              _dueTimeController.clear();
-                            });
-                            taskNotifier.updateTask(task.id, {
-                              'dueDate': null,
-                              'dueTime': null,
-                            });
-                          },
-                          child: const Text('清除'),
-                        ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Reminder
-                  _buildSectionLabel('提醒我', isDark),
-                  _buildReminderRow(task, isDark),
-
-                  const SizedBox(height: 16),
-
-                  // Expected minutes
-                  _buildSectionLabel('预期时间（分钟）', isDark),
-                  CallbackShortcuts(
-                    bindings: {
-                      const SingleActivator(LogicalKeyboardKey.enter): () =>
-                          _confirmExpectedMinutes(task.id),
-                      const SingleActivator(LogicalKeyboardKey.numpadEnter):
-                          () => _confirmExpectedMinutes(task.id),
-                    },
-                    child: TextField(
-                      controller: _expectedMinutesController,
-                      focusNode: _expectedMinutesFocusNode,
-                      decoration: InputDecoration(
-                        hintText: '预计需要的专注时间',
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _confirmExpectedMinutes(task.id),
-                      onEditingComplete: () => _confirmExpectedMinutes(task.id),
+                  const Text(
+                    '任务详情',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-
-                  const SizedBox(height: 16),
-
-                  // Notes
-                  _buildSectionLabel('备注', isDark),
-                  TextField(
-                    controller: _notesController,
-                    focusNode: _notesFocusNode,
-                    undoController: _notesUndoController,
-                    decoration: InputDecoration(
-                      hintText: '添加备注...',
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    maxLines: 4,
-                    onSubmitted: (_) => _saveNotes(task.id),
-                    onEditingComplete: () => _saveNotes(task.id),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Recurrence
-                  _buildSectionLabel('重复', isDark),
-                  if (_recurrenceConfig == null)
-                    _buildActionButton(
-                      icon: AppIcons.reset,
-                      label: '设置重复',
-                      isActive: false,
-                      onTap: () {
-                        setState(() => _showRecurrencePicker = true);
-                      },
-                      isDark: isDark,
-                    )
-                  else
-                    _buildRecurrenceDisplay(task.id, isDark),
-
-                  // Recurrence picker (simplified)
-                  if (_showRecurrencePicker)
-                    _buildRecurrencePicker(task.id, isDark),
-
-                  const SizedBox(height: 16),
-
-                  // Focus history
-                  if (_focusSessions.isNotEmpty) ...[
-                    _buildSectionLabel('专注记录', isDark),
-                    ..._focusSessions
-                        .take(5)
-                        .map((s) => _buildSessionItem(s, isDark)),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '累计 ${(_focusSessions.fold<int>(0, (sum, s) => sum + (s['durationSeconds'] as int)) / 60).floor()} 分钟 · ${_focusSessions.length} 次',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.appColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // List info
-                  _buildSectionLabel(
-                      '所属清单：${currentList?.name ?? '未知'}', isDark),
-
-                  const SizedBox(height: 16),
-
-                  // Task timestamps
-                  _buildTimestampInfo(task, isDark),
-
-                  // Archive and delete buttons
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () async {
-                        try {
-                          await taskNotifier.archiveTask(task.id);
-                          if (!context.mounted) return;
-                          widget.onClose();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('任务已归档，可在设置中恢复')),
-                          );
-                        } catch (_) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('归档任务失败，请重试')),
-                          );
-                        }
-                      },
-                      icon: const AppIcon(AppIcons.archive),
-                      label: const Text('归档任务'),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        try {
-                          await taskNotifier.deleteTask(task.id);
-                          if (!context.mounted) return;
-                          widget.onClose();
-                        } catch (_) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('删除任务失败，请重试')),
-                          );
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('删除任务'),
-                    ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(AppIcons.close, size: AppIconSizes.nav),
+                    onPressed: widget.onClose,
                   ),
                 ],
               ),
             ),
-          ),
-        ],
+            const Divider(height: 1),
+
+            // Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, isMobile ? 24 : 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title with checkbox
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => taskNotifier.toggleTaskComplete(task.id),
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: task.completed
+                                  ? (context.appColors.accent)
+                                  : Colors.transparent,
+                              border: Border.all(
+                                color: task.completed
+                                    ? (context.appColors.accent)
+                                    : context.appColors.border,
+                                width: 2,
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: task.completed
+                                ? const Icon(AppIcons.taskDone,
+                                    size: AppIconSizes.compact,
+                                    color: Colors.white)
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _titleController,
+                            focusNode: _titleFocusNode,
+                            undoController: _titleUndoController,
+                            decoration: InputDecoration(
+                              border: InputBorder.none,
+                              enabledBorder: UnderlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: context.appColors.border,
+                                ),
+                              ),
+                              focusedBorder: UnderlineInputBorder(
+                                borderSide: BorderSide(
+                                  color: context.appColors.accent,
+                                ),
+                              ),
+                              hintText: '任务标题',
+                              isDense: true,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 8),
+                            ),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              decoration: task.completed
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                              color: task.completed
+                                  ? (context.appColors.textSecondary)
+                                  : (context.appColors.text),
+                            ),
+                            maxLines: 1,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _confirmTitle(task.id),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // My Day button
+                    _buildActionButton(
+                      icon: AppIcons.myDay,
+                      label: task.isMyDay ? '已添加到"我的一天"' : '添加到"我的一天"',
+                      isActive: task.isMyDay,
+                      onTap: () {
+                        if (task.isMyDay) {
+                          taskNotifier.removeFromMyDay(task.id);
+                        } else {
+                          taskNotifier.addToMyDay(task.id);
+                        }
+                      },
+                      isDark: isDark,
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Start focus button
+                    _buildActionButton(
+                      icon: AppIcons.focus,
+                      label: '开始专注',
+                      isActive: false,
+                      onTap: () {
+                        ref.read(timerProvider.notifier).startFocus(
+                              taskTitle: task.title,
+                              taskId: task.id,
+                            );
+                      },
+                      isDark: isDark,
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Due date
+                    _buildSectionLabel('截止日期', isDark),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _dueDateController,
+                            decoration: InputDecoration(
+                              hintText: '日期',
+                              isDense: true,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            readOnly: true,
+                            onTap: () => _selectDueDate(context),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: _dueTimeController,
+                            decoration: InputDecoration(
+                              hintText: '时间',
+                              isDense: true,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            readOnly: true,
+                            onTap: () => _selectDueTime(context),
+                          ),
+                        ),
+                        if (_dueDate != null || _dueTime != null)
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _dueDate = null;
+                                _dueTime = null;
+                                _dueDateController.clear();
+                                _dueTimeController.clear();
+                              });
+                              taskNotifier.updateTask(task.id, {
+                                'dueDate': null,
+                                'dueTime': null,
+                              });
+                            },
+                            child: const Text('清除'),
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Reminder
+                    _buildSectionLabel('提醒我', isDark),
+                    _buildReminderRow(task, isDark),
+
+                    const SizedBox(height: 16),
+
+                    // Expected minutes
+                    _buildSectionLabel('预期时间（分钟）', isDark),
+                    CallbackShortcuts(
+                      bindings: {
+                        const SingleActivator(LogicalKeyboardKey.enter): () =>
+                            _confirmExpectedMinutes(task.id),
+                        const SingleActivator(LogicalKeyboardKey.numpadEnter):
+                            () => _confirmExpectedMinutes(task.id),
+                      },
+                      child: TextField(
+                        controller: _expectedMinutesController,
+                        focusNode: _expectedMinutesFocusNode,
+                        decoration: InputDecoration(
+                          hintText: '预计需要的专注时间',
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _confirmExpectedMinutes(task.id),
+                        onEditingComplete: () =>
+                            _confirmExpectedMinutes(task.id),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Notes
+                    _buildSectionLabel('备注', isDark),
+                    TextField(
+                      controller: _notesController,
+                      focusNode: _notesFocusNode,
+                      undoController: _notesUndoController,
+                      readOnly: _shouldUseLargeNotesEditor,
+                      decoration: InputDecoration(
+                        hintText: '添加备注...',
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        suffixIcon: _shouldUseLargeNotesEditor
+                            ? const Icon(AppIcons.editNote,
+                                size: AppIconSizes.compact)
+                            : null,
+                      ),
+                      maxLines: 4,
+                      onTap: _shouldUseLargeNotesEditor
+                          ? () => _openLargeNotesEditor(task.id)
+                          : null,
+                      onSubmitted: (_) => _saveNotes(task.id),
+                      onEditingComplete: () => _saveNotes(task.id),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Recurrence
+                    _buildSectionLabel('重复', isDark),
+                    if (_recurrenceConfig == null)
+                      _buildActionButton(
+                        icon: AppIcons.reset,
+                        label: '设置重复',
+                        isActive: false,
+                        onTap: () {
+                          setState(() => _showRecurrencePicker = true);
+                        },
+                        isDark: isDark,
+                      )
+                    else
+                      _buildRecurrenceDisplay(task.id, isDark),
+
+                    // Recurrence picker (simplified)
+                    if (_showRecurrencePicker)
+                      _buildRecurrencePicker(task.id, isDark),
+
+                    const SizedBox(height: 16),
+
+                    // Focus history
+                    if (_focusSessions.isNotEmpty) ...[
+                      _buildSectionLabel('专注记录', isDark),
+                      ..._focusSessions
+                          .take(5)
+                          .map((s) => _buildSessionItem(s, isDark)),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '累计 ${(_focusSessions.fold<int>(0, (sum, s) => sum + (s['durationSeconds'] as int)) / 60).floor()} 分钟 · ${_focusSessions.length} 次',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.appColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // List info
+                    _buildSectionLabel(
+                        '所属清单：${currentList?.name ?? '未知'}', isDark),
+
+                    const SizedBox(height: 16),
+
+                    // Task timestamps
+                    _buildTimestampInfo(task, isDark),
+
+                    // Archive and delete buttons
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          try {
+                            await taskNotifier.archiveTask(task.id);
+                            if (!context.mounted) return;
+                            widget.onClose();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('任务已归档，可在设置中恢复')),
+                            );
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('归档任务失败，请重试')),
+                            );
+                          }
+                        },
+                        icon: const AppIcon(AppIcons.archive),
+                        label: const Text('归档任务'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          try {
+                            await taskNotifier.deleteTask(task.id);
+                            if (!context.mounted) return;
+                            widget.onClose();
+                          } catch (_) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('删除任务失败，请重试')),
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('删除任务'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -770,141 +788,45 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     }
 
     if (!mounted) return;
-    _openReminderPresets(task);
+    await _pickReminderDateTime(task);
   }
 
-  void _openReminderPresets(TaskItem task) {
+  Future<void> _pickReminderDateTime(TaskItem task) async {
     final now = AppTime.now();
     final taskNotifier = ref.read(taskProvider.notifier);
+    final reminderBase = task.reminderAt != null
+        ? AppTime.fromMillisecondsSinceEpoch(task.reminderAt!)
+        : now.add(const Duration(hours: 1));
+    final today = AppTime.create(now.year, now.month, now.day);
+    final initialDate = AppTime.create(
+      reminderBase.year,
+      reminderBase.month,
+      reminderBase.day,
+    );
+    final firstDate = initialDate.isBefore(today) ? initialDate : today;
+    final defaultLastDate = now.add(const Duration(days: 365));
+    final lastDate =
+        initialDate.isAfter(defaultLastDate) ? initialDate : defaultLastDate;
 
-    showModalBottomSheet(
+    final date = await showDatePicker(
       context: context,
-      backgroundColor: context.appColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text('设置提醒',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
-            _buildPresetItem(
-              sheetContext,
-              icon: AppIcons.schedule,
-              label: '今天晚些时候',
-              time: '18:00',
-              onTap: () {
-                final target = AppTime.create(now.year, now.month, now.day, 18);
-                if (target.isAfter(now)) {
-                  taskNotifier.setReminder(task.id, target);
-                } else {
-                  taskNotifier.setReminder(
-                      task.id, now.add(const Duration(hours: 1)));
-                }
-                Navigator.pop(sheetContext);
-              },
-            ),
-            _buildPresetItem(
-              sheetContext,
-              icon: AppIcons.myDay,
-              label: '明天上午',
-              time: '09:00',
-              onTap: () {
-                final target =
-                    AppTime.create(now.year, now.month, now.day + 1, 9);
-                taskNotifier.setReminder(task.id, target);
-                Navigator.pop(sheetContext);
-              },
-            ),
-            _buildPresetItem(
-              sheetContext,
-              icon: AppIcons.tomorrow,
-              label: '下周一',
-              time: '09:00',
-              onTap: () {
-                int daysUntilMonday = (DateTime.monday - now.weekday + 7) % 7;
-                if (daysUntilMonday == 0) daysUntilMonday = 7;
-                final target = AppTime.create(
-                    now.year, now.month, now.day + daysUntilMonday, 9);
-                taskNotifier.setReminder(task.id, target);
-                Navigator.pop(sheetContext);
-              },
-            ),
-            const Divider(),
-            _buildPresetItem(
-              sheetContext,
-              icon: AppIcons.calendar,
-              label: '选择日期和时间',
-              onTap: () async {
-                final reminderBase = task.reminderAt != null
-                    ? AppTime.fromMillisecondsSinceEpoch(task.reminderAt!)
-                    : now.add(const Duration(hours: 1));
-                final today = AppTime.create(now.year, now.month, now.day);
-                final initialDate = AppTime.create(
-                  reminderBase.year,
-                  reminderBase.month,
-                  reminderBase.day,
-                );
-                final firstDate =
-                    initialDate.isBefore(today) ? initialDate : today;
-                final defaultLastDate = now.add(const Duration(days: 365));
-                final lastDate = initialDate.isAfter(defaultLastDate)
-                    ? initialDate
-                    : defaultLastDate;
-
-                // 先关闭底部菜单
-                Navigator.pop(sheetContext);
-
-                // 使用页面级的 context 弹出日期选择器
-                final date = await showDatePicker(
-                  context: context,
-                  initialDate: initialDate,
-                  firstDate: firstDate,
-                  lastDate: lastDate,
-                );
-
-                if (!mounted || date == null) return;
-
-                // 使用页面级的 context 弹出时间选择器
-                final time = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay.fromDateTime(reminderBase),
-                );
-
-                if (!mounted || time == null) return;
-
-                final target = AppTime.create(
-                    date.year, date.month, date.day, time.hour, time.minute);
-                taskNotifier.setReminder(task.id, target);
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
-      ),
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
     );
-  }
 
-  Widget _buildPresetItem(BuildContext context,
-      {required IconData icon,
-      required String label,
-      String? time,
-      required VoidCallback onTap}) {
-    return ListTile(
-      leading: Icon(
-        icon,
-        color: context.appColors.accent,
-      ),
-      title: Text(label),
-      trailing: time != null
-          ? Text(time, style: TextStyle(color: context.appColors.textSecondary))
-          : null,
-      onTap: onTap,
+    if (!mounted || date == null) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(reminderBase),
     );
+
+    if (!mounted || time == null) return;
+
+    final target =
+        AppTime.create(date.year, date.month, date.day, time.hour, time.minute);
+    await taskNotifier.setReminder(task.id, target);
   }
 
   Widget _buildSectionLabel(String label, bool isDark) {
@@ -982,14 +904,53 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           Wrap(
             spacing: 8,
             children: [
-              _buildRecurrenceChip('每天',
-                  () => _setRecurrence(taskId, RecurrenceFrequency.daily)),
-              _buildRecurrenceChip('每周',
-                  () => _setRecurrence(taskId, RecurrenceFrequency.weekly)),
-              _buildRecurrenceChip('每月',
-                  () => _setRecurrence(taskId, RecurrenceFrequency.monthly)),
-              _buildRecurrenceChip('每年',
-                  () => _setRecurrence(taskId, RecurrenceFrequency.yearly)),
+              _buildRecurrenceChip(
+                '永不',
+                () => _clearRecurrence(taskId),
+              ),
+              _buildRecurrenceChip(
+                '每天',
+                () => _setRecurrence(
+                  taskId,
+                  RecurrenceConfig(frequency: RecurrenceFrequency.daily),
+                ),
+              ),
+              _buildRecurrenceChip(
+                '每周',
+                () => _setRecurrence(
+                  taskId,
+                  RecurrenceConfig(
+                    frequency: RecurrenceFrequency.weekly,
+                    daysOfWeek: [_anchorDateForRecurrence().weekday],
+                  ),
+                ),
+              ),
+              _buildRecurrenceChip(
+                '每月',
+                () => _setRecurrence(
+                  taskId,
+                  RecurrenceConfig(
+                    frequency: RecurrenceFrequency.monthly,
+                    monthlyMode: 'date',
+                    daysOfMonth: [_anchorDateForRecurrence().day],
+                    overflowPolicy: 'lastDay',
+                  ),
+                ),
+              ),
+              _buildRecurrenceChip(
+                '每年',
+                () => _setRecurrence(
+                  taskId,
+                  RecurrenceConfig(
+                    frequency: RecurrenceFrequency.yearly,
+                    overflowPolicy: 'lastDay',
+                  ),
+                ),
+              ),
+              _buildRecurrenceChip(
+                '自定义',
+                () => _showAdvancedRecurrenceDialog(taskId),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -1002,13 +963,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               ),
               TextButton(
                 onPressed: () async {
-                  await ref.read(taskProvider.notifier).updateTask(taskId, {
-                    'recurrenceConfig': null,
-                  });
-                  setState(() {
-                    _showRecurrencePicker = false;
-                    _recurrenceConfig = null;
-                  });
+                  await _clearRecurrence(taskId);
                 },
                 child: const Text('清除'),
               ),
@@ -1026,8 +981,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     );
   }
 
-  void _setRecurrence(String taskId, RecurrenceFrequency frequency) async {
-    final config = RecurrenceConfig(frequency: frequency, interval: 1);
+  Future<void> _setRecurrence(String taskId, RecurrenceConfig config) async {
     await ref.read(taskProvider.notifier).updateTask(taskId, {
       'recurrenceConfig': config.toJson(),
     });
@@ -1035,6 +989,454 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       _recurrenceConfig = config.toJson();
       _showRecurrencePicker = false;
     });
+  }
+
+  Future<void> _clearRecurrence(String taskId) async {
+    await ref.read(taskProvider.notifier).updateTask(taskId, {
+      'recurrenceConfig': null,
+    });
+    setState(() {
+      _showRecurrencePicker = false;
+      _recurrenceConfig = null;
+    });
+  }
+
+  DateTime _anchorDateForRecurrence() {
+    if (_dueDate != null) return DateTime.parse(_dueDate!);
+    return AppTime.now();
+  }
+
+  Future<void> _showAdvancedRecurrenceDialog(String taskId) async {
+    final anchor = _anchorDateForRecurrence();
+    final existing = _recurrenceConfig == null
+        ? RecurrenceConfig(
+            frequency: RecurrenceFrequency.weekly,
+            daysOfWeek: [anchor.weekday],
+          )
+        : RecurrenceConfig.fromJson(_recurrenceConfig!);
+    var frequency = existing.frequency;
+    var interval = existing.interval.clamp(1, 99);
+    var daysOfWeek = [
+      ...(existing.daysOfWeek ?? [anchor.weekday])
+    ];
+    var monthlyMode = existing.monthlyMode ?? 'date';
+    var daysOfMonth = [
+      ...(existing.daysOfMonth ?? [anchor.day])
+    ];
+    var weekOrdinal = existing.weekOrdinal ?? _weekOrdinalFor(anchor);
+    var weekDayGroup = existing.weekDayGroup ?? 'single';
+    var weekDay = existing.weekDay ?? anchor.weekday;
+    var overflowPolicy = existing.overflowPolicy;
+    var endMode = existing.endsAt != null
+        ? 'date'
+        : existing.endsAfterOccurrences != null
+            ? 'count'
+            : 'never';
+    var endsAt = existing.endsAt;
+    var endsAfterOccurrences = existing.endsAfterOccurrences ?? 10;
+
+    final result = await showDialog<RecurrenceConfig>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: context.appColors.surface,
+            title:
+                Text('自定义重复', style: TextStyle(color: context.appColors.text)),
+            content: SizedBox(
+              width: 560,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _dialogLabel('重复频率'),
+                    Wrap(
+                      spacing: 8,
+                      children: RecurrenceFrequency.values.map((item) {
+                        return ChoiceChip(
+                          label: Text(_frequencyLabel(item)),
+                          selected: frequency == item,
+                          onSelected: (_) =>
+                              setDialogState(() => frequency = item),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 14),
+                    _dialogLabel('间隔'),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 90,
+                          child: TextFormField(
+                            initialValue: interval.toString(),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                            decoration: const InputDecoration(isDense: true),
+                            onChanged: (value) {
+                              interval =
+                                  (int.tryParse(value) ?? 1).clamp(1, 99);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(_intervalUnitLabel(frequency)),
+                      ],
+                    ),
+                    if (frequency == RecurrenceFrequency.weekly) ...[
+                      const SizedBox(height: 14),
+                      _dialogLabel('每周重复日'),
+                      Wrap(
+                        spacing: 6,
+                        children: List.generate(7, (index) {
+                          final weekday = index + 1;
+                          return FilterChip(
+                            label: Text(_weekdayLabel(weekday)),
+                            selected: daysOfWeek.contains(weekday),
+                            onSelected: (selected) {
+                              setDialogState(() {
+                                if (selected) {
+                                  daysOfWeek.add(weekday);
+                                  daysOfWeek = daysOfWeek.toSet().toList()
+                                    ..sort();
+                                } else if (daysOfWeek.length > 1) {
+                                  daysOfWeek.remove(weekday);
+                                }
+                              });
+                            },
+                          );
+                        }),
+                      ),
+                    ],
+                    if (frequency == RecurrenceFrequency.monthly) ...[
+                      const SizedBox(height: 14),
+                      _dialogLabel('每月方式'),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'date', label: Text('按日期')),
+                          ButtonSegment(value: 'weekday', label: Text('按星期')),
+                        ],
+                        selected: {monthlyMode},
+                        onSelectionChanged: (value) =>
+                            setDialogState(() => monthlyMode = value.first),
+                      ),
+                      const SizedBox(height: 12),
+                      if (monthlyMode == 'date') ...[
+                        _dialogLabel('日期'),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: List.generate(31, (index) {
+                            final day = index + 1;
+                            return FilterChip(
+                              label: Text('$day'),
+                              selected: daysOfMonth.contains(day),
+                              onSelected: (selected) {
+                                setDialogState(() {
+                                  if (selected) {
+                                    daysOfMonth.add(day);
+                                    daysOfMonth = daysOfMonth.toSet().toList()
+                                      ..sort();
+                                  } else if (daysOfMonth.length > 1) {
+                                    daysOfMonth.remove(day);
+                                  }
+                                });
+                              },
+                            );
+                          }),
+                        ),
+                      ] else ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<int>(
+                                value: weekOrdinal,
+                                decoration:
+                                    const InputDecoration(labelText: '第几周'),
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 1, child: Text('第一个')),
+                                  DropdownMenuItem(
+                                      value: 2, child: Text('第二个')),
+                                  DropdownMenuItem(
+                                      value: 3, child: Text('第三个')),
+                                  DropdownMenuItem(
+                                      value: 4, child: Text('第四个')),
+                                  DropdownMenuItem(
+                                      value: -1, child: Text('最后一个')),
+                                ],
+                                onChanged: (value) => setDialogState(
+                                    () => weekOrdinal = value ?? weekOrdinal),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                value: weekDayGroup,
+                                decoration:
+                                    const InputDecoration(labelText: '星期'),
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 'single', child: Text('指定星期')),
+                                  DropdownMenuItem(
+                                      value: 'weekdays', child: Text('周一至周五')),
+                                  DropdownMenuItem(
+                                      value: 'weekend', child: Text('周末')),
+                                  DropdownMenuItem(
+                                      value: 'all', child: Text('整周')),
+                                ],
+                                onChanged: (value) => setDialogState(
+                                    () => weekDayGroup = value ?? weekDayGroup),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (weekDayGroup == 'single') ...[
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<int>(
+                            value: weekDay,
+                            decoration:
+                                const InputDecoration(labelText: '指定星期'),
+                            items: List.generate(7, (index) {
+                              final weekday = index + 1;
+                              return DropdownMenuItem(
+                                value: weekday,
+                                child: Text(_weekdayLabel(weekday)),
+                              );
+                            }),
+                            onChanged: (value) => setDialogState(
+                                () => weekDay = value ?? weekDay),
+                          ),
+                        ],
+                      ],
+                    ],
+                    if (_needsOverflowPolicy(
+                      frequency,
+                      anchor,
+                      daysOfMonth,
+                    )) ...[
+                      const SizedBox(height: 14),
+                      _dialogLabel('遇到不存在的日期'),
+                      RadioListTile<String>(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('回退到当月最后一天'),
+                        value: 'lastDay',
+                        groupValue: overflowPolicy,
+                        onChanged: (value) => setDialogState(
+                            () => overflowPolicy = value ?? overflowPolicy),
+                      ),
+                      RadioListTile<String>(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('跳过该次任务'),
+                        value: 'skip',
+                        groupValue: overflowPolicy,
+                        onChanged: (value) => setDialogState(
+                            () => overflowPolicy = value ?? overflowPolicy),
+                      ),
+                    ],
+                    const SizedBox(height: 14),
+                    _dialogLabel('结束重复'),
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('永不'),
+                          selected: endMode == 'never',
+                          onSelected: (_) =>
+                              setDialogState(() => endMode = 'never'),
+                        ),
+                        ChoiceChip(
+                          label: const Text('指定日期'),
+                          selected: endMode == 'date',
+                          onSelected: (_) =>
+                              setDialogState(() => endMode = 'date'),
+                        ),
+                        ChoiceChip(
+                          label: const Text('次数'),
+                          selected: endMode == 'count',
+                          onSelected: (_) =>
+                              setDialogState(() => endMode = 'count'),
+                        ),
+                      ],
+                    ),
+                    if (endMode == 'date') ...[
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        icon: const Icon(AppIcons.calendar),
+                        label: Text(endsAt ?? '选择结束日期'),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: dialogContext,
+                            initialDate: endsAt != null
+                                ? DateTime.parse(endsAt!)
+                                : anchor.add(const Duration(days: 30)),
+                            firstDate: anchor,
+                            lastDate:
+                                anchor.add(const Duration(days: 365 * 10)),
+                          );
+                          if (picked != null) {
+                            setDialogState(
+                                () => endsAt = AppTime.formatDate(picked));
+                          }
+                        },
+                      ),
+                    ],
+                    if (endMode == 'count') ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: 120,
+                        child: TextFormField(
+                          initialValue: endsAfterOccurrences.toString(),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: '重复次数',
+                            isDense: true,
+                          ),
+                          onChanged: (value) {
+                            endsAfterOccurrences =
+                                (int.tryParse(value) ?? 1).clamp(1, 99);
+                          },
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(
+                    RecurrenceConfig(
+                      frequency: frequency,
+                      interval: interval,
+                      daysOfWeek: frequency == RecurrenceFrequency.weekly
+                          ? daysOfWeek
+                          : null,
+                      daysOfMonth: frequency == RecurrenceFrequency.monthly &&
+                              monthlyMode == 'date'
+                          ? daysOfMonth
+                          : null,
+                      monthlyMode: frequency == RecurrenceFrequency.monthly
+                          ? monthlyMode
+                          : null,
+                      weekOrdinal: frequency == RecurrenceFrequency.monthly &&
+                              monthlyMode == 'weekday'
+                          ? weekOrdinal
+                          : null,
+                      weekDay: frequency == RecurrenceFrequency.monthly &&
+                              monthlyMode == 'weekday' &&
+                              weekDayGroup == 'single'
+                          ? weekDay
+                          : null,
+                      weekDayGroup: frequency == RecurrenceFrequency.monthly &&
+                              monthlyMode == 'weekday'
+                          ? weekDayGroup
+                          : null,
+                      endsAt: endMode == 'date' ? endsAt : null,
+                      endsAfterOccurrences:
+                          endMode == 'count' ? endsAfterOccurrences : null,
+                      overflowPolicy: overflowPolicy,
+                    ),
+                  );
+                },
+                child: const Text('保存'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result == null) return;
+    await _setRecurrence(taskId, result);
+  }
+
+  Widget _dialogLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: context.appColors.textSecondary,
+        ),
+      ),
+    );
+  }
+
+  int _weekOrdinalFor(DateTime date) {
+    final ordinal = ((date.day - 1) ~/ 7) + 1;
+    final sameWeekdayNextWeek = date.add(const Duration(days: 7));
+    if (sameWeekdayNextWeek.month != date.month) return -1;
+    return ordinal.clamp(1, 4);
+  }
+
+  bool _needsOverflowPolicy(
+    RecurrenceFrequency frequency,
+    DateTime anchor,
+    List<int> daysOfMonth,
+  ) {
+    if (frequency == RecurrenceFrequency.yearly &&
+        anchor.month == 2 &&
+        anchor.day == 29) {
+      return true;
+    }
+    if (frequency == RecurrenceFrequency.monthly) {
+      return daysOfMonth.any((day) => day > 28);
+    }
+    return false;
+  }
+
+  String _frequencyLabel(RecurrenceFrequency frequency) {
+    switch (frequency) {
+      case RecurrenceFrequency.daily:
+        return '每天';
+      case RecurrenceFrequency.weekly:
+        return '每周';
+      case RecurrenceFrequency.monthly:
+        return '每月';
+      case RecurrenceFrequency.yearly:
+        return '每年';
+    }
+  }
+
+  String _intervalUnitLabel(RecurrenceFrequency frequency) {
+    switch (frequency) {
+      case RecurrenceFrequency.daily:
+        return '天';
+      case RecurrenceFrequency.weekly:
+        return '周';
+      case RecurrenceFrequency.monthly:
+        return '个月';
+      case RecurrenceFrequency.yearly:
+        return '年';
+    }
+  }
+
+  String _weekdayLabel(int weekday) {
+    const labels = {
+      1: '周一',
+      2: '周二',
+      3: '周三',
+      4: '周四',
+      5: '周五',
+      6: '周六',
+      7: '周日',
+    };
+    return labels[weekday] ?? '周一';
   }
 
   Widget _buildSessionItem(Map<String, dynamic> session, bool isDark) {
@@ -1187,6 +1589,60 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         onUndo: () => _restoreTaskNotes(taskId, previousNotes),
       );
     }
+  }
+
+  bool get _shouldUseLargeNotesEditor {
+    final text = _notesController.text;
+    if (text.length >= 160) return true;
+    return '\n'.allMatches(text).length >= 4;
+  }
+
+  Future<void> _openLargeNotesEditor(String taskId) async {
+    _notesFocusNode.unfocus();
+    final controller = TextEditingController(text: _notesController.text);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: context.appColors.surface,
+        title: Text('备注', style: TextStyle(color: context.appColors.text)),
+        content: SizedBox(
+          width: 640,
+          height: MediaQuery.sizeOf(dialogContext).height * 0.55,
+          child: TextField(
+            controller: controller,
+            autofocus: true,
+            expands: true,
+            minLines: null,
+            maxLines: null,
+            textAlignVertical: TextAlignVertical.top,
+            decoration: const InputDecoration(
+              hintText: '添加备注...',
+              alignLabelWithHint: true,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (!mounted || result == null) return;
+    setState(() {
+      _notesController.text = result;
+      _notesController.selection = TextSelection.collapsed(
+        offset: _notesController.text.length,
+      );
+    });
+    await _saveNotes(taskId);
   }
 
   void _showUndoSnackBar({

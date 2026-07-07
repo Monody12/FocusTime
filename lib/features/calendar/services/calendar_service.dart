@@ -69,6 +69,9 @@ class CalendarService {
     if (Platform.isMacOS) {
       return _macOsCalendarPlugin.createCalendar(name);
     }
+    if (Platform.isAndroid) {
+      return _androidCalendarPlugin.ensureLocalCalendar(name);
+    }
 
     return _deviceCalendarPlugin.createCalendar(
       name,
@@ -123,6 +126,19 @@ class CalendarService {
         dev.log('[CalendarService] 权限请求失败');
         return false;
       }
+    }
+
+    if (Platform.isAndroid) {
+      final androidCalendar =
+          await _androidCalendarPlugin.ensureLocalCalendar(_calendarName);
+      if (androidCalendar.isSuccess && androidCalendar.data != null) {
+        _calendarId = androidCalendar.data;
+        dev.log(
+            '[CalendarService] Android 原生日历已就绪: $_calendarName (ID: $_calendarId)');
+        return true;
+      }
+      dev.log(
+          '[CalendarService] Android 原生日历确保失败，回退 device_calendar 查询: ${androidCalendar.errors.map((e) => e.errorMessage).join(', ')}');
     }
 
     final calendars = await _retrieveCalendars();

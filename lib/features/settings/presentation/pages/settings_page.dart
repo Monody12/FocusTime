@@ -19,6 +19,7 @@ import 'package:focus_my_time/core/providers/package_info_provider.dart';
 import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
 import 'package:focus_my_time/features/update/services/update_service.dart';
 import 'package:focus_my_time/features/settings/presentation/widgets/archived_items_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   final VoidCallback onClose;
@@ -55,6 +56,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Map<String, String> _permissionStatus = {};
   bool _calendarSyncEnabled = false;
   bool _obscurePassword = true;
+  bool _autoArchiveEnabled = false;
+  late TextEditingController _autoArchiveKeepController;
 
   // 同步服务器登录表单的 FocusNode，用于精确控制 Tab 跳转顺序
   late FocusNode _syncUrlFocusNode;
@@ -84,6 +87,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         text: timerState.snoozeDurationMinutes.toString());
     _soundEnabled = timerState.soundEnabled;
     _notificationDuration = timerState.notificationDuration;
+    _autoArchiveKeepController = TextEditingController(text: '3');
 
     _syncServerUrlController =
         TextEditingController(text: SyncService.serverUrl);
@@ -113,6 +117,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _loadDbPath();
     _loadPermissions();
     _loadCalendarStatus();
+    _loadTaskbarSettings();
     _apiKeyController =
         TextEditingController(text: DeepSeekApiClient.apiKey ?? '');
   }
@@ -120,6 +125,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _loadCalendarStatus() async {
     final enabled = await CalendarService.isEnabled();
     if (mounted) setState(() => _calendarSyncEnabled = enabled);
+  }
+
+  Future<void> _loadTaskbarSettings() async {
+    final autoArchive =
+        await AppDatabase.getSetting('autoArchiveCompletedTasks');
+    final keepCount = await AppDatabase.getSetting('autoArchiveKeepCount');
+    if (!mounted) return;
+    setState(() {
+      _autoArchiveEnabled = autoArchive == 'true';
+      _autoArchiveKeepController.text = keepCount ?? '3';
+    });
   }
 
   Future<void> _saveApiKey() async {
@@ -172,6 +188,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _minDurationController.dispose();
     _notificationTemplateController.dispose();
     _snoozeDurationController.dispose();
+    _autoArchiveKeepController.dispose();
     _apiKeyController.dispose();
     _syncServerUrlController.dispose();
     _syncUsernameController.dispose();
@@ -503,11 +520,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  _buildTaskbarSettings(isDark),
 
                   const SizedBox(height: 24),
 
                   // Data Management Section
                   _buildSectionTitle('💾 数据管理', isDark),
+                  const SizedBox(height: 12),
+                  _buildSwitchSetting(
+                    label: '自动归档重复任务的已完成项',
+                    value: _autoArchiveEnabled,
+                    onChanged: (value) async {
+                      await AppDatabase.setSetting(
+                          'autoArchiveCompletedTasks', value.toString());
+                      setState(() => _autoArchiveEnabled = value);
+                      _showSnackBar(value ? '自动归档已开启' : '自动归档已关闭');
+                    },
+                    isDark: isDark,
+                  ),
+                  if (_autoArchiveEnabled) ...[
+                    const SizedBox(height: 12),
+                    _buildNumberSetting(
+                      label: '同名已完成任务保留数量（0-9）',
+                      controller: _autoArchiveKeepController,
+                      onChanged: (value) async {
+                        final keepCount =
+                            (int.tryParse(value) ?? 3).clamp(0, 9);
+                        await AppDatabase.setSetting(
+                            'autoArchiveKeepCount', keepCount.toString());
+                      },
+                      isDark: isDark,
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   _SettingButton(
                     label: '管理归档任务与清单',
@@ -1410,6 +1455,117 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildTaskbarSettings(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.appColors.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.appColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              AppIcon(
+                AppIcons.playlistAdd,
+                color: context.appColors.textSecondary,
+              ),
+              const SizedBox(width: AppIconSpacing.labelGap),
+              Text(
+                '任务栏设置',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: context.appColors.text,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildButtonRow([
+            _SettingButton(
+              label: '恢复预设清单',
+              onPressed: () async {
+                await ref.read(taskProvider.notifier).resetTopListOrder();
+                _showSnackBar('预设清单已恢复，排序已重置');
+              },
+              isPrimary: false,
+              isDark: isDark,
+            ),
+            const SizedBox(width: 8),
+            _SettingButton(
+              label: '重置清单图标',
+              onPressed: () async {
+                await ref.read(taskProvider.notifier).resetListIcons();
+                _showSnackBar('清单图标已重置');
+              },
+              isPrimary: false,
+              isDark: isDark,
+            ),
+          ]),
+          const SizedBox(height: 8),
+          _SettingButton(
+            label: '顶部清单功能说明',
+            onPressed: _showTopListFeatureIntro,
+            isPrimary: false,
+            isAccent: true,
+            isDark: isDark,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showTopListFeatureIntro() async {
+    var dontShowAgain = false;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: context.appColors.surface,
+          title:
+              Text('顶部清单自定义', style: TextStyle(color: context.appColors.text)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '你可以把常用自定义清单置顶到“我的一天、重要、任务”所在区域，给它们换图标并拖动排序。隐藏系统预设清单后，可在任务栏设置中恢复。置顶清单会同步到账号数据，多端同步后立即生效。',
+                style: TextStyle(color: context.appColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: dontShowAgain,
+                onChanged: (value) =>
+                    setDialogState(() => dontShowAgain = value == true),
+                title: Text('不再显示',
+                    style: TextStyle(color: context.appColors.text)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (accepted == true && dontShowAgain) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('topListCustomizationIntroDismissed', true);
+    }
   }
 
   Widget _buildTextSetting({

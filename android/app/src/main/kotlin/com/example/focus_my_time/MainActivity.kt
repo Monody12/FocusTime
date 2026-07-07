@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.CalendarContract
+import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
 import android.provider.CalendarContract.Reminders
 import android.util.Log
@@ -43,11 +44,75 @@ class MainActivity : FlutterActivity() {
             CALENDAR_CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                "ensureLocalCalendar" -> ensureLocalCalendar(call.arguments, result)
                 "createOrUpdateEvent" -> createOrUpdateEvent(call.arguments, result)
                 "deleteEvent" -> deleteEvent(call.arguments, result)
                 else -> result.notImplemented()
             }
         }
+    }
+
+    private fun ensureLocalCalendar(arguments: Any?, result: MethodChannel.Result) {
+        if (!hasCalendarPermissions()) {
+            result.error("PERMISSION_DENIED", "Calendar permission is not granted", null)
+            return
+        }
+
+        val args = arguments as? Map<*, *>
+        val calendarName = args?.get("name") as? String ?: "FocusMyTime 提醒"
+
+        try {
+            findLocalCalendar(calendarName)?.let {
+                result.success(it.toString())
+                return
+            }
+
+            val values = ContentValues().apply {
+                put(Calendars.ACCOUNT_NAME, LOCAL_ACCOUNT_NAME)
+                put(Calendars.ACCOUNT_TYPE, CalendarContract.ACCOUNT_TYPE_LOCAL)
+                put(Calendars.NAME, calendarName)
+                put(Calendars.CALENDAR_DISPLAY_NAME, calendarName)
+                put(Calendars.CALENDAR_COLOR, 0xFF1F9D55.toInt())
+                put(Calendars.CALENDAR_ACCESS_LEVEL, Calendars.CAL_ACCESS_OWNER)
+                put(Calendars.OWNER_ACCOUNT, LOCAL_ACCOUNT_NAME)
+                put(Calendars.VISIBLE, 1)
+                put(Calendars.SYNC_EVENTS, 1)
+                put(Calendars.CALENDAR_TIME_ZONE, TimeZone.getDefault().id)
+            }
+            val uri = contentResolver.insert(syncAdapterUri(Calendars.CONTENT_URI), values)
+                ?: throw IllegalStateException("Calendar provider returned no calendar Uri")
+            result.success(ContentUris.parseId(uri).toString())
+        } catch (error: Exception) {
+            result.error("CALENDAR_CREATE_FAILED", error.message, null)
+        }
+    }
+
+    private fun findLocalCalendar(calendarName: String): Long? {
+        val projection = arrayOf(Calendars._ID)
+        val selection = """
+            ${Calendars.ACCOUNT_NAME} = ? AND
+            ${Calendars.ACCOUNT_TYPE} = ? AND
+            (${Calendars.NAME} = ? OR ${Calendars.CALENDAR_DISPLAY_NAME} = ?)
+        """.trimIndent()
+        val args = arrayOf(
+            LOCAL_ACCOUNT_NAME,
+            CalendarContract.ACCOUNT_TYPE_LOCAL,
+            calendarName,
+            calendarName
+        )
+
+        contentResolver.query(
+            Calendars.CONTENT_URI,
+            projection,
+            selection,
+            args,
+            "${Calendars._ID} ASC"
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                return cursor.getLong(0)
+            }
+        }
+        return null
     }
 
     private fun createOrUpdateEvent(arguments: Any?, result: MethodChannel.Result) {
