@@ -1024,3 +1024,31 @@ onPressed: () async {
 - 跨表语义（清单删除影响任务和 sessions）必须事务化应用，避免同步中途失败产生不一致。
 
 *最后更新日期：2026-07-04*
+
+---
+
+## 29. Flutter 3.44 Android Release 编译歧义
+
+### 29.1 问题现象
+- `v1.5.1` 的 GitHub Actions Windows 安装包构建成功，但 Android `flutter build apk --release` 失败，Release 任务因此被跳过。
+- 失败位置在 `flutter_local_notifications 16.3.3` 的 Android 原生代码：`BigPictureStyle.bigLargeIcon(null)`。
+- Java 编译器同时匹配到 `Bitmap` 和 `Icon` 两个重载，报出 `reference to bigLargeIcon is ambiguous`。
+
+### 29.2 根因分析
+Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提供了 `Bitmap` 与 `Icon` 两个可匹配重载。旧版插件把 `null` 直接传入，Java 无法推断应选择哪个类型；这发生在第三方插件源码中，与应用签名配置和业务通知代码无关。
+
+### 29.3 修复方案
+将 `flutter_local_notifications` 从 `^16.0.0` 升级至 `^17.2.4`。该系列在 `17.2.1` 已修复 Android API 重载编译问题；本地缓存源码确认使用 `bigLargeIcon((Bitmap) null)`，消除了歧义。保持现有 Dart 通知 API 不变，只更新依赖定义和锁文件。
+
+### 29.4 验证
+- `flutter analyze` 通过。
+- `flutter test` 全量 90 项通过。
+- 已确认新插件 Java 源码包含 `Bitmap` 强制转换。
+- 本机没有 Android SDK，无法在本地执行 APK 构建；以重新触发的 GitHub Actions Android Release 构建作为最终验证。
+
+### 29.5 教训
+- 升级 Flutter SDK 时，必须将 Android Release 构建作为发布前的独立门禁，Dart 分析和单测无法覆盖插件 Java 编译错误。
+- 遇到 Android SDK API 重载变更，应优先检查原生插件版本与其更新说明，而不是修改应用业务层或降低签名配置。
+- 已失败且未生成 Release 的版本标签可以在修复提交后安全地移动到正确提交，再重新触发同一版本的发布流程。
+
+*最后更新日期：2026-07-23*

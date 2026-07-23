@@ -24,7 +24,7 @@ dependencies:
   go_router: ^12.0.0
 
   # 通知
-  flutter_local_notifications: ^16.0.0
+  flutter_local_notifications: ^17.2.4
 
   # 音频
   audioplayers: ^6.8.1
