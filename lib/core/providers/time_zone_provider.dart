@@ -15,16 +15,20 @@ class TimeZoneNotifier extends StateNotifier<AppTimeZoneMode> {
     state = mode;
   }
 
+  Future<void> reload() => _load();
+
   Future<void> setMode(AppTimeZoneMode mode) async {
     AppTime.configure(mode);
     state = mode;
     await AppDatabase.setSetting(
-        AppTime.settingKey, AppTime.valueFromMode(mode));
+      AppTime.settingKey,
+      AppTime.valueFromMode(mode),
+    );
     SyncService.triggerBackgroundSync();
   }
 }
 
 final timeZoneProvider =
     StateNotifierProvider<TimeZoneNotifier, AppTimeZoneMode>((ref) {
-  return TimeZoneNotifier();
-});
+      return TimeZoneNotifier();
+    });

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="FocusMyTime - 番茄工作法与任务专注工具">
+  <meta name="theme-color" content="#4F46E5">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="FocusMyTime">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>FocusMyTime</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    @font-face {
+      font-family: "FocusLoaderSC0";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.106.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "FocusLoaderSC1";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.111.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "FocusLoaderSC2";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.112.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "FocusLoaderSC3";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.114.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "FocusLoaderSC4";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.115.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "FocusLoaderSC5";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.116.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "FocusLoaderSC6";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.117.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "FocusLoaderSC7";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.118.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "FocusLoaderSC8";
+      src: url("font-fallback/notosanssc/v37/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYkldv7JjxkkgFsFSSOPMOkySAZ73y9ViAt3acb8NexQ2w.119.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+
+    :root {
+      color-scheme: light dark;
+      --loading-bg: #f7f5fb;
+      --loading-text: #1f1b2e;
+      --loading-muted: #6b6478;
+      --loading-accent: #4f46e5;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --loading-bg: #12111d;
+        --loading-text: #f6f2ff;
+        --loading-muted: #c7bed8;
+        --loading-accent: #a78bfa;
+      }
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--loading-bg);
+    }
+
+    #app-loading {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+      background: var(--loading-bg);
+      color: var(--loading-text);
+      font-family: system-ui, -apple-system, "Segoe UI", "FocusLoaderSC0",
+        "FocusLoaderSC1", "FocusLoaderSC2", "FocusLoaderSC3",
+        "FocusLoaderSC4", "FocusLoaderSC5", "FocusLoaderSC6",
+        "FocusLoaderSC7", "FocusLoaderSC8", sans-serif;
+      text-align: center;
+    }
+
+    .loading-content {
+      display: grid;
+      justify-items: center;
+      gap: 14px;
+    }
+
+    .loading-brand {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .loading-spinner {
+      width: 30px;
+      height: 30px;
+      box-sizing: border-box;
+      border: 3px solid color-mix(in srgb, var(--loading-accent) 22%, transparent);
+      border-top-color: var(--loading-accent);
+      border-radius: 50%;
+      animation: loading-spin 0.8s linear infinite;
+    }
+
+    .loading-status {
+      max-width: 320px;
+      color: var(--loading-muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .loading-retry {
+      display: none;
+      width: 44px;
+      min-height: 40px;
+      padding: 0;
+      border: 0;
+      border-radius: 6px;
+      background: var(--loading-accent);
+      color: #fff;
+      font: inherit;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    #app-loading.failed .loading-spinner {
+      display: none;
+    }
+
+    #app-loading.failed .loading-retry {
+      display: block;
+    }
+
+    @keyframes loading-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .loading-spinner { animation-duration: 1.8s; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app-loading" role="status" aria-live="polite">
+    <div class="loading-content">
+      <div class="loading-brand">FocusMyTime</div>
+      <div class="loading-spinner" aria-hidden="true"></div>
+      <div id="loading-status" class="loading-status">正在准备专注空间...</div>
+      <button id="loading-retry" class="loading-retry" type="button" aria-label="重新加载" title="重新加载">↻</button>
+    </div>
+  </div>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

@@ -129,20 +129,14 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     }
   }
 
-  void _saveAllEdits({
-    required String taskId,
-    bool showUndo = true,
-  }) {
+  void _saveAllEdits({required String taskId, bool showUndo = true}) {
     final task = _cachedTask;
     if (task == null) return;
 
     // Save title if changed
     if (_titleController.text.trim().isNotEmpty &&
         _titleController.text.trim() != task.title) {
-      _taskNotifier.updateTask(
-        taskId,
-        {'title': _titleController.text.trim()},
-      );
+      _taskNotifier.updateTask(taskId, {'title': _titleController.text.trim()});
       if (showUndo) {
         _showUndoSnackBar(
           message: '任务标题已保存',
@@ -153,10 +147,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
     // Save notes if changed
     if (_notesController.text.trim() != (task.notes ?? '')) {
-      _taskNotifier.updateTask(
-        taskId,
-        {'notes': _notesController.text.trim()},
-      );
+      _taskNotifier.updateTask(taskId, {'notes': _notesController.text.trim()});
       if (showUndo) {
         _showUndoSnackBar(
           message: '任务备注已保存',
@@ -174,8 +165,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   void _loadTaskData() async {
     final taskState = ref.read(taskProvider);
-    TaskItem? task =
-        taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    TaskItem? task = taskState.tasks
+        .where((t) => t.id == widget.taskId)
+        .firstOrNull;
 
     // 如果在当前视图状态中找不到任务（可能是切换了列表），则从数据库加载
     if (task == null) {
@@ -210,8 +202,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       final oldTitleUndoController = _titleUndoController;
       final oldNotesUndoController = _notesUndoController;
       final newTitleController = TextEditingController(text: currentTask.title);
-      final newNotesController =
-          TextEditingController(text: currentTask.notes ?? '');
+      final newNotesController = TextEditingController(
+        text: currentTask.notes ?? '',
+      );
       setState(() {
         _cachedTask = currentTask;
         _titleController = newTitleController;
@@ -247,8 +240,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   Widget build(BuildContext context) {
     final taskState = ref.watch(taskProvider);
     // 优先从当前 state.tasks 中获取最新数据，如果没有则使用缓存的数据
-    final latestTask =
-        taskState.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    final latestTask = taskState.tasks
+        .where((t) => t.id == widget.taskId)
+        .firstOrNull;
     if (latestTask != null) {
       _cachedTask = latestTask;
     }
@@ -271,8 +265,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       _loadTaskData();
     });
 
-    final currentList =
-        taskState.lists.where((l) => l.id == task.listId).firstOrNull;
+    final currentList = taskState.lists
+        .where((l) => l.id == task.listId)
+        .firstOrNull;
 
     return SafeArea(
       top: isMobile,
@@ -283,9 +278,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           color: context.appColors.surface,
           border: isMobile
               ? null
-              : Border(
-                  left: BorderSide(color: context.appColors.border),
-                ),
+              : Border(left: BorderSide(color: context.appColors.border)),
         ),
         child: Column(
           children: [
@@ -296,10 +289,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                 children: [
                   const Text(
                     '任务详情',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const Spacer(),
                   IconButton(
@@ -339,9 +329,11 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: task.completed
-                                ? const Icon(AppIcons.taskDone,
+                                ? const Icon(
+                                    AppIcons.taskDone,
                                     size: AppIconSizes.compact,
-                                    color: Colors.white)
+                                    color: Colors.white,
+                                  )
                                 : null,
                           ),
                         ),
@@ -365,8 +357,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                               ),
                               hintText: '任务标题',
                               isDense: true,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                              ),
                             ),
                             style: TextStyle(
                               fontSize: 16,
@@ -411,10 +404,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                       label: '开始专注',
                       isActive: false,
                       onTap: () {
-                        ref.read(timerProvider.notifier).startFocus(
-                              taskTitle: task.title,
-                              taskId: task.id,
-                            );
+                        ref
+                            .read(timerProvider.notifier)
+                            .startFocus(taskTitle: task.title, taskId: task.id);
                       },
                       isDark: isDark,
                     ),
@@ -487,8 +479,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                       bindings: {
                         const SingleActivator(LogicalKeyboardKey.enter): () =>
                             _confirmExpectedMinutes(task.id),
-                        const SingleActivator(LogicalKeyboardKey.numpadEnter):
-                            () => _confirmExpectedMinutes(task.id),
+                        const SingleActivator(
+                          LogicalKeyboardKey.numpadEnter,
+                        ): () =>
+                            _confirmExpectedMinutes(task.id),
                       },
                       child: TextField(
                         controller: _expectedMinutesController,
@@ -502,7 +496,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                         ),
                         keyboardType: TextInputType.number,
                         inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly
+                          FilteringTextInputFormatter.digitsOnly,
                         ],
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => _confirmExpectedMinutes(task.id),
@@ -527,8 +521,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                           borderRadius: BorderRadius.circular(8),
                         ),
                         suffixIcon: _shouldUseLargeNotesEditor
-                            ? const Icon(AppIcons.editNote,
-                                size: AppIconSizes.compact)
+                            ? const Icon(
+                                AppIcons.editNote,
+                                size: AppIconSizes.compact,
+                              )
                             : null,
                       ),
                       maxLines: 4,
@@ -583,7 +579,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
                     // List info
                     _buildSectionLabel(
-                        '所属清单：${currentList?.name ?? '未知'}', isDark),
+                      '所属清单：${currentList?.name ?? '未知'}',
+                      isDark,
+                    ),
 
                     const SizedBox(height: 16),
 
@@ -675,9 +673,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(
-                    color: context.appColors.text,
-                  ),
+                  style: TextStyle(color: context.appColors.text),
                 ),
               ),
             ],
@@ -692,16 +688,17 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     final isPast =
         hasReminder && task.reminderAt! < DateTime.now().millisecondsSinceEpoch;
     final reminderText = hasReminder
-        ? AppTime.formatDateTimeFromMilliseconds(task.reminderAt!)
-            .replaceAll('-', '/')
+        ? AppTime.formatDateTimeFromMilliseconds(
+            task.reminderAt!,
+          ).replaceAll('-', '/')
         : '设置提醒时间';
 
     // 如果过期且未完成，显示为红色；如果已设置但未过期，显示为紫色(Accent)以提供视觉反馈
     final textColor = (isPast && !task.completed)
         ? Colors.red
         : (hasReminder
-            ? (context.appColors.accent)
-            : (context.appColors.textSecondary));
+              ? (context.appColors.accent)
+              : (context.appColors.textSecondary));
 
     return InkWell(
       onTap: () => _showReminderPresets(task),
@@ -710,9 +707,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         decoration: BoxDecoration(
           color: context.appColors.surface,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: context.appColors.border,
-          ),
+          border: Border.all(color: context.appColors.border),
         ),
         child: Row(
           children: [
@@ -727,10 +722,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
             Expanded(
               child: Text(
                 reminderText,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: textColor,
-                ),
+                style: TextStyle(fontSize: 14, color: textColor),
               ),
             ),
             if (hasReminder)
@@ -753,8 +745,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       builder: (dialogContext) => AlertDialog(
         backgroundColor: context.appColors.background,
         title: Text('未开启提醒权限', style: TextStyle(color: context.appColors.text)),
-        content: Text('为了确保提醒能正常送达，请至少开启系统通知或日历同步权限中的一项。',
-            style: TextStyle(color: context.appColors.textSecondary)),
+        content: Text(
+          '为了确保提醒能正常送达，请至少开启系统通知或日历同步权限中的一项。',
+          style: TextStyle(color: context.appColors.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () async {
@@ -805,8 +799,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     );
     final firstDate = initialDate.isBefore(today) ? initialDate : today;
     final defaultLastDate = now.add(const Duration(days: 365));
-    final lastDate =
-        initialDate.isAfter(defaultLastDate) ? initialDate : defaultLastDate;
+    final lastDate = initialDate.isAfter(defaultLastDate)
+        ? initialDate
+        : defaultLastDate;
 
     final date = await showDatePicker(
       context: context,
@@ -824,8 +819,13 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
     if (!mounted || time == null) return;
 
-    final target =
-        AppTime.create(date.year, date.month, date.day, time.hour, time.minute);
+    final target = AppTime.create(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
     await taskNotifier.setReminder(task.id, target);
   }
 
@@ -834,18 +834,16 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 12,
-          color: context.appColors.textSecondary,
-        ),
+        style: TextStyle(fontSize: 12, color: context.appColors.textSecondary),
       ),
     );
   }
 
   /// 格式化 Unix 毫秒时间戳为可读日期时间字符串
   String _formatTimestamp(int milliseconds) {
-    return AppTime.formatDateTimeFromMilliseconds(milliseconds)
-        .replaceAll('-', '/');
+    return AppTime.formatDateTimeFromMilliseconds(
+      milliseconds,
+    ).replaceAll('-', '/');
   }
 
   Widget _buildTimestampInfo(TaskItem task, bool isDark) {
@@ -870,9 +868,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         Expanded(
           child: Text(
             '🔄 ${getRecurrenceSummary(config)}',
-            style: TextStyle(
-              color: context.appColors.text,
-            ),
+            style: TextStyle(color: context.appColors.text),
           ),
         ),
         TextButton(
@@ -894,20 +890,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '设置重复',
-            style: TextStyle(
-              color: context.appColors.text,
-            ),
-          ),
+          Text('设置重复', style: TextStyle(color: context.appColors.text)),
           const SizedBox(height: 16),
           Wrap(
             spacing: 8,
             children: [
-              _buildRecurrenceChip(
-                '永不',
-                () => _clearRecurrence(taskId),
-              ),
+              _buildRecurrenceChip('永不', () => _clearRecurrence(taskId)),
               _buildRecurrenceChip(
                 '每天',
                 () => _setRecurrence(
@@ -975,10 +963,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   Widget _buildRecurrenceChip(String label, VoidCallback onTap) {
-    return ActionChip(
-      label: Text(label),
-      onPressed: onTap,
-    );
+    return ActionChip(label: Text(label), onPressed: onTap);
   }
 
   Future<void> _setRecurrence(String taskId, RecurrenceConfig config) async {
@@ -1017,11 +1002,11 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     var frequency = existing.frequency;
     var interval = existing.interval.clamp(1, 99);
     var daysOfWeek = [
-      ...(existing.daysOfWeek ?? [anchor.weekday])
+      ...(existing.daysOfWeek ?? [anchor.weekday]),
     ];
     var monthlyMode = existing.monthlyMode ?? 'date';
     var daysOfMonth = [
-      ...(existing.daysOfMonth ?? [anchor.day])
+      ...(existing.daysOfMonth ?? [anchor.day]),
     ];
     var weekOrdinal = existing.weekOrdinal ?? _weekOrdinalFor(anchor);
     var weekDayGroup = existing.weekDayGroup ?? 'single';
@@ -1030,8 +1015,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     var endMode = existing.endsAt != null
         ? 'date'
         : existing.endsAfterOccurrences != null
-            ? 'count'
-            : 'never';
+        ? 'count'
+        : 'never';
     var endsAt = existing.endsAt;
     var endsAfterOccurrences = existing.endsAfterOccurrences ?? 10;
 
@@ -1041,8 +1026,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         builder: (context, setDialogState) {
           return AlertDialog(
             backgroundColor: context.appColors.surface,
-            title:
-                Text('自定义重复', style: TextStyle(color: context.appColors.text)),
+            title: Text(
+              '自定义重复',
+              style: TextStyle(color: context.appColors.text),
+            ),
             content: SizedBox(
               width: 560,
               child: SingleChildScrollView(
@@ -1072,12 +1059,14 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                             initialValue: interval.toString(),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly
+                              FilteringTextInputFormatter.digitsOnly,
                             ],
                             decoration: const InputDecoration(isDense: true),
                             onChanged: (value) {
-                              interval =
-                                  (int.tryParse(value) ?? 1).clamp(1, 99);
+                              interval = (int.tryParse(value) ?? 1).clamp(
+                                1,
+                                99,
+                              );
                             },
                           ),
                         ),
@@ -1152,43 +1141,65 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                           children: [
                             Expanded(
                               child: DropdownButtonFormField<int>(
-                                value: weekOrdinal,
-                                decoration:
-                                    const InputDecoration(labelText: '第几周'),
+                                initialValue: weekOrdinal,
+                                decoration: const InputDecoration(
+                                  labelText: '第几周',
+                                ),
                                 items: const [
                                   DropdownMenuItem(
-                                      value: 1, child: Text('第一个')),
+                                    value: 1,
+                                    child: Text('第一个'),
+                                  ),
                                   DropdownMenuItem(
-                                      value: 2, child: Text('第二个')),
+                                    value: 2,
+                                    child: Text('第二个'),
+                                  ),
                                   DropdownMenuItem(
-                                      value: 3, child: Text('第三个')),
+                                    value: 3,
+                                    child: Text('第三个'),
+                                  ),
                                   DropdownMenuItem(
-                                      value: 4, child: Text('第四个')),
+                                    value: 4,
+                                    child: Text('第四个'),
+                                  ),
                                   DropdownMenuItem(
-                                      value: -1, child: Text('最后一个')),
+                                    value: -1,
+                                    child: Text('最后一个'),
+                                  ),
                                 ],
                                 onChanged: (value) => setDialogState(
-                                    () => weekOrdinal = value ?? weekOrdinal),
+                                  () => weekOrdinal = value ?? weekOrdinal,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: DropdownButtonFormField<String>(
-                                value: weekDayGroup,
-                                decoration:
-                                    const InputDecoration(labelText: '星期'),
+                                initialValue: weekDayGroup,
+                                decoration: const InputDecoration(
+                                  labelText: '星期',
+                                ),
                                 items: const [
                                   DropdownMenuItem(
-                                      value: 'single', child: Text('指定星期')),
+                                    value: 'single',
+                                    child: Text('指定星期'),
+                                  ),
                                   DropdownMenuItem(
-                                      value: 'weekdays', child: Text('周一至周五')),
+                                    value: 'weekdays',
+                                    child: Text('周一至周五'),
+                                  ),
                                   DropdownMenuItem(
-                                      value: 'weekend', child: Text('周末')),
+                                    value: 'weekend',
+                                    child: Text('周末'),
+                                  ),
                                   DropdownMenuItem(
-                                      value: 'all', child: Text('整周')),
+                                    value: 'all',
+                                    child: Text('整周'),
+                                  ),
                                 ],
                                 onChanged: (value) => setDialogState(
-                                    () => weekDayGroup = value ?? weekDayGroup),
+                                  () => weekDayGroup = value ?? weekDayGroup,
+                                ),
                               ),
                             ),
                           ],
@@ -1196,9 +1207,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                         if (weekDayGroup == 'single') ...[
                           const SizedBox(height: 8),
                           DropdownButtonFormField<int>(
-                            value: weekDay,
-                            decoration:
-                                const InputDecoration(labelText: '指定星期'),
+                            initialValue: weekDay,
+                            decoration: const InputDecoration(
+                              labelText: '指定星期',
+                            ),
                             items: List.generate(7, (index) {
                               final weekday = index + 1;
                               return DropdownMenuItem(
@@ -1207,7 +1219,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                               );
                             }),
                             onChanged: (value) => setDialogState(
-                                () => weekDay = value ?? weekDay),
+                              () => weekDay = value ?? weekDay,
+                            ),
                           ),
                         ],
                       ],
@@ -1219,23 +1232,27 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                     )) ...[
                       const SizedBox(height: 14),
                       _dialogLabel('遇到不存在的日期'),
-                      RadioListTile<String>(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('回退到当月最后一天'),
-                        value: 'lastDay',
+                      RadioGroup<String>(
                         groupValue: overflowPolicy,
                         onChanged: (value) => setDialogState(
-                            () => overflowPolicy = value ?? overflowPolicy),
-                      ),
-                      RadioListTile<String>(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('跳过该次任务'),
-                        value: 'skip',
-                        groupValue: overflowPolicy,
-                        onChanged: (value) => setDialogState(
-                            () => overflowPolicy = value ?? overflowPolicy),
+                          () => overflowPolicy = value ?? overflowPolicy,
+                        ),
+                        child: const Column(
+                          children: [
+                            RadioListTile<String>(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text('回退到当月最后一天'),
+                              value: 'lastDay',
+                            ),
+                            RadioListTile<String>(
+                              dense: true,
+                              contentPadding: EdgeInsets.zero,
+                              title: Text('跳过该次任务'),
+                              value: 'skip',
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                     const SizedBox(height: 14),
@@ -1275,12 +1292,14 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                                 ? DateTime.parse(endsAt!)
                                 : anchor.add(const Duration(days: 30)),
                             firstDate: anchor,
-                            lastDate:
-                                anchor.add(const Duration(days: 365 * 10)),
+                            lastDate: anchor.add(
+                              const Duration(days: 365 * 10),
+                            ),
                           );
                           if (picked != null) {
                             setDialogState(
-                                () => endsAt = AppTime.formatDate(picked));
+                              () => endsAt = AppTime.formatDate(picked),
+                            );
                           }
                         },
                       ),
@@ -1293,15 +1312,15 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                           initialValue: endsAfterOccurrences.toString(),
                           keyboardType: TextInputType.number,
                           inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly
+                            FilteringTextInputFormatter.digitsOnly,
                           ],
                           decoration: const InputDecoration(
                             labelText: '重复次数',
                             isDense: true,
                           ),
                           onChanged: (value) {
-                            endsAfterOccurrences =
-                                (int.tryParse(value) ?? 1).clamp(1, 99);
+                            endsAfterOccurrences = (int.tryParse(value) ?? 1)
+                                .clamp(1, 99);
                           },
                         ),
                       ),
@@ -1324,29 +1343,34 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
                       daysOfWeek: frequency == RecurrenceFrequency.weekly
                           ? daysOfWeek
                           : null,
-                      daysOfMonth: frequency == RecurrenceFrequency.monthly &&
+                      daysOfMonth:
+                          frequency == RecurrenceFrequency.monthly &&
                               monthlyMode == 'date'
                           ? daysOfMonth
                           : null,
                       monthlyMode: frequency == RecurrenceFrequency.monthly
                           ? monthlyMode
                           : null,
-                      weekOrdinal: frequency == RecurrenceFrequency.monthly &&
+                      weekOrdinal:
+                          frequency == RecurrenceFrequency.monthly &&
                               monthlyMode == 'weekday'
                           ? weekOrdinal
                           : null,
-                      weekDay: frequency == RecurrenceFrequency.monthly &&
+                      weekDay:
+                          frequency == RecurrenceFrequency.monthly &&
                               monthlyMode == 'weekday' &&
                               weekDayGroup == 'single'
                           ? weekDay
                           : null,
-                      weekDayGroup: frequency == RecurrenceFrequency.monthly &&
+                      weekDayGroup:
+                          frequency == RecurrenceFrequency.monthly &&
                               monthlyMode == 'weekday'
                           ? weekDayGroup
                           : null,
                       endsAt: endMode == 'date' ? endsAt : null,
-                      endsAfterOccurrences:
-                          endMode == 'count' ? endsAfterOccurrences : null,
+                      endsAfterOccurrences: endMode == 'count'
+                          ? endsAfterOccurrences
+                          : null,
                       overflowPolicy: overflowPolicy,
                     ),
                   );
@@ -1440,8 +1464,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   Widget _buildSessionItem(Map<String, dynamic> session, bool isDark) {
-    final startedAt =
-        AppTime.fromMillisecondsSinceEpoch(session['startedAt'] as int);
+    final startedAt = AppTime.fromMillisecondsSinceEpoch(
+      session['startedAt'] as int,
+    );
     final dateStr = '${startedAt.month}/${startedAt.day}';
     final timeStr =
         '${startedAt.hour.toString().padLeft(2, '0')}:${startedAt.minute.toString().padLeft(2, '0')}';
@@ -1464,10 +1489,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           Expanded(
             child: Text(
               '$mins分钟',
-              style: TextStyle(
-                fontSize: 12,
-                color: context.appColors.text,
-              ),
+              style: TextStyle(fontSize: 12, color: context.appColors.text),
             ),
           ),
           const SizedBox(width: 8),
@@ -1498,9 +1520,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         _dueDate = dateStr;
         _dueDateController.text = dateStr;
       });
-      ref
-          .read(taskProvider.notifier)
-          .updateTask(widget.taskId, {'dueDate': _dueDate});
+      ref.read(taskProvider.notifier).updateTask(widget.taskId, {
+        'dueDate': _dueDate,
+      });
     }
   }
 
@@ -1510,7 +1532,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       initialTime: _dueTime != null
           ? TimeOfDay(
               hour: int.parse(_dueTime!.split(':')[0]),
-              minute: int.parse(_dueTime!.split(':')[1]))
+              minute: int.parse(_dueTime!.split(':')[1]),
+            )
           : TimeOfDay.fromDateTime(AppTime.now()),
     );
     if (time != null) {
@@ -1520,9 +1543,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
         _dueTime = timeStr;
         _dueTimeController.text = timeStr;
       });
-      ref
-          .read(taskProvider.notifier)
-          .updateTask(widget.taskId, {'dueTime': _dueTime});
+      ref.read(taskProvider.notifier).updateTask(widget.taskId, {
+        'dueTime': _dueTime,
+      });
     }
   }
 
@@ -1654,10 +1677,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          action: SnackBarAction(
-            label: '撤销',
-            onPressed: onUndo,
-          ),
+          action: SnackBarAction(label: '撤销', onPressed: onUndo),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -1706,22 +1726,22 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
+        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
       );
   }
 
   void _saveExpectedMinutes(String taskId) {
     final rawValue = _expectedMinutesController.text.trim();
     final mins = rawValue.isEmpty ? null : int.tryParse(rawValue);
-    final task =
-        ref.read(taskProvider).tasks.where((t) => t.id == taskId).firstOrNull;
+    final task = ref
+        .read(taskProvider)
+        .tasks
+        .where((t) => t.id == taskId)
+        .firstOrNull;
     if (task != null && task.expectedMinutes == mins) return;
-    ref
-        .read(taskProvider.notifier)
-        .updateTask(taskId, {'expectedMinutes': mins});
+    ref.read(taskProvider.notifier).updateTask(taskId, {
+      'expectedMinutes': mins,
+    });
   }
 
   void _confirmExpectedMinutes(String taskId) {

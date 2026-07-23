@@ -77,5 +77,5 @@ class ThemeSchemeNotifier extends StateNotifier<AppThemeScheme> {
 
 final themeSchemeProvider =
     StateNotifierProvider<ThemeSchemeNotifier, AppThemeScheme>((ref) {
-  return ThemeSchemeNotifier();
-});
+      return ThemeSchemeNotifier();
+    });

@@ -52,8 +52,8 @@ class TimerControls extends ConsumerWidget {
                 timerState.timerStatus == TimerStatus.running
                     ? '暂停'
                     : timerState.timerStatus == TimerStatus.paused
-                        ? '继续'
-                        : '开始',
+                    ? '继续'
+                    : '开始',
                 style: const TextStyle(fontSize: 14),
               ),
             ],
@@ -73,7 +73,7 @@ class TimerControls extends ConsumerWidget {
             ),
             side: BorderSide(
               color: timerState.timerStatus == TimerStatus.idle
-                  ? Colors.grey.withOpacity(0.3)
+                  ? Colors.grey.withValues(alpha: 0.3)
                   : (context.appColors.accent),
             ),
             foregroundColor: context.appColors.accent,

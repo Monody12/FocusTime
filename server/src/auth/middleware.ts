@@ -2,7 +2,15 @@ import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { getUserById } from './crypto'
 
-const JWT_SECRET = process.env.JWT_SECRET || 'focus-timer-sync-secret-key-change-in-production'
+function readJwtSecret(): string {
+  const secret = process.env.JWT_SECRET
+  if (!secret) {
+    throw new Error('JWT_SECRET must be configured for the sync service')
+  }
+  return secret
+}
+
+const JWT_SECRET = readJwtSecret()
 const JWT_EXPIRY = '7d'
 
 export interface AuthRequest extends Request {
@@ -15,8 +23,16 @@ export function generateToken(userId: string): string {
 
 export function verifyToken(token: string): string | null {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string }
-    return decoded.userId
+    const decoded = jwt.verify(token, JWT_SECRET)
+    if (
+      typeof decoded === 'object' &&
+      decoded != null &&
+      'userId' in decoded &&
+      typeof decoded.userId === 'string'
+    ) {
+      return decoded.userId
+    }
+    return null
   } catch {
     return null
   }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppThemeColors extends ThemeExtension<AppThemeColors> {
   const AppThemeColors({
@@ -157,8 +156,15 @@ extension AppThemeContext on BuildContext {
 }
 
 class AppTheme {
-  // 使用 Noto Sans SC (思源黑体) 作为全局字体，确保中英文粗细一致且美观
-  // 该字体由 Google 提供，完美支持中文各种字重。
+  static const _fontFamily = 'FocusNotoSansSC';
+  static const _fontFallback = <String>[
+    'Noto Sans SC',
+    'PingFang SC',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    'Roboto',
+    'Arial',
+  ];
   static const duskLightColors = AppThemeColors(
     background: Color(0xFFF7F5FB),
     sidebar: Color(0xFFEDEAF5),
@@ -203,10 +209,7 @@ class AppTheme {
 
   static const defaultScheme = duskScheme;
 
-  static const List<AppThemeScheme> schemes = [
-    duskScheme,
-    greenScheme,
-  ];
+  static const List<AppThemeScheme> schemes = [duskScheme, greenScheme];
 
   static AppThemeScheme schemeById(String id) {
     return schemes.firstWhere(
@@ -215,15 +218,11 @@ class AppTheme {
     );
   }
 
-  static ThemeData darkThemeFor(AppThemeScheme scheme) => buildTheme(
-        colors: scheme.dark,
-        brightness: Brightness.dark,
-      );
+  static ThemeData darkThemeFor(AppThemeScheme scheme) =>
+      buildTheme(colors: scheme.dark, brightness: Brightness.dark);
 
-  static ThemeData lightThemeFor(AppThemeScheme scheme) => buildTheme(
-        colors: scheme.light,
-        brightness: Brightness.light,
-      );
+  static ThemeData lightThemeFor(AppThemeScheme scheme) =>
+      buildTheme(colors: scheme.light, brightness: Brightness.light);
 
   static ThemeData darkTheme = darkThemeFor(defaultScheme);
 
@@ -238,8 +237,12 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
-      // 使用 Noto Sans SC 覆盖所有文本样式
-      textTheme: GoogleFonts.notoSansScTextTheme(baseTheme.textTheme),
+      fontFamily: _fontFamily,
+      fontFamilyFallback: _fontFallback,
+      textTheme: baseTheme.textTheme.apply(
+        fontFamily: _fontFamily,
+        fontFamilyFallback: _fontFallback,
+      ),
       scaffoldBackgroundColor: colors.background,
       colorScheme: ColorScheme(
         brightness: brightness,
@@ -253,7 +256,7 @@ class AppTheme {
         onSurface: colors.text,
       ),
       extensions: [colors],
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: colors.surface,
         elevation: isDark ? 4 : 2,
         shadowColor: isDark ? const Color(0x66071118) : const Color(0x1F18303D),
@@ -287,16 +290,12 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: colors.accent,
           foregroundColor: isDark ? colors.background : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: colors.accent,
-        ),
+        style: TextButton.styleFrom(foregroundColor: colors.accent),
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
@@ -307,15 +306,12 @@ class AppTheme {
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return colors.accent.withOpacity(0.5);
+            return colors.accent.withValues(alpha: 0.5);
           }
-          return Colors.grey.withOpacity(0.3);
+          return Colors.grey.withValues(alpha: 0.3);
         }),
       ),
-      dividerTheme: DividerThemeData(
-        color: colors.border,
-        thickness: 1,
-      ),
+      dividerTheme: DividerThemeData(color: colors.border, thickness: 1),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: colors.accent,

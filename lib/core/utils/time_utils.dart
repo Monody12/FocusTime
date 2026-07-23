@@ -7,7 +7,8 @@ String formatTime(int totalSeconds) {
 }
 
 ({int durationMinutes, DateTime targetTime}) calculateSingleCoreTarget(
-    int minDuration) {
+  int minDuration,
+) {
   final now = AppTime.now();
   final minute = now.minute;
 

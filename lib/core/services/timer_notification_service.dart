@@ -1,9 +1,9 @@
-import 'dart:io';
 import 'dart:developer' as dev;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:windows_notification/windows_notification.dart';
 import 'package:windows_notification/notification_message.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:focus_my_time/core/platform/platform_info.dart';
 
 /// 计时器铃声与系统通知服务
 /// 职责：
@@ -28,21 +28,21 @@ class TimerNotificationService {
   /// 应在 main() 中调用，初始化通知能力
   static Future<void> initialize() async {
     if (_initialized) return;
-    _initialized = true;
     dev.log('[TimerNotificationService] 正在初始化通知服务...');
 
     // 1. 设置音频播放器为循环模式
     await _audioPlayer.setReleaseMode(ReleaseMode.loop);
 
     // 2. 仅在 Windows 下创建通知客户端
-    if (Platform.isWindows) {
+    if (PlatformInfo.isWindows) {
       _initWindowsNotifier();
     }
 
     // 3. 在 Android 和 macOS 下初始化本地通知插件
-    if (Platform.isAndroid || Platform.isMacOS) {
+    if (PlatformInfo.isAndroid || PlatformInfo.isMacOS) {
       await _initLocalNotifier();
     }
+    _initialized = true;
   }
 
   static void _initWindowsNotifier() {
@@ -70,16 +70,16 @@ class TimerNotificationService {
 
     const DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
-      requestSoundPermission: true,
-      requestBadgePermission: true,
-      requestAlertPermission: true,
-    );
+          requestSoundPermission: true,
+          requestBadgePermission: true,
+          requestAlertPermission: true,
+        );
 
     const InitializationSettings initializationSettings =
         InitializationSettings(
-      android: initializationSettingsAndroid,
-      macOS: initializationSettingsDarwin,
-    );
+          android: initializationSettingsAndroid,
+          macOS: initializationSettingsDarwin,
+        );
 
     await _localNotifier.initialize(
       initializationSettings,
@@ -89,15 +89,16 @@ class TimerNotificationService {
         if (payload != null && _onAction != null) {
           // payload 可能是 'action:start_break' 这种格式，
           // 但 flutter_local_notifications 的 actionId 是直接的 ID
-          final String normalizedPayload =
-              payload.startsWith('action:') ? payload : 'action:$payload';
+          final String normalizedPayload = payload.startsWith('action:')
+              ? payload
+              : 'action:$payload';
           _onAction!(normalizedPayload);
         }
       },
     );
 
     // 创建通知渠道（Android 8.0+）
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isAndroid) {
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         'focus_timer_channel',
         '专注计时器',
@@ -109,7 +110,8 @@ class TimerNotificationService {
 
       await _localNotifier
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.createNotificationChannel(channel);
     }
   }
@@ -130,22 +132,27 @@ class TimerNotificationService {
     if (!_initialized) await initialize();
 
     // 1. 响铃处理
-    if (!Platform.isWindows && soundEnabled) {
+    if (!PlatformInfo.isWindows && soundEnabled) {
       final bool loop = duration != 'short';
       await _playAlarmSound(loop: loop);
     }
 
     // 2. 发送通知
-    if (Platform.isWindows && _winNotifier != null) {
+    if (PlatformInfo.isWindows && _winNotifier != null) {
       await _sendActionableToast(
-          title: title,
-          body: body,
-          phase: phase,
-          duration: duration,
-          soundEnabled: soundEnabled);
-    } else if (Platform.isAndroid || Platform.isMacOS) {
+        title: title,
+        body: body,
+        phase: phase,
+        duration: duration,
+        soundEnabled: soundEnabled,
+      );
+    } else if (PlatformInfo.isAndroid || PlatformInfo.isMacOS) {
       await _sendLocalNotification(
-          title: title, body: body, phase: phase, soundEnabled: soundEnabled);
+        title: title,
+        body: body,
+        phase: phase,
+        soundEnabled: soundEnabled,
+      );
     }
   }
 
@@ -157,30 +164,50 @@ class TimerNotificationService {
   }) async {
     final List<AndroidNotificationAction> actions = [];
     if (phase == 'focus') {
-      actions.add(const AndroidNotificationAction('start_break', '开始休息',
-          showsUserInterface: true));
-      actions.add(const AndroidNotificationAction('start_focus', '继续专注',
-          showsUserInterface: true));
+      actions.add(
+        const AndroidNotificationAction(
+          'start_break',
+          '开始休息',
+          showsUserInterface: true,
+        ),
+      );
+      actions.add(
+        const AndroidNotificationAction(
+          'start_focus',
+          '继续专注',
+          showsUserInterface: true,
+        ),
+      );
     } else {
-      actions.add(const AndroidNotificationAction('start_focus', '开始专注',
-          showsUserInterface: true));
-      actions.add(const AndroidNotificationAction('skip_break', '跳过休息',
-          showsUserInterface: true));
+      actions.add(
+        const AndroidNotificationAction(
+          'start_focus',
+          '开始专注',
+          showsUserInterface: true,
+        ),
+      );
+      actions.add(
+        const AndroidNotificationAction(
+          'skip_break',
+          '跳过休息',
+          showsUserInterface: true,
+        ),
+      );
     }
 
     final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'focus_timer_channel',
-      '专注计时器',
-      channelDescription: '用于发送计时结束的提醒',
-      importance: Importance.max,
-      priority: Priority.high,
-      ticker: 'ticker',
-      actions: actions,
-      fullScreenIntent: true,
-      category: AndroidNotificationCategory.alarm,
-      playSound: soundEnabled,
-    );
+          'focus_timer_channel',
+          '专注计时器',
+          channelDescription: '用于发送计时结束的提醒',
+          importance: Importance.max,
+          priority: Priority.high,
+          ticker: 'ticker',
+          actions: actions,
+          fullScreenIntent: true,
+          category: AndroidNotificationCategory.alarm,
+          playSound: soundEnabled,
+        );
 
     final NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
@@ -208,8 +235,9 @@ class TimerNotificationService {
   static Future<void> _playAlarmSound({bool loop = true}) async {
     try {
       await _audioPlayer.stop();
-      await _audioPlayer
-          .setReleaseMode(loop ? ReleaseMode.loop : ReleaseMode.release);
+      await _audioPlayer.setReleaseMode(
+        loop ? ReleaseMode.loop : ReleaseMode.release,
+      );
       await _audioPlayer.play(AssetSource('audio/alarm.wav'));
     } catch (e) {
       dev.log('[TimerNotificationService] 铃声播放失败: $e');
@@ -238,8 +266,9 @@ class TimerNotificationService {
       String audioElement = '';
       if (soundEnabled) {
         const String audioSrc = 'ms-winsoundevent:Notification.Looping.Alarm';
-        final String loopingAttr =
-            duration != 'short' ? ' loop="true"' : ' loop="false"';
+        final String loopingAttr = duration != 'short'
+            ? ' loop="true"'
+            : ' loop="false"';
         audioElement = '<audio src="$audioSrc" $loopingAttr />';
       }
 
@@ -256,7 +285,8 @@ class TimerNotificationService {
         ''';
       }
 
-      final String toastXml = '''
+      final String toastXml =
+          '''
         <toast scenario="$scenario">
           <visual>
             <binding template="ToastGeneric">
@@ -287,13 +317,13 @@ class TimerNotificationService {
     dev.log('[TimerNotificationService] 停止铃声并尝试清除系统通知');
     await _audioPlayer.stop();
 
-    if (Platform.isWindows && _winNotifier != null) {
+    if (PlatformInfo.isWindows && _winNotifier != null) {
       try {
         _winNotifier!.removeNotificationId('timer_completion', 'focus_my_time');
       } catch (e) {
         dev.log('[TimerNotificationService] 清除 Windows 通知失败: $e');
       }
-    } else if (Platform.isAndroid || Platform.isMacOS) {
+    } else if (PlatformInfo.isAndroid || PlatformInfo.isMacOS) {
       await _localNotifier.cancel(0);
     }
   }

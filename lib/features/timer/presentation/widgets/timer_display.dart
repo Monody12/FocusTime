@@ -62,10 +62,7 @@ class TimerDisplay extends ConsumerWidget {
               if (timerState.timerStatus == TimerStatus.completed)
                 Text(
                   '完成！',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: progressColor,
-                  ),
+                  style: TextStyle(fontSize: 14, color: progressColor),
                 ),
             ],
           ),

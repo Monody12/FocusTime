@@ -92,6 +92,28 @@ void main() {
       expect(state.progress, 0.0);
     });
 
+    test('progress never exceeds 1 for recovered stale state', () {
+      final state = TimerState(totalSeconds: 100, elapsedSeconds: 150);
+      expect(state.progress, 1.0);
+    });
+
+    test('copyWith can clear a previous target time', () {
+      final state = TimerState(targetTime: DateTime(2026, 7, 22, 17));
+      final updated = state.copyWith(clearTargetTime: true);
+      expect(updated.targetTime, isNull);
+    });
+
+    test('session start is preserved when the running anchor changes', () {
+      final state = TimerState(
+        startedAt: 1000,
+        sessionStartedAt: 1000,
+        elapsedSeconds: 60,
+      );
+      final resumed = state.copyWith(startedAt: 120000);
+      expect(resumed.startedAt, 120000);
+      expect(resumed.sessionStartedAt, 1000);
+    });
+
     test('formattedTime formats correctly', () {
       final state = TimerState(totalSeconds: 1500, elapsedSeconds: 0); // 25:00
       expect(state.formattedTime, '25:00');
@@ -99,7 +121,9 @@ void main() {
 
     test('formattedTime shows remaining time', () {
       final state = TimerState(
-          totalSeconds: 1500, elapsedSeconds: 900); // 10:00 remaining
+        totalSeconds: 1500,
+        elapsedSeconds: 900,
+      ); // 10:00 remaining
       expect(state.formattedTime, '10:00');
     });
 
@@ -131,10 +155,7 @@ void main() {
     });
 
     test('copyWith preserves unchanged fields', () {
-      final state = TimerState(
-        currentTask: 'Original Task',
-        totalSeconds: 100,
-      );
+      final state = TimerState(currentTask: 'Original Task', totalSeconds: 100);
       final updated = state.copyWith(totalSeconds: 200);
       expect(updated.currentTask, 'Original Task');
       expect(updated.totalSeconds, 200);

@@ -115,10 +115,7 @@ class AiOperationEngine {
         results.add(op);
         continue;
       }
-      final result = await execute(
-        operation: op,
-        taskNotifier: taskNotifier,
-      );
+      final result = await execute(operation: op, taskNotifier: taskNotifier);
       results.add(result);
     }
     return results;
@@ -134,8 +131,10 @@ class AiOperationEngine {
       case AiOperationType.createTask:
         // Ensure target list exists (for dated lists etc.), resolve to real ID
         if (params.containsKey('listId')) {
-          final realId =
-              await _ensureList(params['listId'] as String, taskNotifier);
+          final realId = await _ensureList(
+            params['listId'] as String,
+            taskNotifier,
+          );
           params['listId'] = realId;
         }
         await _executeCreateTask(params, taskNotifier);
@@ -207,8 +206,10 @@ class AiOperationEngine {
 
       case AiOperationType.moveToList:
         if (params.containsKey('listId')) {
-          final realId =
-              await _ensureList(params['listId'] as String, taskNotifier);
+          final realId = await _ensureList(
+            params['listId'] as String,
+            taskNotifier,
+          );
           params['listId'] = realId;
         }
         await taskNotifier.moveTaskToList(
@@ -255,17 +256,15 @@ class AiOperationEngine {
     return created.id;
   }
 
-  static TaskList? _findListByReference(
-    List<TaskList> lists,
-    String listRef,
-  ) {
+  static TaskList? _findListByReference(List<TaskList> lists, String listRef) {
     final normalized = listRef.trim();
     var match = lists.where((l) => l.id == normalized).firstOrNull;
     if (match != null) return match;
 
     final lower = normalized.toLowerCase();
-    match =
-        lists.where((l) => l.name.trim().toLowerCase() == lower).firstOrNull;
+    match = lists
+        .where((l) => l.name.trim().toLowerCase() == lower)
+        .firstOrNull;
     return match;
   }
 
@@ -305,8 +304,13 @@ class AiOperationEngine {
       final hour = int.parse(parts[0]);
       final minute = int.parse(parts[1]);
       final dateParts = date.split('-');
-      return AppTime.create(int.parse(dateParts[0]), int.parse(dateParts[1]),
-          int.parse(dateParts[2]), hour, minute);
+      return AppTime.create(
+        int.parse(dateParts[0]),
+        int.parse(dateParts[1]),
+        int.parse(dateParts[2]),
+        hour,
+        minute,
+      );
     } catch (_) {
       return null;
     }
@@ -332,7 +336,8 @@ class AiOperationEngine {
       if (func == null) continue;
 
       final name = func['name'] as String?;
-      final args = tc['_parsedArguments'] as Map<String, dynamic>? ??
+      final args =
+          tc['_parsedArguments'] as Map<String, dynamic>? ??
           (func['arguments'] is String
               ? _safeJsonDecode(func['arguments'] as String)
               : func['arguments'] as Map<String, dynamic>?) ??
@@ -344,14 +349,16 @@ class AiOperationEngine {
       final summary = _buildSummary(type, args);
       final id = 'aio-${now + i}';
 
-      ops.add(AiOperation(
-        id: id,
-        messageId: messageId,
-        type: type,
-        params: args,
-        summary: summary,
-        createdAt: now + i,
-      ));
+      ops.add(
+        AiOperation(
+          id: id,
+          messageId: messageId,
+          type: type,
+          params: args,
+          summary: summary,
+          createdAt: now + i,
+        ),
+      );
     }
 
     return ops;

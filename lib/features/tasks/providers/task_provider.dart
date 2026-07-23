@@ -50,21 +50,20 @@ class TaskList {
     int? updatedAt,
     bool? archived,
     int? archivedAt,
-  }) =>
-      TaskList(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        isSystem: isSystem ?? this.isSystem,
-        sortOrder: sortOrder ?? this.sortOrder,
-        iconKey: iconKey ?? this.iconKey,
-        pinned: pinned ?? this.pinned,
-        topOrder: topOrder ?? this.topOrder,
-        hidden: hidden ?? this.hidden,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-        archived: archived ?? this.archived,
-        archivedAt: archivedAt ?? this.archivedAt,
-      );
+  }) => TaskList(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    isSystem: isSystem ?? this.isSystem,
+    sortOrder: sortOrder ?? this.sortOrder,
+    iconKey: iconKey ?? this.iconKey,
+    pinned: pinned ?? this.pinned,
+    topOrder: topOrder ?? this.topOrder,
+    hidden: hidden ?? this.hidden,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    archived: archived ?? this.archived,
+    archivedAt: archivedAt ?? this.archivedAt,
+  );
 }
 
 class TaskItem {
@@ -138,31 +137,30 @@ class TaskItem {
     bool clearDueTime = false,
     bool clearReminder = false,
     bool clearCalendarEventId = false,
-  }) =>
-      TaskItem(
-        id: id ?? this.id,
-        listId: listId ?? this.listId,
-        title: title ?? this.title,
-        notes: clearNotes ? null : (notes ?? this.notes),
-        completed: completed ?? this.completed,
-        completedAt: completedAt ?? this.completedAt,
-        dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
-        dueTime: clearDueTime ? null : (dueTime ?? this.dueTime),
-        sortOrder: sortOrder ?? this.sortOrder,
-        isMyDay: isMyDay ?? this.isMyDay,
-        myDayAddedAt: myDayAddedAt ?? this.myDayAddedAt,
-        recurrenceConfig: recurrenceConfig ?? this.recurrenceConfig,
-        expectedMinutes: expectedMinutes ?? this.expectedMinutes,
-        isImportant: isImportant ?? this.isImportant,
-        reminderAt: clearReminder ? null : (reminderAt ?? this.reminderAt),
-        calendarEventId: clearCalendarEventId
-            ? null
-            : (calendarEventId ?? this.calendarEventId),
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-        archived: archived ?? this.archived,
-        archivedAt: archivedAt ?? this.archivedAt,
-      );
+  }) => TaskItem(
+    id: id ?? this.id,
+    listId: listId ?? this.listId,
+    title: title ?? this.title,
+    notes: clearNotes ? null : (notes ?? this.notes),
+    completed: completed ?? this.completed,
+    completedAt: completedAt ?? this.completedAt,
+    dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
+    dueTime: clearDueTime ? null : (dueTime ?? this.dueTime),
+    sortOrder: sortOrder ?? this.sortOrder,
+    isMyDay: isMyDay ?? this.isMyDay,
+    myDayAddedAt: myDayAddedAt ?? this.myDayAddedAt,
+    recurrenceConfig: recurrenceConfig ?? this.recurrenceConfig,
+    expectedMinutes: expectedMinutes ?? this.expectedMinutes,
+    isImportant: isImportant ?? this.isImportant,
+    reminderAt: clearReminder ? null : (reminderAt ?? this.reminderAt),
+    calendarEventId: clearCalendarEventId
+        ? null
+        : (calendarEventId ?? this.calendarEventId),
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    archived: archived ?? this.archived,
+    archivedAt: archivedAt ?? this.archivedAt,
+  );
 }
 
 class TaskState {
@@ -190,16 +188,16 @@ class TaskState {
     String? selectedTaskId,
     bool? isLoading,
     bool clearSelectedTask = false,
-  }) =>
-      TaskState(
-        lists: lists ?? this.lists,
-        tasks: tasks ?? this.tasks,
-        currentListId: currentListId ?? this.currentListId,
-        currentViewType: currentViewType ?? this.currentViewType,
-        selectedTaskId:
-            clearSelectedTask ? null : (selectedTaskId ?? this.selectedTaskId),
-        isLoading: isLoading ?? this.isLoading,
-      );
+  }) => TaskState(
+    lists: lists ?? this.lists,
+    tasks: tasks ?? this.tasks,
+    currentListId: currentListId ?? this.currentListId,
+    currentViewType: currentViewType ?? this.currentViewType,
+    selectedTaskId: clearSelectedTask
+        ? null
+        : (selectedTaskId ?? this.selectedTaskId),
+    isLoading: isLoading ?? this.isLoading,
+  );
 }
 
 class TaskNotifier extends StateNotifier<TaskState> {
@@ -322,7 +320,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
     if (state.selectedTaskId == taskId) return;
 
     state = state.copyWith(
-        selectedTaskId: taskId, clearSelectedTask: taskId == null);
+      selectedTaskId: taskId,
+      clearSelectedTask: taskId == null,
+    );
   }
 
   List<TaskList> get listsSnapshot => state.lists;
@@ -355,8 +355,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> pinList(String id) async {
-    final visibleTopLists =
-        state.lists.where((l) => l.pinned && !l.hidden).toList();
+    final visibleTopLists = state.lists
+        .where((l) => l.pinned && !l.hidden)
+        .toList();
     final topOrder = visibleTopLists.length;
     await AppDatabase.updateListCustomization(
       id,
@@ -382,14 +383,18 @@ class TaskNotifier extends StateNotifier<TaskState> {
     await AppDatabase.updateListCustomization(id, hidden: true);
     await loadLists();
     if (state.currentListId == id) {
-      final fallback = state.lists
-          .where((list) => list.pinned && !list.hidden)
-          .toList()
-        ..sort((a, b) =>
-            (a.topOrder ?? a.sortOrder).compareTo(b.topOrder ?? b.sortOrder));
+      final fallback =
+          state.lists.where((list) => list.pinned && !list.hidden).toList()
+            ..sort(
+              (a, b) => (a.topOrder ?? a.sortOrder).compareTo(
+                b.topOrder ?? b.sortOrder,
+              ),
+            );
       if (fallback.isNotEmpty) {
         await setCurrentList(
-            fallback.first.id, _viewTypeForList(fallback.first));
+          fallback.first.id,
+          _viewTypeForList(fallback.first),
+        );
       } else {
         await setCurrentList('system-all-tasks', 'all-tasks');
       }
@@ -435,8 +440,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> archiveList(String id) async {
-    final tasksToArchive =
-        (await AppDatabase.getTasksByList(id)).map(_taskFromMap).toList();
+    final tasksToArchive = (await AppDatabase.getTasksByList(
+      id,
+    )).map(_taskFromMap).toList();
     final wasCurrentList = state.currentListId == id;
     await AppDatabase.archiveList(id);
 
@@ -447,7 +453,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
       tasks: tasks,
       currentListId: wasCurrentList ? 'system-my-day' : state.currentListId,
       currentViewType: wasCurrentList ? 'my-day' : state.currentViewType,
-      clearSelectedTask: state.selectedTaskId != null &&
+      clearSelectedTask:
+          state.selectedTaskId != null &&
           tasksToArchive.any((t) => t.id == state.selectedTaskId),
     );
     if (wasCurrentList) {
@@ -460,7 +467,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
   Future<void> archiveTask(String id) async {
     final dbTask = await AppDatabase.getTaskById(id);
-    final task = state.tasks.where((t) => t.id == id).firstOrNull ??
+    final task =
+        state.tasks.where((t) => t.id == id).firstOrNull ??
         (dbTask == null ? null : _taskFromMap(dbTask));
     await AppDatabase.archiveTask(id);
     state = state.copyWith(
@@ -505,8 +513,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
     await _refreshRemindersAndCalendarFromDatabase();
   }
 
-  Future<({bool success, bool tokenExpired})> sync(
-      {bool background = false}) async {
+  Future<({bool success, bool tokenExpired})> sync({
+    bool background = false,
+  }) async {
     if (!SyncService.isLoggedIn) {
       return (success: false, tokenExpired: false);
     }
@@ -549,12 +558,31 @@ class TaskNotifier extends StateNotifier<TaskState> {
     try {
       await _refreshRemindersAndCalendarFromDatabase();
     } catch (e, stackTrace) {
-      dev.log(
-        '[TaskNotifier] 外部同步后刷新提醒失败',
-        error: e,
-        stackTrace: stackTrace,
-      );
+      dev.log('[TaskNotifier] 外部同步后刷新提醒失败', error: e, stackTrace: stackTrace);
     }
+  }
+
+  /// Reload every task-facing cache after a database restore. This also
+  /// reconciles timers and calendar entries that belonged to removed tasks.
+  Future<void> reloadAfterDataRestore() async {
+    await loadLists();
+    if (!mounted) return;
+
+    final selectedListStillExists = state.lists.any(
+      (list) => list.id == state.currentListId,
+    );
+    if (state.currentViewType == 'custom' && !selectedListStillExists) {
+      state = state.copyWith(
+        currentListId: 'system-my-day',
+        currentViewType: 'my-day',
+        clearSelectedTask: true,
+      );
+    } else {
+      state = state.copyWith(clearSelectedTask: true);
+    }
+
+    await loadTasks(showLoading: false);
+    await _refreshRemindersAndCalendarFromDatabase();
   }
 
   Future<void> _cancelTaskIntegrations(List<TaskItem> tasks) async {
@@ -596,7 +624,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
     for (final previousTask in previousTasks.values) {
       final currentTask = currentById[previousTask.id];
       final removed = currentTask == null;
-      final reminderDisabled = currentTask != null &&
+      final reminderDisabled =
+          currentTask != null &&
           (currentTask.reminderAt == null || currentTask.completed);
       if (!removed && !reminderDisabled) continue;
 
@@ -626,10 +655,13 @@ class TaskNotifier extends StateNotifier<TaskState> {
   void _replaceKnownReminderTasks(List<TaskItem> tasks) {
     _knownReminderTasks
       ..clear()
-      ..addEntries(tasks
-          .where(
-              (task) => task.reminderAt != null || task.calendarEventId != null)
-          .map((task) => MapEntry(task.id, task)));
+      ..addEntries(
+        tasks
+            .where(
+              (task) => task.reminderAt != null || task.calendarEventId != null,
+            )
+            .map((task) => MapEntry(task.id, task)),
+      );
   }
 
   void _rememberTaskIntegration(TaskItem task) {
@@ -640,9 +672,14 @@ class TaskNotifier extends StateNotifier<TaskState> {
     }
   }
 
-  Future<TaskItem> createTask(String title,
-      {String? listId, bool isMyDay = false, DateTime? reminderAt}) async {
-    final targetListId = listId ??
+  Future<TaskItem> createTask(
+    String title, {
+    String? listId,
+    bool isMyDay = false,
+    DateTime? reminderAt,
+  }) async {
+    final targetListId =
+        listId ??
         (state.currentListId == 'system-my-day' ||
                 state.currentListId == 'system-all-tasks'
             ? 'system-all-tasks'
@@ -685,10 +722,12 @@ class TaskNotifier extends StateNotifier<TaskState> {
       if (eventId != null && eventId != task.calendarEventId) {
         await AppDatabase.updateTaskCalendarEventId(task.id, eventId);
       }
-      _rememberTaskIntegration(task.copyWith(
-        calendarEventId: eventId,
-        clearCalendarEventId: eventId == null,
-      ));
+      _rememberTaskIntegration(
+        task.copyWith(
+          calendarEventId: eventId,
+          clearCalendarEventId: eventId == null,
+        ),
+      );
     }
 
     _triggerSync();
@@ -728,26 +767,31 @@ class TaskNotifier extends StateNotifier<TaskState> {
     }
 
     if (updatedTask != null) {
-      final eventId =
-          await ReminderService.scheduleUnifiedReminders(updatedTask);
+      final eventId = await ReminderService.scheduleUnifiedReminders(
+        updatedTask,
+      );
       // 将 eventId 持久化到本机数据库，不推进同步时间戳
       if (eventId != null && eventId != updatedTask.calendarEventId) {
         await AppDatabase.updateTaskCalendarEventId(id, eventId);
       }
       state = state.copyWith(
         tasks: state.tasks
-            .map((t) => t.id == id
-                ? t.copyWith(
-                    calendarEventId: eventId,
-                    clearCalendarEventId: eventId == null,
-                  )
-                : t)
+            .map(
+              (t) => t.id == id
+                  ? t.copyWith(
+                      calendarEventId: eventId,
+                      clearCalendarEventId: eventId == null,
+                    )
+                  : t,
+            )
             .toList(),
       );
-      _rememberTaskIntegration(updatedTask.copyWith(
-        calendarEventId: eventId,
-        clearCalendarEventId: eventId == null,
-      ));
+      _rememberTaskIntegration(
+        updatedTask.copyWith(
+          calendarEventId: eventId,
+          clearCalendarEventId: eventId == null,
+        ),
+      );
     }
 
     _triggerSync();
@@ -769,7 +813,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
     //    此操作必须在提醒/日历清理之前，避免那些操作抛异常导致 UI 不更新。
     final tasks = state.tasks.where((t) => t.id != id).toList();
     state = state.copyWith(
-        tasks: tasks, clearSelectedTask: state.selectedTaskId == id);
+      tasks: tasks,
+      clearSelectedTask: state.selectedTaskId == id,
+    );
 
     // 3. 触发同步（不 await，后台执行）
     _triggerSync();
@@ -815,12 +861,14 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
         state = state.copyWith(
           tasks: state.tasks
-              .map((t) => t.id == id
-                  ? t.copyWith(
-                      completed: true,
-                      completedAt: now.millisecondsSinceEpoch,
-                    )
-                  : t)
+              .map(
+                (t) => t.id == id
+                    ? t.copyWith(
+                        completed: true,
+                        completedAt: now.millisecondsSinceEpoch,
+                      )
+                    : t,
+              )
               .toList(),
         );
 
@@ -840,8 +888,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
         int? newReminderAt;
         if (task.reminderAt != null) {
-          final currentReminder =
-              AppTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+          final currentReminder = AppTime.fromMillisecondsSinceEpoch(
+            task.reminderAt!,
+          );
           final newReminder = AppTime.create(
             nextDue.year,
             nextDue.month,
@@ -892,18 +941,22 @@ class TaskNotifier extends StateNotifier<TaskState> {
     }
     state = state.copyWith(
       tasks: state.tasks
-          .map((t) => t.id == task.id
-              ? t.copyWith(
-                  calendarEventId: eventId,
-                  clearCalendarEventId: eventId == null,
-                )
-              : t)
+          .map(
+            (t) => t.id == task.id
+                ? t.copyWith(
+                    calendarEventId: eventId,
+                    clearCalendarEventId: eventId == null,
+                  )
+                : t,
+          )
           .toList(),
     );
-    _rememberTaskIntegration(task.copyWith(
-      calendarEventId: eventId,
-      clearCalendarEventId: eventId == null,
-    ));
+    _rememberTaskIntegration(
+      task.copyWith(
+        calendarEventId: eventId,
+        clearCalendarEventId: eventId == null,
+      ),
+    );
   }
 
   Future<void> _runAutoArchiveIfNeeded() async {
@@ -912,8 +965,9 @@ class TaskNotifier extends StateNotifier<TaskState> {
     if (!enabled) return;
     final keepRaw = await AppDatabase.getSetting('autoArchiveKeepCount');
     final keepCount = (int.tryParse(keepRaw ?? '') ?? 3).clamp(0, 9);
-    final archived =
-        await AppDatabase.autoArchiveCompletedTasks(keepCount: keepCount);
+    final archived = await AppDatabase.autoArchiveCompletedTasks(
+      keepCount: keepCount,
+    );
     if (archived > 0) {
       await loadTasks(showLoading: false);
     }

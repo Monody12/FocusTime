@@ -1,13 +1,16 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:uuid/uuid.dart';
+import 'package:focus_my_time/data/database/database_file_operations.dart'
+    as file_operations;
 
 class AppDatabase {
   static Database? _database;
   static const _uuid = Uuid();
+  static const _schemaVersion = 12;
   static const Map<String, String> _taskSyncFields = {
     'listId': 'list_id',
     'title': 'title',
@@ -47,9 +50,11 @@ class AppDatabase {
   /// 流程：WAL checkpoint（将 WAL 日志合并到主库）→ 关闭连接 → 复制文件 → 重新打开
   /// 如果不执行 checkpoint，WAL 中已提交的事务会丢失，备份不完整
   static Future<void> exportDatabase(String outputPath) async {
+    if (kIsWeb) {
+      throw UnsupportedError('浏览器请使用 JSON 备份');
+    }
     final sourcePath = await getDbPath();
-    final sourceFile = File(sourcePath);
-    if (!await sourceFile.exists()) {
+    if (!await file_operations.databaseFileExists(sourcePath)) {
       throw Exception('数据库文件不存在: $sourcePath');
     }
 
@@ -64,9 +69,8 @@ class AppDatabase {
     // 必须关闭连接才能安全复制数据库文件
     await close();
     try {
-      final outputFile = File(outputPath);
-      await outputFile.parent.create(recursive: true);
-      await sourceFile.copy(outputPath);
+      await file_operations.ensureDatabaseOutputParent(outputPath);
+      await file_operations.copyDatabaseFile(sourcePath, outputPath);
     } finally {
       // 无论复制成功与否，都重新打开数据库供应用继续使用
       await database;
@@ -78,6 +82,9 @@ class AppDatabase {
   /// 流程：校验备份 → 关闭连接 → 清理 sidecar 文件 → 覆盖主库 → 清理 sidecar → 重新打开
   /// 导入后调用方需重新加载任务列表和提醒调度
   static Future<void> importDatabase(String backupPath) async {
+    if (kIsWeb) {
+      throw UnsupportedError('浏览器请使用 JSON 备份');
+    }
     await validateBackupFile(backupPath);
 
     final dbPath = await getDbPath();
@@ -86,7 +93,7 @@ class AppDatabase {
     await _deleteDatabaseSidecars(dbPath);
 
     try {
-      await File(backupPath).copy(dbPath);
+      await file_operations.copyDatabaseFile(backupPath, dbPath);
       // 删除备份文件可能带来的 sidecar（如果备份时 WAL 未 checkpoint）
       await _deleteDatabaseSidecars(dbPath);
       await database;
@@ -104,15 +111,17 @@ class AppDatabase {
   /// 2. 数据库版本号是否在支持范围内（≤ 当前版本 12）
   /// 3. 必要的数据表是否存在（lists, tasks, sessions, settings）
   static Future<void> validateBackupFile(String backupPath) async {
-    final backupFile = File(backupPath);
-    if (!await backupFile.exists()) {
+    if (kIsWeb) {
+      throw UnsupportedError('浏览器不支持 SQLite 文件校验');
+    }
+    if (!await file_operations.databaseFileExists(backupPath)) {
       throw Exception('备份文件不存在');
     }
 
     Database? backupDb;
     try {
       // 以只读模式打开备份文件进行校验，不修改原始备份
-      backupDb = await openDatabase(backupPath, readOnly: true);
+      backupDb = await file_operations.openReadOnlyDatabaseFile(backupPath);
       final version = await backupDb.getVersion();
       if (version > 12) {
         throw Exception('备份数据库版本过高: $version');
@@ -135,21 +144,20 @@ class AppDatabase {
   /// 删除数据库的 WAL、SHM 和 journal 附属文件
   /// 这些文件在 SQLite WAL 模式下自动生成，导入/导出时需要清理以确保一致性
   static Future<void> _deleteDatabaseSidecars(String dbPath) async {
+    if (kIsWeb) return;
     for (final path in ['$dbPath-wal', '$dbPath-shm', '$dbPath-journal']) {
-      final file = File(path);
-      if (await file.exists()) {
-        await file.delete();
-      }
+      await file_operations.deleteDatabaseFileIfExists(path);
     }
   }
 
   static Future<Database> _initDatabase() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'focus_my_time.db');
+    final path = kIsWeb
+        ? 'focus_my_time.db'
+        : join(await getDatabasesPath(), 'focus_my_time.db');
 
     return await openDatabase(
       path,
-      version: 12,
+      version: _schemaVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -280,7 +288,8 @@ class AppDatabase {
 
     // 加速提醒查询的复合索引
     await db.execute(
-        'CREATE INDEX idx_tasks_reminders ON tasks(deleted, completed, reminder_at)');
+      'CREATE INDEX idx_tasks_reminders ON tasks(deleted, completed, reminder_at)',
+    );
 
     // 种子数据
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -323,24 +332,32 @@ class AppDatabase {
   }
 
   static Future<void> _onUpgrade(
-      Database db, int oldVersion, int newVersion) async {
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
     if (oldVersion < 2) {
       // 增加删除标记位以支持同步
       await db.execute(
-          'ALTER TABLE lists ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+        'ALTER TABLE lists ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0',
+      );
       await db.execute(
-          'ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+        'ALTER TABLE tasks ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0',
+      );
       await db.execute(
-          'ALTER TABLE sessions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+        'ALTER TABLE sessions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0',
+      );
       await db.execute(
-          'ALTER TABLE task_recurrence_completions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0');
+        'ALTER TABLE task_recurrence_completions ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0',
+      );
     }
 
     if (oldVersion < 3) {
       // 为设置表增加时间戳以支持同步
       try {
         await db.execute(
-            'ALTER TABLE settings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0');
+          'ALTER TABLE settings ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0',
+        );
       } catch (e) {
         // Ignore if column already exists
       }
@@ -349,7 +366,8 @@ class AppDatabase {
     if (oldVersion < 4) {
       try {
         await db.execute(
-            'ALTER TABLE tasks ADD COLUMN is_important INTEGER NOT NULL DEFAULT 0');
+          'ALTER TABLE tasks ADD COLUMN is_important INTEGER NOT NULL DEFAULT 0',
+        );
       } catch (e) {
         // Ignore if column already exists
       }
@@ -366,7 +384,8 @@ class AppDatabase {
         'updated_at': now,
       });
       await db.execute(
-          "UPDATE lists SET sort_order = sort_order + 1 WHERE id = 'system-all-tasks'");
+        "UPDATE lists SET sort_order = sort_order + 1 WHERE id = 'system-all-tasks'",
+      );
     }
 
     if (oldVersion < 6) {
@@ -426,15 +445,18 @@ class AppDatabase {
 
     if (oldVersion < 9) {
       await db.execute(
-          'CREATE INDEX IF NOT EXISTS idx_tasks_reminders ON tasks(deleted, completed, reminder_at)');
+        'CREATE INDEX IF NOT EXISTS idx_tasks_reminders ON tasks(deleted, completed, reminder_at)',
+      );
     }
 
     if (oldVersion < 10) {
       await db.execute(
-          'ALTER TABLE lists ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+        'ALTER TABLE lists ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
+      );
       await db.execute('ALTER TABLE lists ADD COLUMN archived_at INTEGER');
       await db.execute(
-          'ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0');
+        'ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
+      );
       await db.execute('ALTER TABLE tasks ADD COLUMN archived_at INTEGER');
     }
 
@@ -463,21 +485,24 @@ class AppDatabase {
       }
     }
 
-    await db.update(
-      'lists',
-      {'icon_key': 'myDay', 'pinned': 1, 'top_order': 0, 'hidden': 0},
-      where: "id = 'system-my-day'",
-    );
-    await db.update(
-      'lists',
-      {'icon_key': 'important', 'pinned': 1, 'top_order': 1, 'hidden': 0},
-      where: "id = 'system-important'",
-    );
-    await db.update(
-      'lists',
-      {'icon_key': 'tasks', 'pinned': 1, 'top_order': 2, 'hidden': 0},
-      where: "id = 'system-all-tasks'",
-    );
+    await db.update('lists', {
+      'icon_key': 'myDay',
+      'pinned': 1,
+      'top_order': 0,
+      'hidden': 0,
+    }, where: "id = 'system-my-day'");
+    await db.update('lists', {
+      'icon_key': 'important',
+      'pinned': 1,
+      'top_order': 1,
+      'hidden': 0,
+    }, where: "id = 'system-important'");
+    await db.update('lists', {
+      'icon_key': 'tasks',
+      'pinned': 1,
+      'top_order': 2,
+      'hidden': 0,
+    }, where: "id = 'system-all-tasks'");
   }
 
   static Future<void> _createSyncFieldVersionsTable(DatabaseExecutor db) async {
@@ -509,22 +534,22 @@ class AppDatabase {
 
   static Future<String?> getSetting(String key) async {
     final db = await database;
-    final result =
-        await db.query('settings', where: 'key = ?', whereArgs: [key]);
+    final result = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: [key],
+    );
     if (result.isEmpty) return null;
     return result.first['value'] as String?;
   }
 
   static Future<void> setSetting(String key, String value) async {
     final db = await database;
-    await db.insert(
-        'settings',
-        {
-          'key': key,
-          'value': value,
-          'updated_at': DateTime.now().millisecondsSinceEpoch
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert('settings', {
+      'key': key,
+      'value': value,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   static Future<void> _setFieldVersions(
@@ -538,16 +563,12 @@ class AppDatabase {
     if (uniqueFields.isEmpty) return;
 
     for (final fieldName in uniqueFields) {
-      await db.insert(
-        'sync_field_versions',
-        {
-          'table_name': tableName,
-          'record_id': recordId,
-          'field_name': fieldName,
-          'updated_at': updatedAt,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('sync_field_versions', {
+        'table_name': tableName,
+        'record_id': recordId,
+        'field_name': fieldName,
+        'updated_at': updatedAt,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -701,20 +722,21 @@ class AppDatabase {
         ...taskIds,
       ],
     );
-    await _setTaskFieldVersionsForIds(
-      db,
-      taskIds,
-      ['archived', 'archivedAt'],
-      updatedAt,
-    );
+    await _setTaskFieldVersionsForIds(db, taskIds, [
+      'archived',
+      'archivedAt',
+    ], updatedAt);
   }
 
   // ========== 清单 ==========
 
   static Future<List<Map<String, dynamic>>> getLists() async {
     final db = await database;
-    final result = await db.query('lists',
-        where: 'deleted = 0 AND archived = 0', orderBy: 'sort_order');
+    final result = await db.query(
+      'lists',
+      where: 'deleted = 0 AND archived = 0',
+      orderBy: 'sort_order',
+    );
     return result.map(_mapList).toList();
   }
 
@@ -761,8 +783,12 @@ class AppDatabase {
   static Future<Map<String, dynamic>> createList(String name) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final count = Sqflite.firstIntValue(await db.rawQuery(
-            'SELECT COUNT(*) FROM lists WHERE deleted = 0 AND archived = 0')) ??
+    final count =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
+            'SELECT COUNT(*) FROM lists WHERE deleted = 0 AND archived = 0',
+          ),
+        ) ??
         0;
     final id = 'list-${_uuid.v4()}';
 
@@ -797,9 +823,12 @@ class AppDatabase {
 
   static Future<void> updateList(String id, String name) async {
     final db = await database;
-    await db.update('lists',
-        {'name': name, 'updated_at': DateTime.now().millisecondsSinceEpoch},
-        where: 'id = ? AND deleted = 0 AND archived = 0', whereArgs: [id]);
+    await db.update(
+      'lists',
+      {'name': name, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+      where: 'id = ? AND deleted = 0 AND archived = 0',
+      whereArgs: [id],
+    );
   }
 
   static Future<void> updateListCustomization(
@@ -833,11 +862,7 @@ class AppDatabase {
     for (var i = 0; i < listIds.length; i++) {
       batch.update(
         'lists',
-        {
-          'pinned': 1,
-          'top_order': i,
-          'updated_at': now,
-        },
+        {'pinned': 1, 'top_order': i, 'updated_at': now},
         where: 'id = ? AND deleted = 0 AND archived = 0',
         whereArgs: [listIds[i]],
       );
@@ -849,14 +874,22 @@ class AppDatabase {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
-      await txn.update('lists', {'icon_key': 'list', 'updated_at': now},
-          where: 'deleted = 0 AND is_system = 0');
-      await txn.update('lists', {'icon_key': 'myDay', 'updated_at': now},
-          where: "id = 'system-my-day'");
-      await txn.update('lists', {'icon_key': 'important', 'updated_at': now},
-          where: "id = 'system-important'");
-      await txn.update('lists', {'icon_key': 'tasks', 'updated_at': now},
-          where: "id = 'system-all-tasks'");
+      await txn.update('lists', {
+        'icon_key': 'list',
+        'updated_at': now,
+      }, where: 'deleted = 0 AND is_system = 0');
+      await txn.update('lists', {
+        'icon_key': 'myDay',
+        'updated_at': now,
+      }, where: "id = 'system-my-day'");
+      await txn.update('lists', {
+        'icon_key': 'important',
+        'updated_at': now,
+      }, where: "id = 'system-important'");
+      await txn.update('lists', {
+        'icon_key': 'tasks',
+        'updated_at': now,
+      }, where: "id = 'system-all-tasks'");
     });
   }
 
@@ -864,21 +897,24 @@ class AppDatabase {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
-      await txn.update(
-        'lists',
-        {'pinned': 1, 'top_order': 0, 'hidden': 0, 'updated_at': now},
-        where: "id = 'system-my-day'",
-      );
-      await txn.update(
-        'lists',
-        {'pinned': 1, 'top_order': 1, 'hidden': 0, 'updated_at': now},
-        where: "id = 'system-important'",
-      );
-      await txn.update(
-        'lists',
-        {'pinned': 1, 'top_order': 2, 'hidden': 0, 'updated_at': now},
-        where: "id = 'system-all-tasks'",
-      );
+      await txn.update('lists', {
+        'pinned': 1,
+        'top_order': 0,
+        'hidden': 0,
+        'updated_at': now,
+      }, where: "id = 'system-my-day'");
+      await txn.update('lists', {
+        'pinned': 1,
+        'top_order': 1,
+        'hidden': 0,
+        'updated_at': now,
+      }, where: "id = 'system-important'");
+      await txn.update('lists', {
+        'pinned': 1,
+        'top_order': 2,
+        'hidden': 0,
+        'updated_at': now,
+      }, where: "id = 'system-all-tasks'");
       final pinnedCustomLists = await txn.query(
         'lists',
         columns: ['id'],
@@ -901,14 +937,11 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
       final updatedLists = await txn.update(
-          'lists',
-          {
-            'archived': 1,
-            'archived_at': now,
-            'updated_at': now,
-          },
-          where: 'id = ? AND deleted = 0 AND is_system = 0 AND pinned = 0',
-          whereArgs: [id]);
+        'lists',
+        {'archived': 1, 'archived_at': now, 'updated_at': now},
+        where: 'id = ? AND deleted = 0 AND is_system = 0 AND pinned = 0',
+        whereArgs: [id],
+      );
       if (updatedLists == 0) return;
       await _cascadeListArchived(
         txn,
@@ -925,21 +958,13 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
       final updatedLists = await txn.update(
-          'lists',
-          {
-            'archived': 0,
-            'archived_at': null,
-            'updated_at': now,
-          },
-          where: 'id = ? AND deleted = 0',
-          whereArgs: [id]);
-      if (updatedLists == 0) return;
-      await _cascadeListArchived(
-        txn,
-        id,
-        archived: false,
-        updatedAt: now,
+        'lists',
+        {'archived': 0, 'archived_at': null, 'updated_at': now},
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id],
       );
+      if (updatedLists == 0) return;
+      await _cascadeListArchived(txn, id, archived: false, updatedAt: now);
     });
   }
 
@@ -949,8 +974,11 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
       final updatedLists = await txn.update(
-          'lists', {'deleted': 1, 'updated_at': now},
-          where: 'id = ? AND is_system = 0 AND pinned = 0', whereArgs: [id]);
+        'lists',
+        {'deleted': 1, 'updated_at': now},
+        where: 'id = ? AND is_system = 0 AND pinned = 0',
+        whereArgs: [id],
+      );
       if (updatedLists == 0) return;
       await _cascadeListDeleted(txn, id, now);
     });
@@ -961,47 +989,61 @@ class AppDatabase {
   static Future<Map<String, dynamic>?> getTaskById(String id) async {
     final db = await database;
     // 过滤已删除任务，防止调用方操作已被软删除的僵尸任务
-    final result = await db.query('tasks',
-        where: 'id = ? AND deleted = 0 AND archived = 0', whereArgs: [id]);
+    final result = await db.query(
+      'tasks',
+      where: 'id = ? AND deleted = 0 AND archived = 0',
+      whereArgs: [id],
+    );
     if (result.isEmpty) return null;
     return _mapTask(result.first);
   }
 
   static Future<List<Map<String, dynamic>>> getTasksByList(
-      String listId) async {
+    String listId,
+  ) async {
     final db = await database;
-    final result = await db.query('tasks',
-        where: 'list_id = ? AND deleted = 0 AND archived = 0',
-        whereArgs: [listId],
-        orderBy: 'sort_order');
+    final result = await db.query(
+      'tasks',
+      where: 'list_id = ? AND deleted = 0 AND archived = 0',
+      whereArgs: [listId],
+      orderBy: 'sort_order',
+    );
     return result.map(_mapTask).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getMyDayTasks() async {
     final db = await database;
-    final result = await db.query('tasks',
-        where: 'is_my_day = 1 AND deleted = 0 AND archived = 0',
-        orderBy: 'sort_order');
+    final result = await db.query(
+      'tasks',
+      where: 'is_my_day = 1 AND deleted = 0 AND archived = 0',
+      orderBy: 'sort_order',
+    );
     return result.map(_mapTask).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getImportantTasks() async {
     final db = await database;
-    final result = await db.query('tasks',
-        where: 'is_important = 1 AND deleted = 0 AND archived = 0',
-        orderBy: 'sort_order');
+    final result = await db.query(
+      'tasks',
+      where: 'is_important = 1 AND deleted = 0 AND archived = 0',
+      orderBy: 'sort_order',
+    );
     return result.map(_mapTask).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getAllTasks() async {
     final db = await database;
-    final result = await db.query('tasks',
-        where: 'deleted = 0 AND archived = 0', orderBy: 'sort_order');
+    final result = await db.query(
+      'tasks',
+      where: 'deleted = 0 AND archived = 0',
+      orderBy: 'sort_order',
+    );
     return result.map(_mapTask).toList();
   }
 
-  static Future<List<Map<String, dynamic>>> getArchivedTasks(
-      {bool excludeTasksInArchivedLists = true}) async {
+  static Future<List<Map<String, dynamic>>> getArchivedTasks({
+    bool excludeTasksInArchivedLists = true,
+  }) async {
     final db = await database;
     final listFilter = excludeTasksInArchivedLists
         ? 'AND (l.id IS NULL OR l.deleted = 1 OR l.archived = 0)'
@@ -1025,11 +1067,13 @@ class AppDatabase {
   static Future<List<Map<String, dynamic>>> getActiveReminders() async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final result = await db.query('tasks',
-        where:
-            'deleted = 0 AND archived = 0 AND completed = 0 AND reminder_at IS NOT NULL AND reminder_at > ?',
-        whereArgs: [now],
-        orderBy: 'reminder_at');
+    final result = await db.query(
+      'tasks',
+      where:
+          'deleted = 0 AND archived = 0 AND completed = 0 AND reminder_at IS NOT NULL AND reminder_at > ?',
+      whereArgs: [now],
+      orderBy: 'reminder_at',
+    );
     return result.map(_mapTask).toList();
   }
 
@@ -1045,9 +1089,13 @@ class AppDatabase {
   }) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final count = Sqflite.firstIntValue(await db.rawQuery(
+    final count =
+        Sqflite.firstIntValue(
+          await db.rawQuery(
             'SELECT COUNT(*) FROM tasks WHERE list_id = ? AND deleted = 0 AND archived = 0',
-            [listId])) ??
+            [listId],
+          ),
+        ) ??
         0;
     final id = 'task-${_uuid.v4()}';
 
@@ -1196,13 +1244,11 @@ class AppDatabase {
       );
       if (updatedRows == 0) return null;
 
-      await _setFieldVersions(
-        txn,
-        'tasks',
-        id,
-        ['completed', 'completedAt', 'recurrenceConfig'],
-        now,
-      );
+      await _setFieldVersions(txn, 'tasks', id, [
+        'completed',
+        'completedAt',
+        'recurrenceConfig',
+      ], now);
 
       final dbInsertMap = {
         'id': newId,
@@ -1238,7 +1284,9 @@ class AppDatabase {
   }
 
   static Future<void> updateTask(
-      String id, Map<String, dynamic> updates) async {
+    String id,
+    Map<String, dynamic> updates,
+  ) async {
     final db = await database;
     final mapped = <String, dynamic>{};
 
@@ -1283,25 +1331,33 @@ class AppDatabase {
     mapped['updated_at'] = now;
     mapped['id'] = id;
 
-    final sets =
-        mapped.keys.where((k) => k != 'id').map((k) => '$k = ?').join(', ');
-    final values =
-        mapped.keys.where((k) => k != 'id').map((k) => mapped[k]).toList();
+    final sets = mapped.keys
+        .where((k) => k != 'id')
+        .map((k) => '$k = ?')
+        .join(', ');
+    final values = mapped.keys
+        .where((k) => k != 'id')
+        .map((k) => mapped[k])
+        .toList();
 
     // 仅更新未删除的任务，防止操作已被软删除的僵尸记录
     final updatedRows = await db.rawUpdate(
-        'UPDATE tasks SET $sets WHERE id = ? AND deleted = 0 AND archived = 0',
-        [...values, id]);
+      'UPDATE tasks SET $sets WHERE id = ? AND deleted = 0 AND archived = 0',
+      [...values, id],
+    );
     if (updatedRows > 0) {
-      final changedFields = updates.keys
-          .where((fieldName) => _taskSyncFields.containsKey(fieldName));
+      final changedFields = updates.keys.where(
+        (fieldName) => _taskSyncFields.containsKey(fieldName),
+      );
       await _setFieldVersions(db, 'tasks', id, changedFields, now);
     }
   }
 
   /// 仅更新本机系统集成状态，不推进 updated_at，避免触发云同步。
   static Future<void> updateTaskCalendarEventId(
-      String id, String? calendarEventId) async {
+    String id,
+    String? calendarEventId,
+  ) async {
     final db = await database;
     await db.update(
       'tasks',
@@ -1314,46 +1370,41 @@ class AppDatabase {
   /// 清空所有本机日历事件引用；这些 ID 不跨设备同步。
   static Future<void> clearTaskCalendarEventIds() async {
     final db = await database;
-    await db.update(
-      'tasks',
-      {'calendar_event_id': null},
-      where: 'deleted = 0',
-    );
+    await db.update('tasks', {'calendar_event_id': null}, where: 'deleted = 0');
   }
 
   static Future<void> archiveTask(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     final updatedRows = await db.update(
-        'tasks',
-        {
-          'archived': 1,
-          'archived_at': now,
-          'updated_at': now,
-        },
-        where: 'id = ? AND deleted = 0',
-        whereArgs: [id]);
+      'tasks',
+      {'archived': 1, 'archived_at': now, 'updated_at': now},
+      where: 'id = ? AND deleted = 0',
+      whereArgs: [id],
+    );
     if (updatedRows > 0) {
       await _setFieldVersions(db, 'tasks', id, ['archived', 'archivedAt'], now);
     }
   }
 
-  static Future<int> autoArchiveCompletedTasks({
-    required int keepCount,
-  }) async {
+  static Future<int> autoArchiveCompletedTasks({required int keepCount}) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final groups = await db.rawQuery('''
+    final groups = await db.rawQuery(
+      '''
       SELECT list_id, title, COUNT(*) AS count
       FROM tasks
       WHERE deleted = 0 AND archived = 0 AND completed = 1
       GROUP BY list_id, title
       HAVING count > ?
-    ''', [keepCount]);
+    ''',
+      [keepCount],
+    );
 
     var archivedCount = 0;
     for (final group in groups) {
-      final rows = await db.rawQuery('''
+      final rows = await db.rawQuery(
+        '''
         SELECT id
         FROM tasks
         WHERE deleted = 0
@@ -1363,26 +1414,22 @@ class AppDatabase {
           AND title = ?
         ORDER BY completed_at DESC, updated_at DESC
         LIMIT -1 OFFSET ?
-      ''', [group['list_id'], group['title'], keepCount]);
+      ''',
+        [group['list_id'], group['title'], keepCount],
+      );
       final ids = rows.map((row) => row['id'] as String).toList();
       if (ids.isEmpty) continue;
       await db.update(
         'tasks',
-        {
-          'archived': 1,
-          'archived_at': now,
-          'updated_at': now,
-        },
+        {'archived': 1, 'archived_at': now, 'updated_at': now},
         where:
             'id IN (${List.filled(ids.length, '?').join(',')}) AND deleted = 0',
         whereArgs: ids,
       );
-      await _setTaskFieldVersionsForIds(
-        db,
-        ids,
-        ['archived', 'archivedAt'],
-        now,
-      );
+      await _setTaskFieldVersionsForIds(db, ids, [
+        'archived',
+        'archivedAt',
+      ], now);
       archivedCount += ids.length;
     }
     return archivedCount;
@@ -1392,14 +1439,11 @@ class AppDatabase {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     final updatedRows = await db.update(
-        'tasks',
-        {
-          'archived': 0,
-          'archived_at': null,
-          'updated_at': now,
-        },
-        where: 'id = ? AND deleted = 0',
-        whereArgs: [id]);
+      'tasks',
+      {'archived': 0, 'archived_at': null, 'updated_at': now},
+      where: 'id = ? AND deleted = 0',
+      whereArgs: [id],
+    );
     if (updatedRows > 0) {
       await _setFieldVersions(db, 'tasks', id, ['archived', 'archivedAt'], now);
     }
@@ -1411,11 +1455,18 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
       // 仅更新未删除的会话，防止更新已删除记录的 updated_at 导致重复同步
-      await txn.update('sessions', {'deleted': 1, 'updated_at': now},
-          where: 'task_id = ? AND deleted = 0', whereArgs: [id]);
+      await txn.update(
+        'sessions',
+        {'deleted': 1, 'updated_at': now},
+        where: 'task_id = ? AND deleted = 0',
+        whereArgs: [id],
+      );
       final updatedRows = await txn.update(
-          'tasks', {'deleted': 1, 'updated_at': now},
-          where: 'id = ?', whereArgs: [id]);
+        'tasks',
+        {'deleted': 1, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
       if (updatedRows > 0) {
         await _setFieldVersions(txn, 'tasks', id, _taskSyncFields.keys, now);
       }
@@ -1425,10 +1476,12 @@ class AppDatabase {
   static Future<void> toggleTaskComplete(String id) async {
     final db = await database;
     // 仅查询未删除的任务，避免对已删除的僵尸任务进行操作
-    final result = await db.query('tasks',
-        columns: ['completed'],
-        where: 'id = ? AND deleted = 0 AND archived = 0',
-        whereArgs: [id]);
+    final result = await db.query(
+      'tasks',
+      columns: ['completed'],
+      where: 'id = ? AND deleted = 0 AND archived = 0',
+      whereArgs: [id],
+    );
     if (result.isEmpty) return;
 
     final currentCompleted = result.first['completed'] as int;
@@ -1436,22 +1489,20 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final updatedRows = await db.update(
-        'tasks',
-        {
-          'completed': newCompleted,
-          'completed_at': newCompleted == 1 ? now : null,
-          'updated_at': now,
-        },
-        where: 'id = ? AND deleted = 0 AND archived = 0',
-        whereArgs: [id]);
+      'tasks',
+      {
+        'completed': newCompleted,
+        'completed_at': newCompleted == 1 ? now : null,
+        'updated_at': now,
+      },
+      where: 'id = ? AND deleted = 0 AND archived = 0',
+      whereArgs: [id],
+    );
     if (updatedRows > 0) {
-      await _setFieldVersions(
-        db,
-        'tasks',
-        id,
-        ['completed', 'completedAt'],
-        now,
-      );
+      await _setFieldVersions(db, 'tasks', id, [
+        'completed',
+        'completedAt',
+      ], now);
     }
   }
 
@@ -1460,22 +1511,16 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     // 仅更新未删除的任务
     final updatedRows = await db.update(
-        'tasks',
-        {
-          'is_my_day': 1,
-          'my_day_added_at': now,
-          'updated_at': now,
-        },
-        where: 'id = ? AND deleted = 0 AND archived = 0',
-        whereArgs: [taskId]);
+      'tasks',
+      {'is_my_day': 1, 'my_day_added_at': now, 'updated_at': now},
+      where: 'id = ? AND deleted = 0 AND archived = 0',
+      whereArgs: [taskId],
+    );
     if (updatedRows > 0) {
-      await _setFieldVersions(
-        db,
-        'tasks',
-        taskId,
-        ['isMyDay', 'myDayAddedAt'],
-        now,
-      );
+      await _setFieldVersions(db, 'tasks', taskId, [
+        'isMyDay',
+        'myDayAddedAt',
+      ], now);
     }
   }
 
@@ -1484,22 +1529,16 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     // 仅更新未删除的任务
     final updatedRows = await db.update(
-        'tasks',
-        {
-          'is_my_day': 0,
-          'my_day_added_at': null,
-          'updated_at': now,
-        },
-        where: 'id = ? AND deleted = 0 AND archived = 0',
-        whereArgs: [taskId]);
+      'tasks',
+      {'is_my_day': 0, 'my_day_added_at': null, 'updated_at': now},
+      where: 'id = ? AND deleted = 0 AND archived = 0',
+      whereArgs: [taskId],
+    );
     if (updatedRows > 0) {
-      await _setFieldVersions(
-        db,
-        'tasks',
-        taskId,
-        ['isMyDay', 'myDayAddedAt'],
-        now,
-      );
+      await _setFieldVersions(db, 'tasks', taskId, [
+        'isMyDay',
+        'myDayAddedAt',
+      ], now);
     }
   }
 
@@ -1508,9 +1547,12 @@ class AppDatabase {
     final now = DateTime.now().millisecondsSinceEpoch;
     final batch = db.batch();
     for (var i = 0; i < taskIds.length; i++) {
-      batch.update('tasks', {'sort_order': i, 'updated_at': now},
-          where: 'id = ? AND deleted = 0 AND archived = 0',
-          whereArgs: [taskIds[i]]);
+      batch.update(
+        'tasks',
+        {'sort_order': i, 'updated_at': now},
+        where: 'id = ? AND deleted = 0 AND archived = 0',
+        whereArgs: [taskIds[i]],
+      );
     }
     await batch.commit(noResult: true);
     for (final taskId in taskIds) {
@@ -1518,15 +1560,20 @@ class AppDatabase {
     }
   }
 
-  static Future<void> reorderLists(List<String> listIds,
-      {int offset = 0}) async {
+  static Future<void> reorderLists(
+    List<String> listIds, {
+    int offset = 0,
+  }) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     final batch = db.batch();
     for (var i = 0; i < listIds.length; i++) {
-      batch.update('lists', {'sort_order': i + offset, 'updated_at': now},
-          where: 'id = ? AND deleted = 0 AND archived = 0',
-          whereArgs: [listIds[i]]);
+      batch.update(
+        'lists',
+        {'sort_order': i + offset, 'updated_at': now},
+        where: 'id = ? AND deleted = 0 AND archived = 0',
+        whereArgs: [listIds[i]],
+      );
     }
     await batch.commit(noResult: true);
   }
@@ -1575,53 +1622,70 @@ class AppDatabase {
   }
 
   static Future<List<Map<String, dynamic>>> getSessionsByDate(
-      String date) async {
+    String date,
+  ) async {
     final db = await database;
     final start = AppTime.startOfDateMilliseconds(date);
     final end = AppTime.endOfDateMilliseconds(date);
-    final result = await db.query('sessions',
-        where: 'started_at BETWEEN ? AND ? AND deleted = 0',
-        whereArgs: [start, end]);
+    final result = await db.query(
+      'sessions',
+      where: 'started_at BETWEEN ? AND ? AND deleted = 0',
+      whereArgs: [start, end],
+    );
     return result.map(_mapSession).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getSessionsByDateRange(
-      String startDate, String endDate) async {
+    String startDate,
+    String endDate,
+  ) async {
     final db = await database;
     final start = AppTime.startOfDateMilliseconds(startDate);
     final end = AppTime.endOfDateMilliseconds(endDate);
-    final result = await db.query('sessions',
-        where: 'started_at BETWEEN ? AND ? AND deleted = 0',
-        whereArgs: [start, end],
-        orderBy: 'started_at');
+    final result = await db.query(
+      'sessions',
+      where: 'started_at BETWEEN ? AND ? AND deleted = 0',
+      whereArgs: [start, end],
+      orderBy: 'started_at',
+    );
     return result.map(_mapSession).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getSessionsByTaskId(
-      String taskId) async {
+    String taskId,
+  ) async {
     final db = await database;
     // 过滤已删除的会话，避免在任务详情中显示无效的专注记录
-    final result = await db.query('sessions',
-        where: 'task_id = ? AND deleted = 0',
-        whereArgs: [taskId],
-        orderBy: 'started_at DESC');
+    final result = await db.query(
+      'sessions',
+      where: 'task_id = ? AND deleted = 0',
+      whereArgs: [taskId],
+      orderBy: 'started_at DESC',
+    );
     return result.map(_mapSession).toList();
   }
 
   // ========== 重复完成记录 ==========
 
   static Future<bool> toggleRecurrenceCompletion(
-      String taskId, String date) async {
+    String taskId,
+    String date,
+  ) async {
     final db = await database;
-    final existing = await db.query('task_recurrence_completions',
-        where: 'task_id = ? AND completion_date = ?',
-        whereArgs: [taskId, date]);
+    final existing = await db.query(
+      'task_recurrence_completions',
+      where: 'task_id = ? AND completion_date = ?',
+      whereArgs: [taskId, date],
+    );
 
     if (existing.isNotEmpty) {
       final now = DateTime.now().millisecondsSinceEpoch;
       await db.update(
-          'task_recurrence_completions', {'deleted': 1, 'updated_at': now},
-          where: 'id = ?', whereArgs: [existing.first['id']]);
+        'task_recurrence_completions',
+        {'deleted': 1, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: [existing.first['id']],
+      );
       return false;
     } else {
       final id = 'rc-${_uuid.v4()}';
@@ -1639,24 +1703,31 @@ class AppDatabase {
   }
 
   static Future<List<Map<String, dynamic>>> getRecurrenceCompletions(
-      String taskId) async {
+    String taskId,
+  ) async {
     final db = await database;
-    final result = await db.query('task_recurrence_completions',
-        where: 'task_id = ? AND deleted = 0',
-        whereArgs: [taskId],
-        orderBy: 'completion_date DESC');
+    final result = await db.query(
+      'task_recurrence_completions',
+      where: 'task_id = ? AND deleted = 0',
+      whereArgs: [taskId],
+      orderBy: 'completion_date DESC',
+    );
     return result.map(_mapRecurrenceCompletion).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getRecurrenceCompletionsByDateRange(
-      String taskId, String startDate, String endDate) async {
+    String taskId,
+    String startDate,
+    String endDate,
+  ) async {
     final db = await database;
     // 过滤已删除的完成记录
-    final result = await db.query('task_recurrence_completions',
-        where:
-            'task_id = ? AND completion_date BETWEEN ? AND ? AND deleted = 0',
-        whereArgs: [taskId, startDate, endDate],
-        orderBy: 'completion_date DESC');
+    final result = await db.query(
+      'task_recurrence_completions',
+      where: 'task_id = ? AND completion_date BETWEEN ? AND ? AND deleted = 0',
+      whereArgs: [taskId, startDate, endDate],
+      orderBy: 'completion_date DESC',
+    );
     return result.map(_mapRecurrenceCompletion).toList();
   }
 
@@ -1707,7 +1778,8 @@ class AppDatabase {
   }
 
   static Map<String, dynamic> _mapRecurrenceCompletion(
-      Map<String, dynamic> row) {
+    Map<String, dynamic> row,
+  ) {
     return {
       'id': row['id'],
       'taskId': row['task_id'],
@@ -1723,19 +1795,36 @@ class AppDatabase {
 
   /// 获取自上次同步以来发生变更的所有记录
   static Future<Map<String, List<Map<String, dynamic>>>> getSyncPayload(
-      int lastSyncTime) async {
+    int lastSyncTime,
+  ) async {
     final db = await database;
     final payload = <String, List<Map<String, dynamic>>>{};
 
     // 获取各表的变更记录
-    payload['lists'] =
-        await _getSyncTableRecords(db, 'lists', lastSyncTime, _mapList);
-    payload['tasks'] =
-        await _getSyncTableRecords(db, 'tasks', lastSyncTime, _mapTask);
-    payload['sessions'] =
-        await _getSyncTableRecords(db, 'sessions', lastSyncTime, _mapSession);
-    payload['task_recurrence_completions'] = await _getSyncTableRecords(db,
-        'task_recurrence_completions', lastSyncTime, _mapRecurrenceCompletion);
+    payload['lists'] = await _getSyncTableRecords(
+      db,
+      'lists',
+      lastSyncTime,
+      _mapList,
+    );
+    payload['tasks'] = await _getSyncTableRecords(
+      db,
+      'tasks',
+      lastSyncTime,
+      _mapTask,
+    );
+    payload['sessions'] = await _getSyncTableRecords(
+      db,
+      'sessions',
+      lastSyncTime,
+      _mapSession,
+    );
+    payload['task_recurrence_completions'] = await _getSyncTableRecords(
+      db,
+      'task_recurrence_completions',
+      lastSyncTime,
+      _mapRecurrenceCompletion,
+    );
 
     // settings 特殊处理：排除同步配置相关的 key
     final syncKeys = [
@@ -1748,35 +1837,40 @@ class AppDatabase {
       'syncUsername',
       'syncFakePassword',
       'syncRealPassword',
-      'deepseekApiKey'
+      'deepseekApiKey',
     ];
-    final settingsRecords = await db.query('settings',
-        where:
-            'updated_at > ? AND key NOT IN (${syncKeys.map((_) => '?').join(',')})',
-        whereArgs: [lastSyncTime, ...syncKeys]);
+    final settingsRecords = await db.query(
+      'settings',
+      where:
+          'updated_at > ? AND key NOT IN (${syncKeys.map((_) => '?').join(',')})',
+      whereArgs: [lastSyncTime, ...syncKeys],
+    );
 
     payload['settings'] = settingsRecords
-        .map((r) => {
-              'id': r['key'],
-              'updatedAt': r['updated_at'],
-              'data': {
-                'key': r['key'],
-                'value': r['value'],
-              }
-            })
+        .map(
+          (r) => {
+            'id': r['key'],
+            'updatedAt': r['updated_at'],
+            'data': {'key': r['key'], 'value': r['value']},
+          },
+        )
         .toList();
 
     return payload;
   }
 
   static Future<List<Map<String, dynamic>>> _getSyncTableRecords(
-      Database db,
-      String table,
-      int lastSyncTime,
-      Map<String, dynamic> Function(Map<String, dynamic>) mapper) async {
+    Database db,
+    String table,
+    int lastSyncTime,
+    Map<String, dynamic> Function(Map<String, dynamic>) mapper,
+  ) async {
     // 必须同时查询软删除记录（deleted = 1），否则删除操作无法跨设备同步
-    final records = await db.query(table,
-        where: 'updated_at > ? OR deleted = 1', whereArgs: [lastSyncTime]);
+    final records = await db.query(
+      table,
+      where: 'updated_at > ? OR deleted = 1',
+      whereArgs: [lastSyncTime],
+    );
     final result = <Map<String, dynamic>>[];
     for (final r in records) {
       final mapped = mapper(r);
@@ -1784,8 +1878,11 @@ class AppDatabase {
       // Windows/macOS/Android 的日历事件 ID 不通用，远端覆盖会导致 Android
       // 失去本机旧事件引用，下一次刷新时新建事件并留下旧提醒。
       if (table == 'tasks') {
-        final fieldVersions =
-            await _getFieldVersions(db, 'tasks', r['id'] as String);
+        final fieldVersions = await _getFieldVersions(
+          db,
+          'tasks',
+          r['id'] as String,
+        );
         mapped['_fieldUpdatedAt'] = {
           for (final fieldName in _taskSyncFields.keys)
             fieldName: fieldVersions[fieldName] ?? r['updated_at'],
@@ -1814,11 +1911,19 @@ class AppDatabase {
       }
       if (tables['sessions'] != null) {
         await _applyTableChanges(
-            txn, 'sessions', tables['sessions'], _unmapSession);
+          txn,
+          'sessions',
+          tables['sessions'],
+          _unmapSession,
+        );
       }
       if (tables['task_recurrence_completions'] != null) {
-        await _applyTableChanges(txn, 'task_recurrence_completions',
-            tables['task_recurrence_completions'], _unmapRecurrenceCompletion);
+        await _applyTableChanges(
+          txn,
+          'task_recurrence_completions',
+          tables['task_recurrence_completions'],
+          _unmapRecurrenceCompletion,
+        );
       }
       if (tables['settings'] != null) {
         await _applySettingsChanges(txn, tables['settings']);
@@ -1827,10 +1932,11 @@ class AppDatabase {
   }
 
   static Future<void> _applyTableChanges(
-      Transaction txn,
-      String table,
-      dynamic records,
-      Map<String, dynamic> Function(Map<String, dynamic>) unmapper) async {
+    Transaction txn,
+    String table,
+    dynamic records,
+    Map<String, dynamic> Function(Map<String, dynamic>) unmapper,
+  ) async {
     if (records is! List) return;
     for (final item in records) {
       final id = item['id'] as String;
@@ -1841,8 +1947,12 @@ class AppDatabase {
       }
 
       if (item['deleted'] == true) {
-        final localRows = await txn.query(table,
-            where: 'id = ?', whereArgs: [id], columns: ['updated_at']);
+        final localRows = await txn.query(
+          table,
+          where: 'id = ?',
+          whereArgs: [id],
+          columns: ['updated_at'],
+        );
         final localUpdatedAt = localRows.isEmpty
             ? 0
             : (localRows.first['updated_at'] as int? ?? 0);
@@ -1850,8 +1960,11 @@ class AppDatabase {
         final row = data == null ? <String, dynamic>{'id': id} : unmapper(data);
         row['updated_at'] = _maxTimestamp(localUpdatedAt, remoteUpdatedAt);
         row['deleted'] = 1;
-        await txn.insert(table, row,
-            conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert(
+          table,
+          row,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
         if (table == 'lists') {
           await _cascadeListDeleted(txn, id, row['updated_at'] as int);
         }
@@ -1868,7 +1981,8 @@ class AppDatabase {
           (localRows.first['deleted'] as int? ?? 0) == 1) {
         continue;
       }
-      final localListWasArchived = table == 'lists' &&
+      final localListWasArchived =
+          table == 'lists' &&
           localRows.isNotEmpty &&
           (localRows.first['archived'] as int? ?? 0) == 1;
 
@@ -1876,8 +1990,11 @@ class AppDatabase {
       final row = unmapper(data);
       row['updated_at'] = remoteUpdatedAt;
       row['deleted'] = 0;
-      await txn.insert(table, row,
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert(
+        table,
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
       if (table == 'lists') {
         final archived = (data['archived'] ?? false) == true;
         if (archived || localListWasArchived) {
@@ -1897,19 +2014,25 @@ class AppDatabase {
     final id = item['id'] as String;
     final remoteUpdatedAt = item['updatedAt'] as int? ?? 0;
 
-    final localRows =
-        await txn.query('tasks', where: 'id = ?', whereArgs: [id]);
+    final localRows = await txn.query(
+      'tasks',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
     if (item['deleted'] == true) {
-      final data =
-          Map<String, dynamic>.from(item['data'] as Map? ?? {'id': id});
-      final localUpdatedAt =
-          localRows.isEmpty ? 0 : (localRows.first['updated_at'] as int? ?? 0);
+      final data = Map<String, dynamic>.from(
+        item['data'] as Map? ?? {'id': id},
+      );
+      final localUpdatedAt = localRows.isEmpty
+          ? 0
+          : (localRows.first['updated_at'] as int? ?? 0);
       final tombstoneUpdatedAt = _maxTimestamp(localUpdatedAt, remoteUpdatedAt);
       final row = _unmapTask(data);
       row['updated_at'] = tombstoneUpdatedAt;
       row['deleted'] = 1;
-      row['calendar_event_id'] =
-          localRows.isNotEmpty ? localRows.first['calendar_event_id'] : null;
+      row['calendar_event_id'] = localRows.isNotEmpty
+          ? localRows.first['calendar_event_id']
+          : null;
       await txn.insert(
         'tasks',
         row,
@@ -1954,8 +2077,9 @@ class AppDatabase {
     ].reduce((a, b) => a > b ? a : b);
     row['deleted'] = 0;
 
-    final localCalendarEventId =
-        localRows.isNotEmpty ? localRows.first['calendar_event_id'] : null;
+    final localCalendarEventId = localRows.isNotEmpty
+        ? localRows.first['calendar_event_id']
+        : null;
     row['calendar_event_id'] = localCalendarEventId;
 
     await txn.insert(
@@ -1964,16 +2088,12 @@ class AppDatabase {
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
     for (final entry in mergedVersions.entries) {
-      await txn.insert(
-        'sync_field_versions',
-        {
-          'table_name': 'tasks',
-          'record_id': id,
-          'field_name': entry.key,
-          'updated_at': entry.value,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await txn.insert('sync_field_versions', {
+        'table_name': 'tasks',
+        'record_id': id,
+        'field_name': entry.key,
+        'updated_at': entry.value,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -2022,7 +2142,9 @@ class AppDatabase {
   }
 
   static Future<void> _applySettingsChanges(
-      Transaction txn, dynamic records) async {
+    Transaction txn,
+    dynamic records,
+  ) async {
     if (records is! List) return;
     const ignoreKeys = {
       'syncServerUrl',
@@ -2041,14 +2163,11 @@ class AppDatabase {
       final key = data['key'] as String;
       if (ignoreKeys.contains(key)) continue;
       final value = data['value'] as String;
-      await txn.insert(
-          'settings',
-          {
-            'key': key,
-            'value': value,
-            'updated_at': item['updatedAt'],
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.insert('settings', {
+        'key': key,
+        'value': value,
+        'updated_at': item['updatedAt'],
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
 
@@ -2112,7 +2231,8 @@ class AppDatabase {
   }
 
   static Map<String, dynamic> _unmapRecurrenceCompletion(
-      Map<String, dynamic> data) {
+    Map<String, dynamic> data,
+  ) {
     return {
       'id': data['id'],
       'task_id': data['taskId'],
@@ -2122,18 +2242,204 @@ class AppDatabase {
     };
   }
 
+  static const _backupTables = <String>[
+    'lists',
+    'tasks',
+    'sessions',
+    'task_recurrence_completions',
+    'settings',
+    'sync_field_versions',
+    'ai_conversations',
+    'ai_messages',
+    'ai_operations',
+  ];
+
+  static const _backupTableClearOrder = <String>[
+    'ai_operations',
+    'ai_messages',
+    'ai_conversations',
+    'sync_field_versions',
+    'task_recurrence_completions',
+    'sessions',
+    'tasks',
+    'lists',
+    'settings',
+  ];
+
+  static const _backupExcludedSettings = <String>{
+    'syncServerUrl',
+    'syncToken',
+    'syncUserId',
+    'lastSyncTime',
+    'lastServerSyncCursor',
+    'syncDir',
+    'syncUsername',
+    'syncFakePassword',
+    'syncRealPassword',
+    'deepseekApiKey',
+  };
+
+  static const _backupRequiredTables = <String>{
+    'lists',
+    'tasks',
+    'sessions',
+    'task_recurrence_completions',
+    'settings',
+    'sync_field_versions',
+    'ai_conversations',
+    'ai_messages',
+    'ai_operations',
+  };
+
+  /// 跨平台备份格式。浏览器通过 JSON 下载，原生端可在后续版本复用。
+  static Future<Map<String, dynamic>> exportBackup() async {
+    final db = await database;
+    final tables = <String, List<Map<String, dynamic>>>{};
+    for (final table in _backupTables) {
+      final rows = await db.query(table);
+      final normalizedRows = rows
+          .map((row) => Map<String, dynamic>.from(row))
+          .toList();
+      if (table == 'settings') {
+        normalizedRows.removeWhere(
+          (row) => _backupExcludedSettings.contains(row['key']),
+        );
+      }
+      tables[table] = normalizedRows;
+    }
+    return {
+      'format': 'focus-my-time-backup',
+      'version': _schemaVersion,
+      'createdAt': DateTime.now().millisecondsSinceEpoch,
+      'tables': tables,
+    };
+  }
+
+  /// 用跨平台 JSON 备份恢复数据。认证令牌与 AI 密钥不会包含在备份中。
+  static Future<void> importBackup(Map<String, dynamic> backup) async {
+    if (backup['format'] != 'focus-my-time-backup') {
+      throw const FormatException('不是 FocusMyTime 备份文件');
+    }
+    final version = backup['version'];
+    if (version is! int || version < 1 || version > _schemaVersion) {
+      throw const FormatException('备份版本不受支持');
+    }
+    final rawTables = backup['tables'];
+    if (rawTables is! Map) {
+      throw const FormatException('备份缺少数据表');
+    }
+
+    final missingTables = _backupRequiredTables
+        .where((table) => !rawTables.containsKey(table))
+        .toList();
+    if (missingTables.isNotEmpty) {
+      throw FormatException('备份缺少必要数据表: ${missingTables.join(', ')}');
+    }
+
+    // Fully normalize and validate the shape before opening a transaction.
+    // A malformed backup must never reach the destructive clear phase.
+    final validatedTables = <String, List<Map<String, dynamic>>>{};
+    for (final table in _backupTables) {
+      final rawRows = rawTables[table];
+      if (rawRows is! List) {
+        throw FormatException('备份中的 $table 数据无效');
+      }
+      final rows = <Map<String, dynamic>>[];
+      for (final rawRow in rawRows) {
+        if (rawRow is! Map) {
+          throw FormatException('备份中的 $table 记录无效');
+        }
+        final row = <String, dynamic>{};
+        for (final entry in rawRow.entries) {
+          if (entry.key is! String) {
+            throw FormatException('备份中的 $table 记录字段无效');
+          }
+          row[entry.key as String] = entry.value;
+        }
+        rows.add(row);
+      }
+      validatedTables[table] = rows;
+    }
+
+    const requiredSystemListIds = {
+      'system-my-day',
+      'system-important',
+      'system-all-tasks',
+    };
+    final backupListIds = validatedTables['lists']!
+        .map((row) => row['id'])
+        .whereType<String>()
+        .toSet();
+    final missingSystemLists = requiredSystemListIds.difference(backupListIds);
+    if (missingSystemLists.isNotEmpty) {
+      throw FormatException('备份缺少系统清单: ${missingSystemLists.join(', ')}');
+    }
+
+    final db = await database;
+    await db.transaction((txn) async {
+      final privateSettings = await txn.query(
+        'settings',
+        where:
+            'key IN (${List.filled(_backupExcludedSettings.length, '?').join(', ')})',
+        whereArgs: _backupExcludedSettings.toList(),
+      );
+
+      for (final table in _backupTableClearOrder) {
+        await txn.delete(table);
+      }
+      for (final table in _backupTables) {
+        for (final row in validatedTables[table]!) {
+          if (table == 'settings' &&
+              _backupExcludedSettings.contains(row['key'])) {
+            continue;
+          }
+          await txn.insert(
+            table,
+            row,
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      }
+
+      // Authentication tokens, sync cursors and API secrets are device-local.
+      // They are excluded from exported files and must survive a restore.
+      for (final row in privateSettings) {
+        await txn.insert(
+          'settings',
+          row,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final key in const ['lastSyncTime', 'lastServerSyncCursor']) {
+        await txn.insert('settings', {
+          'key': key,
+          'value': '0',
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+  }
+
   static Future<Map<String, dynamic>> getDebugInfo() async {
     final db = await database;
-    final listsCount = Sqflite.firstIntValue(
-            await db.rawQuery('SELECT COUNT(*) FROM lists')) ??
+    final listsCount =
+        Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM lists'),
+        ) ??
         0;
-    final tasksCount = Sqflite.firstIntValue(
-            await db.rawQuery('SELECT COUNT(*) FROM tasks')) ??
+    final tasksCount =
+        Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM tasks'),
+        ) ??
         0;
-    final sessionsCount = Sqflite.firstIntValue(
-            await db.rawQuery('SELECT COUNT(*) FROM sessions')) ??
+    final sessionsCount =
+        Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM sessions'),
+        ) ??
         0;
-    final dbPath = await getDatabasesPath();
+    final dbPath = kIsWeb ? '浏览器 IndexedDB' : await getDatabasesPath();
     return {
       'dbOpen': true,
       'lists': listsCount,
@@ -2144,6 +2450,7 @@ class AppDatabase {
   }
 
   static Future<String> getDbPath() async {
+    if (kIsWeb) return 'focus_my_time.db';
     final dbPath = await getDatabasesPath();
     return '$dbPath/focus_my_time.db';
   }
@@ -2152,16 +2459,14 @@ class AppDatabase {
     // Simulated test download - in production this would actually test the sync
     final lists = await getLists();
     final tasks = await getAllTasks();
-    return {
-      'listsCount': lists.length,
-      'tasksCount': tasks.length,
-    };
+    return {'listsCount': lists.length, 'tasksCount': tasks.length};
   }
 
   // ========== AI 对话 ==========
 
-  static Future<Map<String, dynamic>> createAiConversation(
-      {String? title}) async {
+  static Future<Map<String, dynamic>> createAiConversation({
+    String? title,
+  }) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = 'conv-${_uuid.v4()}';
@@ -2177,40 +2482,54 @@ class AppDatabase {
   static Future<void> updateAiConversationTitle(String id, String title) async {
     final db = await database;
     await db.update(
-        'ai_conversations',
-        {
-          'title': title,
-          'updated_at': DateTime.now().millisecondsSinceEpoch,
-        },
-        where: 'id = ?',
-        whereArgs: [id]);
+      'ai_conversations',
+      {'title': title, 'updated_at': DateTime.now().millisecondsSinceEpoch},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   static Future<List<Map<String, dynamic>>> getAiConversations() async {
     final db = await database;
-    final result = await db.query('ai_conversations',
-        where: 'deleted = 0', orderBy: 'updated_at DESC');
+    final result = await db.query(
+      'ai_conversations',
+      where: 'deleted = 0',
+      orderBy: 'updated_at DESC',
+    );
     return result
-        .map((r) => {
-              'id': r['id'],
-              'title': r['title'],
-              'createdAt': r['created_at'],
-              'updatedAt': r['updated_at'],
-            })
+        .map(
+          (r) => {
+            'id': r['id'],
+            'title': r['title'],
+            'createdAt': r['created_at'],
+            'updatedAt': r['updated_at'],
+          },
+        )
         .toList();
   }
 
   static Future<void> deleteAiConversation(String id) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    await db.update('ai_messages', {'deleted': 1, 'updated_at': now},
-        where: 'conversation_id = ?', whereArgs: [id]);
-    await db.update('ai_operations', {'deleted': 1, 'updated_at': now},
-        where:
-            'message_id IN (SELECT id FROM ai_messages WHERE conversation_id = ?)',
-        whereArgs: [id]);
-    await db.update('ai_conversations', {'deleted': 1, 'updated_at': now},
-        where: 'id = ?', whereArgs: [id]);
+    await db.update(
+      'ai_messages',
+      {'deleted': 1, 'updated_at': now},
+      where: 'conversation_id = ?',
+      whereArgs: [id],
+    );
+    await db.update(
+      'ai_operations',
+      {'deleted': 1, 'updated_at': now},
+      where:
+          'message_id IN (SELECT id FROM ai_messages WHERE conversation_id = ?)',
+      whereArgs: [id],
+    );
+    await db.update(
+      'ai_conversations',
+      {'deleted': 1, 'updated_at': now},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   // ========== AI 消息 ==========
@@ -2244,21 +2563,26 @@ class AppDatabase {
   }
 
   static Future<List<Map<String, dynamic>>> getAiMessages(
-      String conversationId) async {
+    String conversationId,
+  ) async {
     final db = await database;
-    final result = await db.query('ai_messages',
-        where: 'conversation_id = ? AND deleted = 0',
-        whereArgs: [conversationId],
-        orderBy: 'created_at');
+    final result = await db.query(
+      'ai_messages',
+      where: 'conversation_id = ? AND deleted = 0',
+      whereArgs: [conversationId],
+      orderBy: 'created_at',
+    );
     return result
-        .map((r) => {
-              'id': r['id'],
-              'conversationId': r['conversation_id'],
-              'role': r['role'],
-              'content': r['content'],
-              'toolCallsJson': r['tool_calls_json'],
-              'createdAt': r['created_at'],
-            })
+        .map(
+          (r) => {
+            'id': r['id'],
+            'conversationId': r['conversation_id'],
+            'role': r['role'],
+            'content': r['content'],
+            'toolCallsJson': r['tool_calls_json'],
+            'createdAt': r['created_at'],
+          },
+        )
         .toList();
   }
 
@@ -2299,29 +2623,37 @@ class AppDatabase {
   }
 
   static Future<List<Map<String, dynamic>>> getAiOperations(
-      String messageId) async {
+    String messageId,
+  ) async {
     final db = await database;
-    final result = await db.query('ai_operations',
-        where: 'message_id = ? AND deleted = 0',
-        whereArgs: [messageId],
-        orderBy: 'created_at');
+    final result = await db.query(
+      'ai_operations',
+      where: 'message_id = ? AND deleted = 0',
+      whereArgs: [messageId],
+      orderBy: 'created_at',
+    );
     return result
-        .map((r) => {
-              'id': r['id'],
-              'messageId': r['message_id'],
-              'type': r['type'],
-              'paramsJson': r['params_json'],
-              'summary': r['summary'],
-              'reasoning': r['reasoning'],
-              'status': r['status'],
-              'errorMessage': r['error_message'],
-              'createdAt': r['created_at'],
-            })
+        .map(
+          (r) => {
+            'id': r['id'],
+            'messageId': r['message_id'],
+            'type': r['type'],
+            'paramsJson': r['params_json'],
+            'summary': r['summary'],
+            'reasoning': r['reasoning'],
+            'status': r['status'],
+            'errorMessage': r['error_message'],
+            'createdAt': r['created_at'],
+          },
+        )
         .toList();
   }
 
-  static Future<void> updateAiOperationStatus(String id, String status,
-      {String? errorMessage}) async {
+  static Future<void> updateAiOperationStatus(
+    String id,
+    String status, {
+    String? errorMessage,
+  }) async {
     final db = await database;
     final updates = <String, dynamic>{
       'status': status,

@@ -38,31 +38,31 @@ class AiOperation {
     String? errorMessage,
     bool clearErrorMessage = false,
     int? createdAt,
-  }) =>
-      AiOperation(
-        id: id ?? this.id,
-        messageId: messageId ?? this.messageId,
-        type: type ?? this.type,
-        params: params ?? this.params,
-        summary: summary ?? this.summary,
-        reasoning: clearReasoning ? null : (reasoning ?? this.reasoning),
-        status: status ?? this.status,
-        errorMessage:
-            clearErrorMessage ? null : (errorMessage ?? this.errorMessage),
-        createdAt: createdAt ?? this.createdAt,
-      );
+  }) => AiOperation(
+    id: id ?? this.id,
+    messageId: messageId ?? this.messageId,
+    type: type ?? this.type,
+    params: params ?? this.params,
+    summary: summary ?? this.summary,
+    reasoning: clearReasoning ? null : (reasoning ?? this.reasoning),
+    status: status ?? this.status,
+    errorMessage: clearErrorMessage
+        ? null
+        : (errorMessage ?? this.errorMessage),
+    createdAt: createdAt ?? this.createdAt,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'message_id': messageId,
-        'type': type.name,
-        'params_json': jsonEncode(params),
-        'summary': summary,
-        'reasoning': reasoning,
-        'status': status.name,
-        'error_message': errorMessage,
-        'created_at': createdAt,
-      };
+    'id': id,
+    'message_id': messageId,
+    'type': type.name,
+    'params_json': jsonEncode(params),
+    'summary': summary,
+    'reasoning': reasoning,
+    'status': status.name,
+    'error_message': errorMessage,
+    'created_at': createdAt,
+  };
 
   factory AiOperation.fromMap(Map<String, dynamic> map) {
     final paramsJson = map['params_json'] as String?;
@@ -75,8 +75,9 @@ class AiOperation {
           : <String, dynamic>{},
       summary: map['summary'] as String,
       reasoning: map['reasoning'] as String?,
-      status:
-          AiOperationStatus.values.firstWhere((s) => s.name == map['status']),
+      status: AiOperationStatus.values.firstWhere(
+        (s) => s.name == map['status'],
+      ),
       errorMessage: map['error_message'] as String?,
       createdAt: map['created_at'] as int,
     );

@@ -132,17 +132,11 @@ class _ModeButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: context.appColors.border,
-            ),
+            border: Border.all(color: context.appColors.border),
           ),
           child: Column(
             children: [
-              AppIcon(
-                icon,
-                size: 24,
-                color: context.appColors.accent,
-              ),
+              AppIcon(icon, size: 24, color: context.appColors.accent),
               const SizedBox(height: 4),
               Text(
                 label,

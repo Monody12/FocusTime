@@ -121,9 +121,9 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
 
   void _showErrorSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -135,24 +135,21 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
     final keyboardBottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
     final systemLists = taskState.lists.where((l) => l.isSystem).toList();
-    final topLists = taskState.lists
-        .where((l) => l.pinned && !l.hidden)
-        .toList()
-      ..sort((a, b) =>
-          (a.topOrder ?? a.sortOrder).compareTo(b.topOrder ?? b.sortOrder));
-    final customLists =
-        taskState.lists.where((l) => !l.isSystem && !l.pinned).toList();
+    final topLists =
+        taskState.lists.where((l) => l.pinned && !l.hidden).toList()..sort(
+          (a, b) =>
+              (a.topOrder ?? a.sortOrder).compareTo(b.topOrder ?? b.sortOrder),
+        );
+    final customLists = taskState.lists
+        .where((l) => !l.isSystem && !l.pinned)
+        .toList();
 
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: context.appColors.sidebar,
         border: widget.showRightBorder
-            ? Border(
-                right: BorderSide(
-                  color: context.appColors.border,
-                ),
-              )
+            ? Border(right: BorderSide(color: context.appColors.border))
             : null,
       ),
       child: Column(
@@ -163,14 +160,17 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
               controller: _scrollController,
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: EdgeInsets.fromLTRB(
-                  0, 8, 0, 8 + (isMobile ? keyboardBottomInset : 0)),
+                0,
+                8,
+                0,
+                8 + (isMobile ? keyboardBottomInset : 0),
+              ),
               children: [
                 ReorderableListView(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   buildDefaultDragHandles: false,
-                  onReorder: (oldIndex, newIndex) {
-                    if (newIndex > oldIndex) newIndex -= 1;
+                  onReorderItem: (oldIndex, newIndex) {
                     final listIds = topLists.map((l) => l.id).toList();
                     final item = listIds.removeAt(oldIndex);
                     listIds.insert(newIndex, item);
@@ -186,7 +186,9 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                       isSelected: taskState.currentListId == list.id,
                       onTap: () {
                         taskNotifier.setCurrentList(
-                            list.id, _viewTypeForList(list));
+                          list.id,
+                          _viewTypeForList(list),
+                        );
                         widget.onListChanged?.call();
                       },
                       onLongPress: () =>
@@ -213,8 +215,10 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
 
                 const SizedBox(height: 16),
                 Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Text(
                     '清单',
                     style: TextStyle(
@@ -228,13 +232,14 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                 ReorderableListView(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  onReorder: (oldIndex, newIndex) {
-                    if (newIndex > oldIndex) newIndex -= 1;
+                  onReorderItem: (oldIndex, newIndex) {
                     final listIds = customLists.map((l) => l.id).toList();
                     final item = listIds.removeAt(oldIndex);
                     listIds.insert(newIndex, item);
-                    taskNotifier.reorderLists(listIds,
-                        offset: systemLists.length);
+                    taskNotifier.reorderLists(
+                      listIds,
+                      offset: systemLists.length,
+                    );
                   },
                   // buildDefaultDragHandles: false，由 ReorderableDragStartListener 接管
                   buildDefaultDragHandles: false,
@@ -265,8 +270,9 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                       },
                       onAccept: (taskId) async {
                         try {
-                          await taskNotifier
-                              .updateTask(taskId, {'listId': list.id});
+                          await taskNotifier.updateTask(taskId, {
+                            'listId': list.id,
+                          });
                           widget.onListChanged?.call();
                         } catch (_) {
                           _showErrorSnackBar('移动任务失败，请重试');
@@ -296,8 +302,10 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                 if (_showNewList)
                   Padding(
                     key: _newListKey,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
                     child: TextField(
                       controller: _newListController,
                       focusNode: _newListFocusNode,
@@ -306,7 +314,9 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                         hintText: '清单名称...',
                         isDense: true,
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -355,9 +365,7 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                 ? BoxDecoration(
                     color: context.appColors.surfaceElevated,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: context.appColors.border,
-                    ),
+                    border: Border.all(color: context.appColors.border),
                   )
                 : null,
             child: Row(
@@ -377,8 +385,9 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                       color: isSelected
                           ? (context.appColors.text)
                           : (context.appColors.textSecondary),
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
                     ),
                   ),
                 ),
@@ -432,7 +441,11 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
           onSecondaryTapDown: isMobile
               ? null
               : (details) => _showContextMenu(
-                  context, details.globalPosition, list.id, list.name),
+                  context,
+                  details.globalPosition,
+                  list.id,
+                  list.name,
+                ),
           child: Material(
             color: Colors.transparent,
             borderRadius: BorderRadius.circular(8),
@@ -441,15 +454,15 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 11,
+                ),
                 decoration: isSelected || isHovering
                     ? BoxDecoration(
                         color: context.appColors.surfaceElevated,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: context.appColors.border,
-                        ),
+                        border: Border.all(color: context.appColors.border),
                       )
                     : null,
                 child: Row(
@@ -469,8 +482,9 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                           color: isSelected
                               ? (context.appColors.text)
                               : (context.appColors.textSecondary),
-                          fontWeight:
-                              isSelected ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
                         ),
                       ),
                     ),
@@ -514,11 +528,11 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
         autofocus: true,
         decoration: InputDecoration(
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
           ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         ),
         onSubmitted: (_) => _renameList(listId),
       ),
@@ -526,8 +540,12 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
   }
 
   /// 显示右键菜单（适用于桌面端）
-  void _showContextMenu(BuildContext context, Offset globalPosition,
-      String listId, String listName) {
+  void _showContextMenu(
+    BuildContext context,
+    Offset globalPosition,
+    String listId,
+    String listName,
+  ) {
     final taskState = ref.read(taskProvider);
     final list = taskState.lists.where((l) => l.id == listId).firstOrNull;
     if (list == null) return;
@@ -550,12 +568,16 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
           height: 36,
           child: Row(
             children: [
-              AppIcon(AppIcons.edit,
-                  size: AppIconSizes.compact, color: context.appColors.text),
+              AppIcon(
+                AppIcons.edit,
+                size: AppIconSizes.compact,
+                color: context.appColors.text,
+              ),
               const SizedBox(width: AppIconSpacing.labelGap),
-              Text('重命名',
-                  style:
-                      TextStyle(fontSize: 13, color: context.appColors.text)),
+              Text(
+                '重命名',
+                style: TextStyle(fontSize: 13, color: context.appColors.text),
+              ),
             ],
           ),
         ),
@@ -564,12 +586,16 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
           height: 36,
           child: Row(
             children: [
-              AppIcon(AppIcons.playlistAdd,
-                  size: AppIconSizes.compact, color: context.appColors.text),
+              AppIcon(
+                AppIcons.playlistAdd,
+                size: AppIconSizes.compact,
+                color: context.appColors.text,
+              ),
               const SizedBox(width: AppIconSpacing.labelGap),
-              Text('置顶到顶部',
-                  style:
-                      TextStyle(fontSize: 13, color: context.appColors.text)),
+              Text(
+                '置顶到顶部',
+                style: TextStyle(fontSize: 13, color: context.appColors.text),
+              ),
             ],
           ),
         ),
@@ -578,12 +604,16 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
           height: 36,
           child: Row(
             children: [
-              AppIcon(AppIcons.flag,
-                  size: AppIconSizes.compact, color: context.appColors.text),
+              AppIcon(
+                AppIcons.flag,
+                size: AppIconSizes.compact,
+                color: context.appColors.text,
+              ),
               const SizedBox(width: AppIconSpacing.labelGap),
-              Text('更换图标',
-                  style:
-                      TextStyle(fontSize: 13, color: context.appColors.text)),
+              Text(
+                '更换图标',
+                style: TextStyle(fontSize: 13, color: context.appColors.text),
+              ),
             ],
           ),
         ),
@@ -593,12 +623,16 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
           height: 36,
           child: Row(
             children: [
-              AppIcon(AppIcons.archive,
-                  size: AppIconSizes.compact, color: context.appColors.text),
+              AppIcon(
+                AppIcons.archive,
+                size: AppIconSizes.compact,
+                color: context.appColors.text,
+              ),
               const SizedBox(width: AppIconSpacing.labelGap),
-              Text('归档',
-                  style:
-                      TextStyle(fontSize: 13, color: context.appColors.text)),
+              Text(
+                '归档',
+                style: TextStyle(fontSize: 13, color: context.appColors.text),
+              ),
             ],
           ),
         ),
@@ -608,8 +642,11 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
           height: 36,
           child: Row(
             children: [
-              AppIcon(AppIcons.delete,
-                  size: AppIconSizes.compact, color: Colors.red),
+              AppIcon(
+                AppIcons.delete,
+                size: AppIconSizes.compact,
+                color: Colors.red,
+              ),
               SizedBox(width: AppIconSpacing.labelGap),
               Text('删除', style: TextStyle(fontSize: 13, color: Colors.red)),
             ],
@@ -625,18 +662,24 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
       } else if (value == 'icon') {
         _showIconPicker(list);
       } else if (value == 'archive') {
-        _confirmArchiveList(context, listId, listName);
+        _confirmArchiveList(this.context, listId, listName);
       } else if (value == 'delete') {
-        _confirmDeleteList(context, listId, listName);
+        _confirmDeleteList(this.context, listId, listName);
       }
     });
   }
 
   void _showListActionsSheet(
-      BuildContext context, String listId, String listName) {
+    BuildContext context,
+    String listId,
+    String listName,
+  ) {
     final parentContext = context;
-    final list =
-        ref.read(taskProvider).lists.where((l) => l.id == listId).firstOrNull;
+    final list = ref
+        .read(taskProvider)
+        .lists
+        .where((l) => l.id == listId)
+        .firstOrNull;
     if (list == null) return;
     showModalBottomSheet<void>(
       context: parentContext,
@@ -687,7 +730,7 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                   Navigator.pop(sheetContext);
                   Future.delayed(Duration.zero, () {
                     if (mounted) {
-                      _confirmArchiveList(parentContext, listId, listName);
+                      _confirmArchiveList(this.context, listId, listName);
                     }
                   });
                 },
@@ -699,7 +742,7 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                   Navigator.pop(sheetContext);
                   Future.delayed(Duration.zero, () {
                     if (mounted) {
-                      _confirmDeleteList(parentContext, listId, listName);
+                      _confirmDeleteList(this.context, listId, listName);
                     }
                   });
                 },
@@ -738,22 +781,30 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
       ],
     ).then((value) {
       if (!mounted || value == null) return;
-      _handleTopListAction(context, list, value);
+      _handleTopListAction(this.context, list, value);
     });
   }
 
   PopupMenuItem<String> _topMenuItem(
-      String value, IconData icon, String label) {
+    String value,
+    IconData icon,
+    String label,
+  ) {
     return PopupMenuItem<String>(
       value: value,
       height: 36,
       child: Row(
         children: [
-          AppIcon(icon,
-              size: AppIconSizes.compact, color: context.appColors.text),
+          AppIcon(
+            icon,
+            size: AppIconSizes.compact,
+            color: context.appColors.text,
+          ),
           const SizedBox(width: AppIconSpacing.labelGap),
-          Text(label,
-              style: TextStyle(fontSize: 13, color: context.appColors.text)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
+          ),
         ],
       ),
     );
@@ -799,7 +850,7 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                   Future.delayed(Duration.zero, () {
                     if (mounted) {
                       _handleTopListAction(
-                        context,
+                        this.context,
                         list,
                         list.isSystem ? 'hide' : 'unpin',
                       );
@@ -848,9 +899,7 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
               const SizedBox(width: AppIconSpacing.labelGap),
               Text(
                 '新建清单',
-                style: TextStyle(
-                  color: context.appColors.textSecondary,
-                ),
+                style: TextStyle(color: context.appColors.textSecondary),
               ),
             ],
           ),
@@ -860,16 +909,16 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
   }
 
   void _confirmArchiveList(
-      BuildContext context, String listId, String listName) {
+    BuildContext context,
+    String listId,
+    String listName,
+  ) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: context.appColors.surface,
-          title: Text(
-            '归档清单',
-            style: TextStyle(color: context.appColors.text),
-          ),
+          title: Text('归档清单', style: TextStyle(color: context.appColors.text)),
           content: Text(
             '归档 "$listName" 后，这个清单和其中的任务会从当前列表中隐藏。之后可在设置中恢复或删除。',
             style: TextStyle(color: context.appColors.textSecondary),
@@ -893,16 +942,16 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
   }
 
   void _confirmDeleteList(
-      BuildContext context, String listId, String listName) {
+    BuildContext context,
+    String listId,
+    String listName,
+  ) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: context.appColors.surface,
-          title: Text(
-            '删除清单',
-            style: TextStyle(color: context.appColors.text),
-          ),
+          title: Text('删除清单', style: TextStyle(color: context.appColors.text)),
           content: Text(
             '确定要删除 "$listName" 吗？该清单下的所有任务也会被删除。',
             style: TextStyle(color: context.appColors.textSecondary),
@@ -989,9 +1038,9 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
       }
       widget.onListChanged?.call();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('清单已归档，可在设置中恢复')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('清单已归档，可在设置中恢复')));
     } catch (_) {
       _showErrorSnackBar('归档清单失败，请重试');
     }
@@ -1009,8 +1058,10 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: context.appColors.surface,
-          title:
-              Text('顶部清单自定义', style: TextStyle(color: context.appColors.text)),
+          title: Text(
+            '顶部清单自定义',
+            style: TextStyle(color: context.appColors.text),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1027,8 +1078,10 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                 onChanged: (value) {
                   setDialogState(() => dontShowAgain = value == true);
                 },
-                title: Text('不再显示',
-                    style: TextStyle(color: context.appColors.text)),
+                title: Text(
+                  '不再显示',
+                  style: TextStyle(color: context.appColors.text),
+                ),
               ),
             ],
           ),

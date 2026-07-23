@@ -150,8 +150,11 @@ class _ArchivedItemsDialogState extends ConsumerState<ArchivedItemsDialog> {
       ..._archivedLists.map((item) => {...item, '_type': 'list'}),
       ..._archivedTasks.map((item) => {...item, '_type': 'task'}),
     ];
-    entries.sort((a, b) => ((b['archivedAt'] as int?) ?? 0)
-        .compareTo((a['archivedAt'] as int?) ?? 0));
+    entries.sort(
+      (a, b) => ((b['archivedAt'] as int?) ?? 0).compareTo(
+        (a['archivedAt'] as int?) ?? 0,
+      ),
+    );
 
     final result = <String, Map<String, List<Map<String, dynamic>>>>{};
     for (final entry in entries) {
@@ -161,8 +164,9 @@ class _ArchivedItemsDialogState extends ConsumerState<ArchivedItemsDialog> {
       final month = date == null
           ? '归档时间未知'
           : '${date.year}年${date.month.toString().padLeft(2, '0')}月';
-      final day =
-          date == null ? '未知日期' : '${date.day.toString().padLeft(2, '0')}日';
+      final day = date == null
+          ? '未知日期'
+          : '${date.day.toString().padLeft(2, '0')}日';
       result.putIfAbsent(month, () => <String, List<Map<String, dynamic>>>{});
       result[month]!.putIfAbsent(day, () => <Map<String, dynamic>>[]);
       result[month]![day]!.add(entry);

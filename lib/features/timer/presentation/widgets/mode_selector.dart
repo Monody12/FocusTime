@@ -16,9 +16,7 @@ class ModeSelector extends ConsumerWidget {
       decoration: BoxDecoration(
         color: context.appColors.surfaceElevated,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: context.appColors.border,
-        ),
+        border: Border.all(color: context.appColors.border),
       ),
       padding: const EdgeInsets.all(4),
       child: Row(

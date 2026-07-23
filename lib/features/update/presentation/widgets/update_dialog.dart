@@ -32,9 +32,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('忽略版本失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('忽略版本失败: $e')));
       }
     }
   }
@@ -61,15 +61,15 @@ class _UpdateDialogState extends State<UpdateDialog> {
       if (launched) {
         Navigator.of(context).pop();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法打开浏览器，请稍后重试')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('无法打开浏览器，请稍后重试')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('无法打开下载页面: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('无法打开下载页面: $e')));
       }
     } finally {
       if (mounted) {
@@ -89,10 +89,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              '更新内容:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
+            const Text('更新内容:', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text(widget.updateInfo.releaseNotes),
           ],

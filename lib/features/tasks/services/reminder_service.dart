@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:async';
 import 'dart:developer' as dev;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -9,6 +8,8 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:windows_notification/windows_notification.dart';
 import 'package:windows_notification/notification_message.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:focus_my_time/core/platform/platform_info.dart';
 import 'package:focus_my_time/core/services/timer_notification_service.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
@@ -28,6 +29,7 @@ class ReminderService {
   // 用于追踪 Windows 端的内存定时器，以便在任务删除或提醒更改时取消它们
   static final Map<String, dynamic> _windowsTimers = {};
   static final Map<String, Timer> _macOsAlarmTimers = {};
+  static final Map<String, Timer> _webTimers = {};
   static bool _refreshInProgress = false; // 防止并发 refreshAll
   static bool _refreshPending = false; // 有等待中的 refreshAll 请求
 
@@ -85,22 +87,22 @@ class ReminderService {
     }
 
     // 2. 初始化本地通知 (Android & macOS)
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isAndroid) {
       const AndroidInitializationSettings initializationSettingsAndroid =
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
       const DarwinInitializationSettings initializationSettingsDarwin =
           DarwinInitializationSettings(
-        requestSoundPermission: true,
-        requestBadgePermission: true,
-        requestAlertPermission: true,
-      );
+            requestSoundPermission: true,
+            requestBadgePermission: true,
+            requestAlertPermission: true,
+          );
 
       const InitializationSettings initializationSettings =
           InitializationSettings(
-        android: initializationSettingsAndroid,
-        macOS: initializationSettingsDarwin,
-      );
+            android: initializationSettingsAndroid,
+            macOS: initializationSettingsDarwin,
+          );
 
       await _localPlugin.initialize(initializationSettings);
 
@@ -115,27 +117,26 @@ class ReminderService {
       );
       await _localPlugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
+            AndroidFlutterLocalNotificationsPlugin
+          >()
           ?.createNotificationChannel(channel);
-    } else if (Platform.isMacOS) {
+    } else if (PlatformInfo.isMacOS) {
       // macOS 初始化
       const DarwinInitializationSettings initializationSettingsDarwin =
           DarwinInitializationSettings(
-        requestSoundPermission: true,
-        requestBadgePermission: true,
-        requestAlertPermission: true,
-      );
+            requestSoundPermission: true,
+            requestBadgePermission: true,
+            requestAlertPermission: true,
+          );
       const InitializationSettings initializationSettings =
-          InitializationSettings(
-        macOS: initializationSettingsDarwin,
-      );
+          InitializationSettings(macOS: initializationSettingsDarwin);
       await _localPlugin.initialize(initializationSettings);
     }
 
     // 3. 初始化 Windows 通知客户端
     // 注意：与 TimerNotificationService 共享同一个 applicationId，
     // 两个实例的回调都指向 _handleNotificationAction，实际运行中无冲突
-    if (Platform.isWindows) {
+    if (PlatformInfo.isWindows) {
       _winNotifier = WindowsNotification(
         applicationId:
             r'{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\WindowsPowerShell\v1.0\powershell.exe',
@@ -162,16 +163,18 @@ class ReminderService {
   static Future<bool> requestNotificationPermission() async {
     if (!_initialized) await initialize();
 
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isAndroid) {
       final status = await Permission.notification.request();
       return status.isGranted;
     }
 
-    if (Platform.isMacOS) {
+    if (PlatformInfo.isMacOS) {
       // macOS 不能使用 permission_handler（它没有 macOS 实现），
       // 必须通过 flutter_local_notifications 的 macOS 平台插件来请求权限
-      final macOsPlugin = _localPlugin.resolvePlatformSpecificImplementation<
-          MacOSFlutterLocalNotificationsPlugin>();
+      final macOsPlugin = _localPlugin
+          .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin
+          >();
       final granted = await macOsPlugin?.requestPermissions(
         alert: true,
         badge: true,
@@ -180,7 +183,12 @@ class ReminderService {
       return granted ?? false;
     }
 
-    return Platform.isWindows;
+    if (PlatformInfo.isWeb) {
+      // 浏览器端提醒在页面运行期间由 Dart Timer 和应用内铃声提供。
+      return true;
+    }
+
+    return PlatformInfo.isWindows;
   }
 
   /// 打开系统通知设置页面（跨平台）
@@ -188,11 +196,15 @@ class ReminderService {
   /// macOS: 通过 URL scheme 直接跳转到系统设置的通知面板
   /// 其他平台: 使用 permission_handler 的 openAppSettings
   static Future<void> openNotificationSettings() async {
-    if (Platform.isMacOS) {
-      // macOS URL scheme 打开系统偏好设置中的通知面板
-      await Process.run('open', [
-        'x-apple.systempreferences:com.apple.Notifications-Settings.extension',
-      ]);
+    if (PlatformInfo.isWeb) return;
+    if (PlatformInfo.isMacOS) {
+      final opened = await launchUrl(
+        Uri.parse(
+          'x-apple.systempreferences:com.apple.Notifications-Settings.extension',
+        ),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) await openAppSettings();
       return;
     }
 
@@ -206,27 +218,40 @@ class ReminderService {
   ///   isEnabled = 系统通知总开关，isAlertEnabled = 横幅/弹窗开关
   /// - Windows: 无需权限，始终返回 true
   static Future<bool> _hasNotificationPermission() async {
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isWeb) return true;
+    if (PlatformInfo.isAndroid) {
       return Permission.notification.isGranted;
     }
 
-    if (Platform.isMacOS) {
-      final macOsPlugin = _localPlugin.resolvePlatformSpecificImplementation<
-          MacOSFlutterLocalNotificationsPlugin>();
+    if (PlatformInfo.isMacOS) {
+      final macOsPlugin = _localPlugin
+          .resolvePlatformSpecificImplementation<
+            MacOSFlutterLocalNotificationsPlugin
+          >();
       final permissions = await macOsPlugin?.checkPermissions();
       // macOS 通知权限包含多个维度，任一维度开启即视为有权限
       return permissions?.isEnabled == true ||
           permissions?.isAlertEnabled == true;
     }
 
-    return Platform.isWindows;
+    return PlatformInfo.isWindows;
   }
 
   /// 发送一个即时测试通知，用于验证通知通道是否畅通
   static Future<void> showImmediateTestNotification() async {
     if (!_initialized) await initialize();
 
-    if ((Platform.isAndroid || Platform.isMacOS) &&
+    if (PlatformInfo.isWeb) {
+      await TimerNotificationService.triggerAlarm(
+        title: '测试提醒',
+        body: '浏览器页面运行期间可播放提醒铃声。',
+        soundEnabled: true,
+        duration: 'short',
+      );
+      return;
+    }
+
+    if ((PlatformInfo.isAndroid || PlatformInfo.isMacOS) &&
         !await _hasNotificationPermission()) {
       final granted = await requestNotificationPermission();
       if (!granted) {
@@ -235,14 +260,14 @@ class ReminderService {
       }
     }
 
-    if (Platform.isAndroid || Platform.isMacOS) {
+    if (PlatformInfo.isAndroid || PlatformInfo.isMacOS) {
       const AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
-        'task_reminders',
-        '任务提醒',
-        importance: Importance.max,
-        priority: Priority.high,
-      );
+            'task_reminders',
+            '任务提醒',
+            importance: Importance.max,
+            priority: Priority.high,
+          );
       const DarwinNotificationDetails darwinDetails = DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
@@ -256,9 +281,11 @@ class ReminderService {
         macOS: darwinDetails,
       );
       await _localPlugin.show(999, '测试通知', '如果你看到了这条消息，说明通知通道正常。', details);
-    } else if (Platform.isWindows) {
-      final message =
-          NotificationMessage.fromCustomTemplate('test_id', group: 'test');
+    } else if (PlatformInfo.isWindows) {
+      final message = NotificationMessage.fromCustomTemplate(
+        'test_id',
+        group: 'test',
+      );
       const String toastXml = r'''
         <toast>
           <visual>
@@ -277,16 +304,16 @@ class ReminderService {
   static Future<Map<String, String>> getPermissionStatus() async {
     final status = <String, String>{};
     try {
-      if (Platform.isAndroid) {
+      if (PlatformInfo.isAndroid) {
         try {
-          status['Notification'] =
-              (await Permission.notification.status).toString();
+          status['Notification'] = (await Permission.notification.status)
+              .toString();
         } catch (e) {
           status['Notification'] = 'Error: $e';
         }
         try {
-          status['Exact Alarm'] =
-              (await Permission.scheduleExactAlarm.status).toString();
+          status['Exact Alarm'] = (await Permission.scheduleExactAlarm.status)
+              .toString();
         } catch (e) {
           status['Exact Alarm'] = 'Error: $e';
         }
@@ -296,14 +323,17 @@ class ReminderService {
         } catch (e) {
           status['Battery Optimization'] = 'Error: $e';
         }
-      } else if (Platform.isWindows) {
+      } else if (PlatformInfo.isWindows) {
         status['Platform'] = 'Windows (Not required)';
-      } else if (Platform.isMacOS) {
+      } else if (PlatformInfo.isWeb) {
+        status['Platform'] = 'Web（页面运行期间提醒有效）';
+      } else if (PlatformInfo.isMacOS) {
         status['Platform'] = 'macOS';
         try {
-          final macOsPlugin =
-              _localPlugin.resolvePlatformSpecificImplementation<
-                  MacOSFlutterLocalNotificationsPlugin>();
+          final macOsPlugin = _localPlugin
+              .resolvePlatformSpecificImplementation<
+                MacOSFlutterLocalNotificationsPlugin
+              >();
           final permissions = await macOsPlugin?.checkPermissions();
           status['Notification'] = permissions?.isEnabled == true
               ? 'PermissionStatus.granted'
@@ -313,13 +343,14 @@ class ReminderService {
         }
         try {
           final hasCal = await CalendarService.hasPermissions();
-          status['Calendar'] =
-              hasCal ? 'PermissionStatus.granted' : 'PermissionStatus.denied';
+          status['Calendar'] = hasCal
+              ? 'PermissionStatus.granted'
+              : 'PermissionStatus.denied';
         } catch (e) {
           status['Calendar'] = 'Error: $e';
         }
       } else {
-        status['Platform'] = Platform.operatingSystem;
+        status['Platform'] = PlatformInfo.operatingSystem;
       }
     } catch (e) {
       dev.log('[ReminderService] getPermissionStatus error: $e');
@@ -338,8 +369,9 @@ class ReminderService {
       return;
     }
 
-    final reminderDateTime =
-        DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+    final reminderDateTime = DateTime.fromMillisecondsSinceEpoch(
+      task.reminderAt!,
+    );
     // 如果提醒时间是过去，取消已有定时器防止过期提醒还在队列中排队
     if (reminderDateTime.isBefore(DateTime.now())) {
       dev.log('[ReminderService] 提醒时间已过期: ${task.title}');
@@ -347,10 +379,12 @@ class ReminderService {
       return;
     }
 
-    if (Platform.isAndroid || Platform.isMacOS) {
+    if (PlatformInfo.isAndroid || PlatformInfo.isMacOS) {
       await _scheduleLocalPlugin(task, reminderDateTime);
-    } else if (Platform.isWindows) {
+    } else if (PlatformInfo.isWindows) {
       await _scheduleWindows(task, reminderDateTime);
+    } else if (PlatformInfo.isWeb) {
+      _scheduleWeb(task, reminderDateTime);
     }
   }
 
@@ -385,7 +419,8 @@ class ReminderService {
     final bool hasNotificationPermission = await _hasNotificationPermission();
 
     dev.log(
-        '[ReminderService] 权限检查 - 日历: $hasCalendarPermission, 启用: $calendarEnabled, 通知: $hasNotificationPermission');
+      '[ReminderService] 权限检查 - 日历: $hasCalendarPermission, 启用: $calendarEnabled, 通知: $hasNotificationPermission',
+    );
 
     if (hasCalendarPermission && calendarEnabled) {
       dev.log('[ReminderService] 优先使用日历同步: ${task.title}');
@@ -448,7 +483,7 @@ class ReminderService {
   /// 取消指定任务的提醒调度
   static Future<void> cancelReminder(String taskId) async {
     // Android/macOS 端：根据任务 ID 的 Hash 取消系统调度
-    if (Platform.isAndroid || Platform.isMacOS) {
+    if (PlatformInfo.isAndroid || PlatformInfo.isMacOS) {
       final int notificationId = _notificationIdForTask(taskId);
       await _localPlugin.cancel(notificationId);
     }
@@ -456,8 +491,11 @@ class ReminderService {
     final macOsTimer = _macOsAlarmTimers.remove(taskId);
     macOsTimer?.cancel();
 
+    final webTimer = _webTimers.remove(taskId);
+    webTimer?.cancel();
+
     // Windows 端：取消内存中的定时器
-    if (Platform.isWindows) {
+    if (PlatformInfo.isWindows) {
       final existingTimer = _windowsTimers[taskId];
       if (existingTimer != null) {
         // Timer 支持 cancel()，可真正阻止回调执行
@@ -474,7 +512,9 @@ class ReminderService {
   }
 
   static Future<void> _scheduleLocalPlugin(
-      TaskItem task, DateTime scheduledTime) async {
+    TaskItem task,
+    DateTime scheduledTime,
+  ) async {
     final int notificationId = _notificationIdForTask(task.id);
 
     // 先取消旧调度再创建新的，防止部分 OEM 设备出现重复通知
@@ -488,7 +528,7 @@ class ReminderService {
         scheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
     } on PlatformException catch (e) {
-      if (!Platform.isAndroid) rethrow;
+      if (!PlatformInfo.isAndroid) rethrow;
       dev.log('[ReminderService] 精确提醒调度失败，降级为非精确调度: ${e.message}');
       await _zonedScheduleLocalNotification(
         notificationId: notificationId,
@@ -497,11 +537,12 @@ class ReminderService {
         scheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       );
     }
-    if (Platform.isMacOS) {
+    if (PlatformInfo.isMacOS) {
       _scheduleMacOsAlarmTimer(task, scheduledTime);
     }
     dev.log(
-        '[ReminderService] 本地提醒已调度 (Android/macOS): ${task.title} at $scheduledTime');
+      '[ReminderService] 本地提醒已调度 (Android/macOS): ${task.title} at $scheduledTime',
+    );
   }
 
   static int _notificationIdForTask(String taskId) {
@@ -572,7 +613,9 @@ class ReminderService {
   }
 
   static Future<void> _scheduleWindows(
-      TaskItem task, DateTime scheduledTime) async {
+    TaskItem task,
+    DateTime scheduledTime,
+  ) async {
     final duration = scheduledTime.difference(DateTime.now());
     if (duration.isNegative) return;
 
@@ -588,7 +631,8 @@ class ReminderService {
           group: 'reminders',
         );
 
-        final String toastXml = '''
+        final String toastXml =
+            '''
           <toast scenario="alarm">
             <visual>
               <binding template="ToastGeneric">
@@ -614,9 +658,27 @@ class ReminderService {
     dev.log('[ReminderService] Windows 提醒已加入内存调度: ${task.title}');
   }
 
+  static void _scheduleWeb(TaskItem task, DateTime scheduledTime) {
+    _webTimers.remove(task.id)?.cancel();
+    final duration = scheduledTime.difference(DateTime.now());
+    if (duration.isNegative) return;
+
+    _webTimers[task.id] = Timer(duration, () async {
+      _webTimers.remove(task.id);
+      await TimerNotificationService.triggerAlarm(
+        title: '任务提醒',
+        body: task.title,
+        soundEnabled: true,
+        phase: 'focus',
+        duration: 'long',
+      );
+    });
+    dev.log('[ReminderService] Web 提醒已加入页面内调度: ${task.title}');
+  }
+
   /// 请求忽略电池优化 (Android 专用)
   static Future<void> requestIgnoreBatteryOptimizations() async {
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isAndroid) {
       if (await Permission.ignoreBatteryOptimizations.isDenied) {
         await Permission.ignoreBatteryOptimizations.request();
       } else {
@@ -628,7 +690,7 @@ class ReminderService {
 
   /// 请求精确闹钟权限 (Android 专用)
   static Future<void> requestExactAlarmPermission() async {
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isAndroid) {
       final status = await Permission.scheduleExactAlarm.status;
       if (status.isGranted) {
         dev.log('[ReminderService] 精确闹钟权限已授予');
@@ -681,15 +743,16 @@ class ReminderService {
           continue;
         }
 
-        final reminderTime =
-            DateTime.fromMillisecondsSinceEpoch(task.reminderAt!);
+        final reminderTime = DateTime.fromMillisecondsSinceEpoch(
+          task.reminderAt!,
+        );
         if (reminderTime.isAfter(now)) {
           // 未来提醒：正常调度，并将 eventId 持久化到本机数据库
           final eventId = await scheduleUnifiedReminders(task);
           if (eventId != null && eventId != task.calendarEventId) {
             await AppDatabase.updateTaskCalendarEventId(task.id, eventId);
           }
-        } else if (Platform.isWindows &&
+        } else if (PlatformInfo.isWindows &&
             task.reminderAt! >= missedThreshold &&
             _winNotifier != null) {
           // Windows 端：检测刚错过的提醒（APP 关闭期间的提醒）
@@ -698,7 +761,8 @@ class ReminderService {
             'missed_${task.id}',
             group: 'reminders',
           );
-          final String toastXml = '''
+          final String toastXml =
+              '''
           <toast>
             <visual>
               <binding template="ToastGeneric">
@@ -725,7 +789,18 @@ class ReminderService {
   static Future<void> triggerTestAlarm() async {
     if (!_initialized) await initialize();
 
-    if (Platform.isMacOS) {
+    if (PlatformInfo.isWeb) {
+      await TimerNotificationService.triggerAlarm(
+        title: '测试提醒',
+        body: '浏览器页面运行期间会播放铃声。',
+        soundEnabled: true,
+        phase: 'focus',
+        duration: 'long',
+      );
+      return;
+    }
+
+    if (PlatformInfo.isMacOS) {
       await TimerNotificationService.triggerAlarm(
         title: '测试系统闹钟',
         body: '这是一条模拟任务到期的响铃提醒测试。',
@@ -736,7 +811,7 @@ class ReminderService {
       return;
     }
 
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isAndroid) {
       await _localPlugin.show(
         888,
         '测试系统闹钟',

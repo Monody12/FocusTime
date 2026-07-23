@@ -1,6 +1,6 @@
 # FocusMyTime
 
-跨平台计时专注应用，支持 Windows、macOS、Linux、Android。采用 Flutter 开发，原生性能，多端体验一致。
+跨平台计时专注应用，支持 Windows、macOS、Linux、Android 和 Web。采用 Flutter 开发，多端体验一致。
 
 ## 核心功能
 
@@ -33,14 +33,33 @@
 | 框架 | Flutter (Client) / Node.js (Server) |
 | 语言 | Dart / TypeScript |
 | 状态管理 | Riverpod |
-| 数据库 | SQLite (sqflite v3) |
+| 数据库 | SQLite（原生 sqflite / WebAssembly SQLite） |
 | 服务端 | Express + Better-SQLite3 |
-| 主题 | Material 3 (Outfit Font) |
+| 主题 | Material 3（本地中文字体回退） |
 | 通知 | windows_notification & local_notifications |
 | 音频 | audioplayers |
 | 同步服务 | LWW 增量同步协议 |
 
-### 🚀 最近更新 (v1.4.0)
+### 🚀 最近更新 (v1.5.1)
+- **Web 稳定性与加载体验**：
+    - 修复计时器暂停/恢复、后台节流和专注记录开始时间偏差，计时进度始终限制在有效范围。
+    - 浏览器备份恢复改为先完整校验再覆盖数据，保留本机登录与 AI 密钥，并在恢复后刷新任务、提醒、日历与时区状态。
+    - 修复日历切换日期后重复任务丢失，以及异步月份查询覆盖新页面状态的问题。
+    - SQLite Web 增加单标签页写入保护；启动失败、重复打开和文件选择取消均提供明确提示。
+    - 内置常用中文界面字形，首屏无需等待动态字体回退；CanvasKit 与完整回退字体均由站点本地提供，避免生产运行依赖外部 Google CDN。
+- **同步与服务端防护**：
+    - 客户端校验同步地址并提供更友好的网络错误；服务端增加严格请求结构校验、认证限流清理和可靠关停。
+    - 服务端同步日志自动保留最近 90 天，且统计覆盖全部同步数据表。
+
+### 🚀 历史更新 (v1.5.0)
+- **Web 应用发布**：
+    - 浏览器端使用 WebAssembly SQLite 保留本地数据能力，并提供 JSON 备份导入导出。
+    - 同步服务通过 `https://focus.dluserver.cn` 提供 HTTPS API，浏览器端默认直连同域服务。
+    - 系统日历和关闭页面后的系统提醒在 Web 端不可用；页面运行期间仍可使用应用内铃声提醒。
+- **服务端安全加固**：
+    - 生产环境强制配置 JWT 密钥，并限制跨域来源和认证接口请求频率。
+
+### 🚀 历史更新 (v1.4.0)
 - **重复任务与提醒可靠性修复**：
     - 修复 Android 勾选过期重复任务时界面卡住、连续点击会生成多个下一次任务的问题；重复任务完成与生成下一次任务现在以数据库事务原子执行，并增加点击进行中保护。
     - 重复任务支持更丰富的自定义规则：每天/每周/每月/每年、1-99 间隔、周几复选、每月按日期或星期、缺失日期回退/跳过，以及按日期或次数结束重复。
@@ -243,6 +262,7 @@ flutter build windows
 
 - [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) — **开发者知识库**：记录了从 Electron 到 Flutter 的迁移经验、同步算法细节及解决方案。
 - [功能模块索引](docs/project-index.md) — 代码文件快速定位
+- [Web 构建与部署](docs/web-deployment.md) — 浏览器 SQLite、HTTPS 和反向代理说明
 
 ## 服务端部署
 
@@ -265,7 +285,9 @@ cp .env.example .env
 
 在 `.env` 文件中配置以下内容：
 - `PORT`: 服务运行端口（默认 6677）
+- `HOST`: 服务监听地址（生产环境默认 `127.0.0.1`，仅由本机反向代理访问）
 - `JWT_SECRET`: 用于签发 Token 的密钥，请在生产环境务必修改为一个随机的长字符串。
+- `CORS_ORIGINS`: 允许访问同步 API 的 Web 来源，多个来源使用逗号分隔。
 
 ### 3. 运行服务
 
@@ -282,4 +304,4 @@ pm2 start ecosystem.config.js
 
 ## 版本
 
-当前版本：v1.4.0 (Task Customization and Android Reliability)
+当前版本：v1.5.1 (Web Reliability and Offline Assets)

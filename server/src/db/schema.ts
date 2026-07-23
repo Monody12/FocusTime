@@ -59,6 +59,12 @@ export function initDatabase(): void {
     db.exec('UPDATE sync_records SET server_updated_at = updated_at WHERE server_updated_at = 0')
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_sync_server_updated ON sync_records(user_id, server_updated_at)')
+
+  // Keep operational sync logs bounded while retaining enough history for
+  // diagnosis. User data in sync_records is not affected.
+  const syncLogRetentionMs = 90 * 24 * 60 * 60 * 1000
+  db.prepare('DELETE FROM sync_log WHERE sync_time < ?')
+    .run(Date.now() - syncLogRetentionMs)
 }
 
 export function getDatabase(): Database.Database {

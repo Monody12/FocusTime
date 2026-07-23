@@ -34,7 +34,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
   Widget build(BuildContext context) {
     final taskNotifier = ref.read(taskProvider.notifier);
     final isOverdue = _isOverdue(widget.task.dueDate);
-    final isMobile = Theme.of(context).platform == TargetPlatform.android ||
+    final isMobile =
+        Theme.of(context).platform == TargetPlatform.android ||
         Theme.of(context).platform == TargetPlatform.iOS;
 
     // 任务项内容 widget
@@ -54,9 +55,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
           border: widget.isSelected
-              ? Border.all(
-                  color: context.appColors.border,
-                )
+              ? Border.all(color: context.appColors.border)
               : null,
         ),
         child: Row(
@@ -80,8 +79,11 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: widget.task.completed
-                    ? const Icon(AppIcons.taskDone,
-                        size: AppIconSizes.status, color: Colors.white)
+                    ? const Icon(
+                        AppIcons.taskDone,
+                        size: AppIconSizes.status,
+                        color: Colors.white,
+                      )
                     : null,
               ),
             ),
@@ -95,10 +97,11 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   color: widget.task.completed
                       ? (context.appColors.textSecondary)
                       : isOverdue && !widget.task.completed
-                          ? Colors.red
-                          : (context.appColors.text),
-                  decoration:
-                      widget.task.completed ? TextDecoration.lineThrough : null,
+                      ? Colors.red
+                      : (context.appColors.text),
+                  decoration: widget.task.completed
+                      ? TextDecoration.lineThrough
+                      : null,
                 ),
               ),
             ),
@@ -156,7 +159,8 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                 child: AppIcon(
                   AppIcons.reminderActive,
                   size: AppIconSizes.status,
-                  color: (widget.task.reminderAt! <
+                  color:
+                      (widget.task.reminderAt! <
                               DateTime.now().millisecondsSinceEpoch &&
                           !widget.task.completed)
                       ? Colors.red
@@ -194,10 +198,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           decoration: BoxDecoration(
             color: context.appColors.surface,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: context.appColors.accent,
-              width: 2,
-            ),
+            border: Border.all(color: context.appColors.accent, width: 2),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -218,18 +219,18 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: widget.task.completed
-                    ? const Icon(AppIcons.taskDone,
-                        size: AppIconSizes.status, color: Colors.white)
+                    ? const Icon(
+                        AppIcons.taskDone,
+                        size: AppIconSizes.status,
+                        color: Colors.white,
+                      )
                     : null,
               ),
               const SizedBox(width: 12),
               Flexible(
                 child: Text(
                   widget.task.title,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: context.appColors.text,
-                  ),
+                  style: TextStyle(fontSize: 15, color: context.appColors.text),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -237,10 +238,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
           ),
         ),
       ),
-      childWhenDragging: Opacity(
-        opacity: 0.4,
-        child: content,
-      ),
+      childWhenDragging: Opacity(opacity: 0.4, child: content),
       onDragStarted: () {
         setState(() => _isDragging = true);
       },
@@ -301,7 +299,11 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     showMenu<dynamic>(
       context: context,
       position: RelativeRect.fromLTRB(
-          position.dx, position.dy, position.dx, position.dy),
+        position.dx,
+        position.dy,
+        position.dx,
+        position.dy,
+      ),
       elevation: 8,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       color: context.appColors.surface,
@@ -378,8 +380,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         const PopupMenuDivider(height: 1),
         PopupMenuItem<dynamic>(
           height: 38,
-          onTap: () =>
-              Future.delayed(Duration.zero, () => _showMoveToDialog(context)),
+          onTap: () => Future.delayed(Duration.zero, () {
+            if (mounted) _showMoveToDialog(this.context);
+          }),
           child: _buildMenuItem(AppIcons.move, '移动任务到...', null, isDark),
         ),
         PopupMenuItem<dynamic>(
@@ -389,10 +392,16 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         ),
         PopupMenuItem<dynamic>(
           height: 38,
-          onTap: () =>
-              Future.delayed(Duration.zero, () => _confirmDelete(context)),
-          child: _buildMenuItem(AppIcons.delete, '删除任务', 'Delete', isDark,
-              isDanger: true),
+          onTap: () => Future.delayed(Duration.zero, () {
+            if (mounted) _confirmDelete(this.context);
+          }),
+          child: _buildMenuItem(
+            AppIcons.delete,
+            '删除任务',
+            'Delete',
+            isDark,
+            isDanger: true,
+          ),
         ),
       ],
     );
@@ -489,7 +498,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _setDueDate(
-                        context, AppTime.now().add(const Duration(days: 1)));
+                      context,
+                      AppTime.now().add(const Duration(days: 1)),
+                    );
                   },
                 ),
                 _buildSheetAction(
@@ -499,7 +510,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   onTap: () {
                     Navigator.pop(sheetContext);
                     Future.delayed(Duration.zero, () {
-                      if (mounted) _pickDate(context);
+                      if (mounted) _pickDate(this.context);
                     });
                   },
                 ),
@@ -511,7 +522,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   onTap: () {
                     Navigator.pop(sheetContext);
                     Future.delayed(Duration.zero, () {
-                      if (mounted) _showMoveToDialog(context);
+                      if (mounted) _showMoveToDialog(this.context);
                     });
                   },
                 ),
@@ -532,7 +543,7 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   onTap: () {
                     Navigator.pop(sheetContext);
                     Future.delayed(Duration.zero, () {
-                      if (mounted) _confirmDelete(context);
+                      if (mounted) _confirmDelete(this.context);
                     });
                   },
                 ),
@@ -551,8 +562,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     required VoidCallback onTap,
     bool isDanger = false,
   }) {
-    final color =
-        isDanger ? Colors.red : (isDark ? Colors.white : Colors.black87);
+    final color = isDanger
+        ? Colors.red
+        : (isDark ? Colors.white : Colors.black87);
     return ListTile(
       leading: AppIcon(icon, color: color),
       title: Text(label, style: TextStyle(color: color)),
@@ -569,9 +581,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       await action();
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMessage)));
     }
   }
 
@@ -579,14 +591,14 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     try {
       await ref.read(taskProvider.notifier).archiveTask(widget.task.id);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('任务已归档，可在设置中恢复')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('任务已归档，可在设置中恢复')));
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('归档任务失败，请重试')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('归档任务失败，请重试')));
     }
   }
 
@@ -612,9 +624,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
               } catch (_) {
                 if (!context.mounted) return;
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('删除任务失败，请重试')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('删除任务失败，请重试')));
               }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -635,9 +647,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
         .toList();
 
     if (otherLists.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有其他可移动的清单')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('没有其他可移动的清单')));
       return;
     }
 
@@ -663,9 +675,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
                   } catch (_) {
                     if (!context.mounted) return;
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('移动任务失败，请重试')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('移动任务失败，请重试')));
                   }
                 },
               );
@@ -683,19 +695,21 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
   }
 
   Widget _buildMenuItem(
-      IconData icon, String text, String? shortcut, bool isDark,
-      {bool isDanger = false}) {
-    final color =
-        isDanger ? Colors.red : (isDark ? Colors.white : Colors.black87);
+    IconData icon,
+    String text,
+    String? shortcut,
+    bool isDark, {
+    bool isDanger = false,
+  }) {
+    final color = isDanger
+        ? Colors.red
+        : (isDark ? Colors.white : Colors.black87);
     return Row(
       children: [
         AppIcon(icon, size: AppIconSizes.action, color: color),
         const SizedBox(width: AppIconSpacing.labelGap),
         Expanded(
-          child: Text(
-            text,
-            style: TextStyle(fontSize: 13, color: color),
-          ),
+          child: Text(text, style: TextStyle(fontSize: 13, color: color)),
         ),
         if (shortcut != null)
           Text(
@@ -713,9 +727,9 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
     final dateStr = AppTime.formatDate(date);
     _runTaskAction(
       context,
-      () => ref
-          .read(taskProvider.notifier)
-          .updateTask(widget.task.id, {'dueDate': dateStr}),
+      () => ref.read(taskProvider.notifier).updateTask(widget.task.id, {
+        'dueDate': dateStr,
+      }),
       '设置到期日失败，请重试',
     );
   }

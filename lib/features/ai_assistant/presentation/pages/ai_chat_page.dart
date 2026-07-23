@@ -147,10 +147,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     return Container(
       constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
-        color: (context.appColors.accent).withOpacity(0.05),
-        border: Border(
-          bottom: BorderSide(color: context.appColors.border),
-        ),
+        color: context.appColors.accent.withValues(alpha: 0.05),
+        border: Border(bottom: BorderSide(color: context.appColors.border)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -159,9 +157,11 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
               children: [
-                AppIcon(AppIcons.preview,
-                    size: AppIconSizes.compact,
-                    color: context.appColors.accent),
+                AppIcon(
+                  AppIcons.preview,
+                  size: AppIconSizes.compact,
+                  color: context.appColors.accent,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   '操作预览 (${ops.length})',
@@ -184,8 +184,10 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.appColors.success,
                     foregroundColor: Colors.white,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     minimumSize: Size.zero,
                   ),
                   child: const Text('全部批准', style: TextStyle(fontSize: 12)),
@@ -225,9 +227,7 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
 
   Widget _buildMessageList(bool isDark, AiChatState state) {
     if (state.messages.isEmpty && !state.isStreaming) {
-      return Center(
-        child: _buildEmptyState(isDark),
-      );
+      return Center(child: _buildEmptyState(isDark));
     }
 
     return ListView.builder(
@@ -236,17 +236,15 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
       itemCount: state.messages.length,
       itemBuilder: (context, index) {
         final msg = state.messages[index];
-        final isLastAssistant = index == state.messages.length - 1 &&
+        final isLastAssistant =
+            index == state.messages.length - 1 &&
             msg.role.name == 'assistant' &&
             state.isStreaming;
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ChatBubble(
-              message: msg,
-              isStreaming: isLastAssistant,
-            ),
+            ChatBubble(message: msg, isStreaming: isLastAssistant),
             if (msg.operations != null && msg.operations!.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(left: 48, right: 16, top: 4),
@@ -269,8 +267,11 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AppIcon(AppIcons.key,
-              size: AppIconSizes.empty, color: context.appColors.textSecondary),
+          AppIcon(
+            AppIcons.key,
+            size: AppIconSizes.empty,
+            color: context.appColors.textSecondary,
+          ),
           const SizedBox(height: 16),
           Text(
             '未配置 API 密钥',
@@ -295,8 +296,11 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AppIcon(AppIcons.ai,
-            size: AppIconSizes.empty, color: context.appColors.textSecondary),
+        AppIcon(
+          AppIcons.ai,
+          size: AppIconSizes.empty,
+          color: context.appColors.textSecondary,
+        ),
         const SizedBox(height: 16),
         Text(
           'AI 任务助手',
@@ -325,12 +329,12 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
               },
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
-                  border: Border.all(
-                    color: context.appColors.border,
-                  ),
+                  border: Border.all(color: context.appColors.border),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -366,7 +370,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                   if (!sel.isCollapsed) return;
                   // Delete character after cursor
                   if (sel.start < text.length) {
-                    final newText = text.substring(0, sel.start) +
+                    final newText =
+                        text.substring(0, sel.start) +
                         text.substring(sel.start + 1);
                     _textController.value = TextEditingValue(
                       text: newText,
@@ -380,35 +385,28 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                 focusNode: _focusNode,
                 enabled: canSend,
                 onSubmitted: (_) => _sendMessage(),
-                style: TextStyle(
-                  color: context.appColors.text,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: context.appColors.text, fontSize: 14),
                 decoration: InputDecoration(
                   hintText: state.isStreaming ? 'AI 正在回复...' : '输入任务安排...',
                   hintStyle: TextStyle(
                     color: context.appColors.textSecondary,
                     fontSize: 14,
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(
-                      color: context.appColors.border,
-                    ),
+                    borderSide: BorderSide(color: context.appColors.border),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(
-                      color: context.appColors.border,
-                    ),
+                    borderSide: BorderSide(color: context.appColors.border),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(
-                      color: context.appColors.accent,
-                    ),
+                    borderSide: BorderSide(color: context.appColors.accent),
                   ),
                   filled: true,
                   fillColor: context.appColors.surface,
@@ -436,8 +434,8 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                     ),
               style: IconButton.styleFrom(
                 backgroundColor: canSend
-                    ? (context.appColors.accent).withOpacity(0.15)
-                    : Colors.grey.withOpacity(0.1),
+                    ? context.appColors.accent.withValues(alpha: 0.15)
+                    : Colors.grey.withValues(alpha: 0.1),
               ),
             ),
           ),
@@ -580,15 +578,18 @@ class _AiChatPageState extends ConsumerState<AiChatPage> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 8),
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           TextButton(
                             onPressed: () {
-                              notifier
-                                  .setDatedListFormat(formatController.text);
+                              notifier.setDatedListFormat(
+                                formatController.text,
+                              );
                             },
                             child: const Text('应用'),
                           ),

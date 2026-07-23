@@ -23,7 +23,8 @@ class AiContextBuilder {
     buf.writeln('日期: $todayStr ($_weekdayName(now))');
     buf.writeln('时间: $timeStr');
     buf.writeln(
-        '时区: ${AppTime.label(AppTime.mode)} (${AppTime.offsetLabelForMode(AppTime.mode)})');
+      '时区: ${AppTime.label(AppTime.mode)} (${AppTime.offsetLabelForMode(AppTime.mode)})',
+    );
     buf.writeln('所有时间安排必须不早于当前时间。');
     buf.writeln();
 
@@ -94,9 +95,11 @@ class AiContextBuilder {
     buf.writeln('6. 当用户描述的任务带有时间信息时（如"明天下午3点"），应计算出正确的日期和时间');
     buf.writeln('7. 使用中文与用户交流');
     buf.writeln(
-        '8. 重要：reminderAt=任务开始时间，dueDate/dueTime=任务截止时间（结束时间），两者不是同一个时间。截止时间 = 开始时间 + expectedMinutes。');
+      '8. 重要：reminderAt=任务开始时间，dueDate/dueTime=任务截止时间（结束时间），两者不是同一个时间。截止时间 = 开始时间 + expectedMinutes。',
+    );
     buf.writeln(
-        '9. 当用户要求"安排今天/规划今天/排日程"时，必须输出可执行时间表：每个被安排的任务都要有开始时间 reminderAt、预计时长 expectedMinutes、结束时间 dueDate/dueTime。');
+      '9. 当用户要求"安排今天/规划今天/排日程"时，必须输出可执行时间表：每个被安排的任务都要有开始时间 reminderAt、预计时长 expectedMinutes、结束时间 dueDate/dueTime。',
+    );
     buf.writeln('10. 安排日程时必须避免重叠；任务之间默认保留 0-10 分钟间隔，并根据任务难度、脑力消耗和时间紧张程度调整。');
     buf.writeln('11. 如果用户偏好中包含禁止时间段（如"不要在19到20点安排任务"），该时间段视为硬性不可用区间，不得安排任务。');
     buf.writeln('12. 如果任务太大、太难或当天没有连续时间，应拆分成多个清晰的小任务，并分别安排开始时间和持续时长。');
@@ -123,18 +126,22 @@ class AiContextBuilder {
       buf.writeln('## 日期清单模式（已启用）');
       buf.writeln('当前日期清单名称: $dateStr');
       buf.writeln('日期格式: $datedListFormat');
-      final existingDatedList =
-          lists.where((list) => list.name == dateStr).firstOrNull;
+      final existingDatedList = lists
+          .where((list) => list.name == dateStr)
+          .firstOrNull;
       if (existingDatedList != null) {
         buf.writeln(
-            '规则: 创建任务时，必须使用现有日期清单 ID "${existingDatedList.id}" 作为 listId，不要调用 create_list。');
+          '规则: 创建任务时，必须使用现有日期清单 ID "${existingDatedList.id}" 作为 listId，不要调用 create_list。',
+        );
       } else {
         buf.writeln('规则: 创建任务时，必须使用清单名 "$dateStr" 作为 listId。如果该清单不存在，系统会自动创建。');
       }
       buf.writeln(
-          '不要使用系统清单（system-my-day/system-all-tasks/system-important），请使用日期清单。');
+        '不要使用系统清单（system-my-day/system-all-tasks/system-important），请使用日期清单。',
+      );
       buf.writeln(
-          '除非用户明确要求添加到"我的一天"，否则 create_task 时 isMyDay 必须为 false 或省略，且不要调用 add_to_my_day。');
+        '除非用户明确要求添加到"我的一天"，否则 create_task 时 isMyDay 必须为 false 或省略，且不要调用 add_to_my_day。',
+      );
       if (existingDatedList == null) {
         buf.writeln('如果你需要先创建清单，请创建名为 "$dateStr" 的清单，然后继续把任务创建到该清单。');
       }
@@ -147,14 +154,17 @@ class AiContextBuilder {
       buf.writeln('重要字段区分：');
       buf.writeln('- reminderAt = 任务开始时间（用户何时开始做），ISO 8601 格式');
       buf.writeln(
-          '- dueDate + dueTime = 任务截止时间（用户何时必须完成），截止时间 = 开始时间 + expectedMinutes');
+        '- dueDate + dueTime = 任务截止时间（用户何时必须完成），截止时间 = 开始时间 + expectedMinutes',
+      );
       buf.writeln('规则：');
       buf.writeln('1. 创建任务时必须设置 reminderAt 为任务的开始时间');
       buf.writeln(
-          '2. 必须根据开始时间 + expectedMinutes 计算出正确的截止时间（dueDate + dueTime）');
+        '2. 必须根据开始时间 + expectedMinutes 计算出正确的截止时间（dueDate + dueTime）',
+      );
       buf.writeln('3. 如果用户没有明确截止时间，则用开始时间 + expectedMinutes 推算');
       buf.writeln(
-          '例如：用户说"22:20开始，1.5小时"，则 reminderAt = "$todayStr"T"22:20:00"，expectedMinutes = 90，dueDate = "$todayStr"，dueTime = "23:50"。');
+        '例如：用户说"22:20开始，1.5小时"，则 reminderAt = "$todayStr"T"22:20:00"，expectedMinutes = 90，dueDate = "$todayStr"，dueTime = "23:50"。',
+      );
       buf.writeln('这3个字段必须同时存在，这是强制要求。');
     }
 

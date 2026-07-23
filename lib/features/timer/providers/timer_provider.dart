@@ -3,7 +3,7 @@ import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
-import '../../../../core/utils/time_utils.dart';
+import 'package:focus_my_time/core/utils/time_utils.dart';
 import 'package:focus_my_time/core/services/timer_notification_service.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
@@ -51,18 +51,16 @@ class PomodoroConfig {
     int? maxCycles,
     bool? autoStartNext,
     bool? autoStartBreak,
-  }) =>
-      PomodoroConfig(
-        focusDuration: focusDuration ?? this.focusDuration,
-        breakDuration: breakDuration ?? this.breakDuration,
-        longBreakDuration: longBreakDuration ?? this.longBreakDuration,
-        cyclesBeforeLongBreak:
-            cyclesBeforeLongBreak ?? this.cyclesBeforeLongBreak,
-        enableCycle: enableCycle ?? this.enableCycle,
-        maxCycles: maxCycles ?? this.maxCycles,
-        autoStartNext: autoStartNext ?? this.autoStartNext,
-        autoStartBreak: autoStartBreak ?? this.autoStartBreak,
-      );
+  }) => PomodoroConfig(
+    focusDuration: focusDuration ?? this.focusDuration,
+    breakDuration: breakDuration ?? this.breakDuration,
+    longBreakDuration: longBreakDuration ?? this.longBreakDuration,
+    cyclesBeforeLongBreak: cyclesBeforeLongBreak ?? this.cyclesBeforeLongBreak,
+    enableCycle: enableCycle ?? this.enableCycle,
+    maxCycles: maxCycles ?? this.maxCycles,
+    autoStartNext: autoStartNext ?? this.autoStartNext,
+    autoStartBreak: autoStartBreak ?? this.autoStartBreak,
+  );
 }
 
 class TimerState {
@@ -74,7 +72,12 @@ class TimerState {
   final int totalSeconds;
   final int elapsedSeconds;
   final DateTime? targetTime;
+
+  /// Effective anchor used to recover elapsed time after browser throttling.
   final int startedAt;
+
+  /// Original wall-clock start retained across pause and resume cycles.
+  final int sessionStartedAt;
   final int plannedDurationSeconds;
   final SingleCoreConfig singleCoreConfig;
   final PomodoroConfig pomodoroConfig;
@@ -86,7 +89,7 @@ class TimerState {
   final int snoozeDurationMinutes;
   final bool rememberModeChoice; // 是否记住超时后的模式选择
   final String
-      preferredModeWhenOverdue; // 超时后偏好的模式: 'singleCore', 'pomodoro', ''
+  preferredModeWhenOverdue; // 超时后偏好的模式: 'singleCore', 'pomodoro', ''
 
   TimerState({
     this.timerMode = TimerMode.singleCore,
@@ -98,6 +101,7 @@ class TimerState {
     this.elapsedSeconds = 0,
     this.targetTime,
     this.startedAt = 0,
+    this.sessionStartedAt = 0,
     this.plannedDurationSeconds = 0,
     this.singleCoreConfig = const SingleCoreConfig(minDuration: 25),
     this.pomodoroConfig = const PomodoroConfig(),
@@ -121,6 +125,7 @@ class TimerState {
     int? elapsedSeconds,
     DateTime? targetTime,
     int? startedAt,
+    int? sessionStartedAt,
     int? plannedDurationSeconds,
     SingleCoreConfig? singleCoreConfig,
     PomodoroConfig? pomodoroConfig,
@@ -132,36 +137,37 @@ class TimerState {
     int? snoozeDurationMinutes,
     bool? rememberModeChoice,
     String? preferredModeWhenOverdue,
-  }) =>
-      TimerState(
-        timerMode: timerMode ?? this.timerMode,
-        timerStatus: timerStatus ?? this.timerStatus,
-        currentTask: currentTask ?? this.currentTask,
-        currentTaskId: currentTaskId ?? this.currentTaskId,
-        taskHistory: taskHistory ?? this.taskHistory,
-        totalSeconds: totalSeconds ?? this.totalSeconds,
-        elapsedSeconds: elapsedSeconds ?? this.elapsedSeconds,
-        targetTime: targetTime ?? this.targetTime,
-        startedAt: startedAt ?? this.startedAt,
-        plannedDurationSeconds:
-            plannedDurationSeconds ?? this.plannedDurationSeconds,
-        singleCoreConfig: singleCoreConfig ?? this.singleCoreConfig,
-        pomodoroConfig: pomodoroConfig ?? this.pomodoroConfig,
-        timerPhase: timerPhase ?? this.timerPhase,
-        currentCycle: currentCycle ?? this.currentCycle,
-        soundEnabled: soundEnabled ?? this.soundEnabled,
-        notificationDuration: notificationDuration ?? this.notificationDuration,
-        notificationTemplate: notificationTemplate ?? this.notificationTemplate,
-        snoozeDurationMinutes:
-            snoozeDurationMinutes ?? this.snoozeDurationMinutes,
-        rememberModeChoice: rememberModeChoice ?? this.rememberModeChoice,
-        preferredModeWhenOverdue:
-            preferredModeWhenOverdue ?? this.preferredModeWhenOverdue,
-      );
+    bool clearTargetTime = false,
+  }) => TimerState(
+    timerMode: timerMode ?? this.timerMode,
+    timerStatus: timerStatus ?? this.timerStatus,
+    currentTask: currentTask ?? this.currentTask,
+    currentTaskId: currentTaskId ?? this.currentTaskId,
+    taskHistory: taskHistory ?? this.taskHistory,
+    totalSeconds: totalSeconds ?? this.totalSeconds,
+    elapsedSeconds: elapsedSeconds ?? this.elapsedSeconds,
+    targetTime: clearTargetTime ? null : (targetTime ?? this.targetTime),
+    startedAt: startedAt ?? this.startedAt,
+    sessionStartedAt: sessionStartedAt ?? this.sessionStartedAt,
+    plannedDurationSeconds:
+        plannedDurationSeconds ?? this.plannedDurationSeconds,
+    singleCoreConfig: singleCoreConfig ?? this.singleCoreConfig,
+    pomodoroConfig: pomodoroConfig ?? this.pomodoroConfig,
+    timerPhase: timerPhase ?? this.timerPhase,
+    currentCycle: currentCycle ?? this.currentCycle,
+    soundEnabled: soundEnabled ?? this.soundEnabled,
+    notificationDuration: notificationDuration ?? this.notificationDuration,
+    notificationTemplate: notificationTemplate ?? this.notificationTemplate,
+    snoozeDurationMinutes: snoozeDurationMinutes ?? this.snoozeDurationMinutes,
+    rememberModeChoice: rememberModeChoice ?? this.rememberModeChoice,
+    preferredModeWhenOverdue:
+        preferredModeWhenOverdue ?? this.preferredModeWhenOverdue,
+  );
 
   int get remainingSeconds =>
       (totalSeconds - elapsedSeconds).clamp(0, totalSeconds);
-  double get progress => totalSeconds > 0 ? elapsedSeconds / totalSeconds : 0.0;
+  double get progress =>
+      totalSeconds > 0 ? (elapsedSeconds / totalSeconds).clamp(0.0, 1.0) : 0.0;
   String get formattedTime =>
       formatTime(remainingSeconds.clamp(0, totalSeconds));
 }
@@ -202,8 +208,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
     if (action.startsWith('action:snooze_reminder:')) {
       final taskId = action.replaceFirst('action:snooze_reminder:', '');
-      final nextReminder =
-          AppTime.now().add(Duration(minutes: state.snoozeDurationMinutes));
+      final nextReminder = AppTime.now().add(
+        Duration(minutes: state.snoozeDurationMinutes),
+      );
       _ref.read(taskProvider.notifier).setReminder(taskId, nextReminder);
       return;
     }
@@ -258,6 +265,7 @@ class TimerNotifier extends StateNotifier<TimerState> {
     final totalSeconds = prefs.getInt('totalSeconds') ?? 0;
     final savedElapsedSeconds = prefs.getInt('elapsedSeconds') ?? 0;
     final startedAt = prefs.getInt('startedAt') ?? 0;
+    final sessionStartedAt = prefs.getInt('sessionStartedAt') ?? startedAt;
     final plannedDurationSeconds = prefs.getInt('plannedDurationSeconds') ?? 0;
     final targetTimeStr = prefs.getString('targetTime');
 
@@ -269,23 +277,28 @@ class TimerNotifier extends StateNotifier<TimerState> {
     // If timer was running, calculate actual elapsed time
     int elapsedSeconds = savedElapsedSeconds;
     if (timerStatusStr == 'running' && startedAt > 0) {
-      final actualElapsed =
+      final recovered =
           (DateTime.now().millisecondsSinceEpoch - startedAt) ~/ 1000;
-      elapsedSeconds = savedElapsedSeconds + actualElapsed;
+      elapsedSeconds = recovered < savedElapsedSeconds
+          ? savedElapsedSeconds
+          : recovered;
+      if (totalSeconds > 0) {
+        elapsedSeconds = elapsedSeconds.clamp(0, totalSeconds);
+      }
     }
 
     state = state.copyWith(
       timerMode: timerModeStr == 'pomodoro'
           ? TimerMode.pomodoro
           : timerModeStr == 'task'
-              ? TimerMode.task
-              : TimerMode.singleCore,
+          ? TimerMode.task
+          : TimerMode.singleCore,
       timerStatus: timerStatusStr == 'running'
           ? TimerStatus.running
           : timerStatusStr == 'paused'
-              ? TimerStatus.paused
-              : TimerStatus
-                  .idle, // Reset completed to idle on app restart as requested
+          ? TimerStatus.paused
+          : TimerStatus
+                .idle, // Reset completed to idle on app restart as requested
       timerPhase: timerPhase,
       currentCycle: currentCycle,
       currentTask: currentTask,
@@ -293,8 +306,10 @@ class TimerNotifier extends StateNotifier<TimerState> {
       totalSeconds: totalSeconds,
       elapsedSeconds: elapsedSeconds,
       startedAt: startedAt,
+      sessionStartedAt: sessionStartedAt,
       plannedDurationSeconds: plannedDurationSeconds,
       targetTime: targetTime,
+      clearTargetTime: targetTime == null,
       singleCoreConfig: SingleCoreConfig(minDuration: singleCoreMinDuration),
       pomodoroConfig: PomodoroConfig(
         focusDuration: focusDuration,
@@ -329,22 +344,33 @@ class TimerNotifier extends StateNotifier<TimerState> {
     await prefs.setString('currentTask', state.currentTask);
     if (state.currentTaskId != null) {
       await prefs.setString('currentTaskId', state.currentTaskId!);
+    } else {
+      await prefs.remove('currentTaskId');
     }
     await prefs.setInt('totalSeconds', state.totalSeconds);
     await prefs.setInt('elapsedSeconds', state.elapsedSeconds);
     await prefs.setInt('startedAt', state.startedAt);
+    await prefs.setInt('sessionStartedAt', state.sessionStartedAt);
     await prefs.setInt('plannedDurationSeconds', state.plannedDurationSeconds);
     if (state.targetTime != null) {
       await prefs.setString('targetTime', state.targetTime!.toIso8601String());
+    } else {
+      await prefs.remove('targetTime');
     }
     await prefs.setInt(
-        'singleCoreMinDuration', state.singleCoreConfig.minDuration);
+      'singleCoreMinDuration',
+      state.singleCoreConfig.minDuration,
+    );
     await prefs.setInt('focusDuration', state.pomodoroConfig.focusDuration);
     await prefs.setInt('breakDuration', state.pomodoroConfig.breakDuration);
     await prefs.setInt(
-        'longBreakDuration', state.pomodoroConfig.longBreakDuration);
+      'longBreakDuration',
+      state.pomodoroConfig.longBreakDuration,
+    );
     await prefs.setInt(
-        'cyclesBeforeLongBreak', state.pomodoroConfig.cyclesBeforeLongBreak);
+      'cyclesBeforeLongBreak',
+      state.pomodoroConfig.cyclesBeforeLongBreak,
+    );
     await prefs.setBool('enableCycle', state.pomodoroConfig.enableCycle);
     await prefs.setBool('autoStartNext', state.pomodoroConfig.autoStartNext);
     await prefs.setBool('autoStartBreak', state.pomodoroConfig.autoStartBreak);
@@ -354,7 +380,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
     await prefs.setInt('snoozeDurationMinutes', state.snoozeDurationMinutes);
     await prefs.setBool('rememberModeChoice', state.rememberModeChoice);
     await prefs.setString(
-        'preferredModeWhenOverdue', state.preferredModeWhenOverdue);
+      'preferredModeWhenOverdue',
+      state.preferredModeWhenOverdue,
+    );
     await prefs.setString('taskHistory', state.taskHistory.join(','));
   }
 
@@ -418,7 +446,8 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
   void removeFromHistory(String task) {
     state = state.copyWith(
-        taskHistory: state.taskHistory.where((t) => t != task).toList());
+      taskHistory: state.taskHistory.where((t) => t != task).toList(),
+    );
     _saveState();
   }
 
@@ -438,7 +467,10 @@ class TimerNotifier extends StateNotifier<TimerState> {
           task.expectedMinutes! > 0) {
         // 计算已专注时间并检查是否超时
         _checkTaskExpectedTimeAndPrompt(
-            task.id, task.title, task.expectedMinutes!);
+          task.id,
+          task.title,
+          task.expectedMinutes!,
+        );
         return;
       }
     }
@@ -447,7 +479,10 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   Future<void> _checkTaskExpectedTimeAndPrompt(
-      String taskId, String taskTitle, int expectedMinutes) async {
+    String taskId,
+    String taskTitle,
+    int expectedMinutes,
+  ) async {
     // 计算任务已专注时间
     final sessions = await AppDatabase.getSessionsByTaskId(taskId);
     int spentSeconds = 0;
@@ -473,9 +508,10 @@ class TimerNotifier extends StateNotifier<TimerState> {
     } else {
       // 正常开始专注
       _doStartFocus(
-          taskTitle: taskTitle,
-          taskId: taskId,
-          taskExpectedMinutes: remainingMinutes);
+        taskTitle: taskTitle,
+        taskId: taskId,
+        taskExpectedMinutes: remainingMinutes,
+      );
     }
   }
 
@@ -494,27 +530,30 @@ class TimerNotifier extends StateNotifier<TimerState> {
   void confirmOverdueMode(TimerMode mode) {
     if (_overdueTaskId != null && _overdueTaskTitle != null) {
       _doStartFocus(
-          taskTitle: _overdueTaskTitle,
-          taskId: _overdueTaskId,
-          overrideMode: mode);
+        taskTitle: _overdueTaskTitle,
+        taskId: _overdueTaskId,
+        overrideMode: mode,
+      );
       _overdueTaskId = null;
       _overdueTaskTitle = null;
     }
   }
 
-  void _doStartFocus(
-      {String? taskTitle,
-      String? taskId,
-      TimerMode? overrideMode,
-      int? taskExpectedMinutes}) {
+  void _doStartFocus({
+    String? taskTitle,
+    String? taskId,
+    TimerMode? overrideMode,
+    int? taskExpectedMinutes,
+  }) {
     final now = AppTime.now();
     int totalSeconds;
     DateTime? target;
     final effectiveMode = overrideMode ?? state.timerMode;
 
     if (effectiveMode == TimerMode.singleCore) {
-      final result =
-          calculateSingleCoreTarget(state.singleCoreConfig.minDuration);
+      final result = calculateSingleCoreTarget(
+        state.singleCoreConfig.minDuration,
+      );
       totalSeconds = result.durationMinutes * 60;
       target = result.targetTime;
     } else if (effectiveMode == TimerMode.pomodoro) {
@@ -524,13 +563,15 @@ class TimerNotifier extends StateNotifier<TimerState> {
       if (taskExpectedMinutes != null && taskExpectedMinutes > 0) {
         totalSeconds = taskExpectedMinutes * 60;
       } else {
-        final result =
-            calculateSingleCoreTarget(state.singleCoreConfig.minDuration);
+        final result = calculateSingleCoreTarget(
+          state.singleCoreConfig.minDuration,
+        );
         totalSeconds = result.durationMinutes * 60;
         target = result.targetTime;
       }
     }
 
+    final startedAt = now.millisecondsSinceEpoch;
     state = state.copyWith(
       timerStatus: TimerStatus.running,
       timerPhase: 'focus',
@@ -539,7 +580,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
       totalSeconds: totalSeconds,
       elapsedSeconds: 0,
       targetTime: target,
-      startedAt: now.millisecondsSinceEpoch,
+      clearTargetTime: target == null,
+      startedAt: startedAt,
+      sessionStartedAt: startedAt,
       plannedDurationSeconds: totalSeconds,
     );
 
@@ -555,21 +598,25 @@ class TimerNotifier extends StateNotifier<TimerState> {
     if (state.timerMode != TimerMode.pomodoro) return;
 
     // 逻辑修复：优先检查 timerPhase，因为在手动模式下，currentCycle 可能在专注结束时已被重置
-    final isLongBreak = state.timerPhase == 'long-break' ||
+    final isLongBreak =
+        state.timerPhase == 'long-break' ||
         state.currentCycle >= state.pomodoroConfig.cyclesBeforeLongBreak;
 
-    final breakSeconds = (isLongBreak
+    final breakSeconds =
+        (isLongBreak
             ? state.pomodoroConfig.longBreakDuration
             : state.pomodoroConfig.breakDuration) *
         60;
 
+    final startedAt = DateTime.now().millisecondsSinceEpoch;
     state = state.copyWith(
       timerStatus: TimerStatus.running,
       timerPhase: isLongBreak ? 'long-break' : 'break',
       totalSeconds: breakSeconds,
       elapsedSeconds: 0,
-      targetTime: null,
-      startedAt: DateTime.now().millisecondsSinceEpoch,
+      clearTargetTime: true,
+      startedAt: startedAt,
+      sessionStartedAt: startedAt,
       plannedDurationSeconds: breakSeconds,
     );
 
@@ -593,8 +640,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
       currentCycle: shouldResetCycle ? 0 : state.currentCycle,
       totalSeconds: focusSeconds,
       elapsedSeconds: 0,
-      targetTime: null,
+      clearTargetTime: true,
       startedAt: 0,
+      sessionStartedAt: 0,
       plannedDurationSeconds: 0,
     );
 
@@ -603,10 +651,19 @@ class TimerNotifier extends StateNotifier<TimerState> {
   }
 
   void pauseFocus() {
+    final elapsed = _currentElapsedSeconds();
     _stopTimer();
     // 暂停时也停止铃声，防止极端情况下铃声一直响
     TimerNotificationService.stopAlarm();
-    state = state.copyWith(timerStatus: TimerStatus.paused);
+    if (state.totalSeconds > 0 && elapsed >= state.totalSeconds) {
+      state = state.copyWith(elapsedSeconds: state.totalSeconds);
+      _onComplete();
+      return;
+    }
+    state = state.copyWith(
+      timerStatus: TimerStatus.paused,
+      elapsedSeconds: elapsed,
+    );
     _saveState();
   }
 
@@ -628,12 +685,11 @@ class TimerNotifier extends StateNotifier<TimerState> {
     // 停止铃声提醒
     TimerNotificationService.stopAlarm();
 
-    // 如果计时器在运行且有startedAt，保存未完成的专注记录（>60秒）
-    if (state.startedAt > 0 &&
+    // 保存未完成的专注记录（>60秒），暂停时不计入暂停时长。
+    if (state.sessionStartedAt > 0 &&
         state.timerPhase == 'focus' &&
         state.timerStatus != TimerStatus.completed) {
-      final elapsed =
-          (DateTime.now().millisecondsSinceEpoch - state.startedAt) ~/ 1000;
+      final elapsed = _currentElapsedSeconds();
       if (elapsed >= 60) {
         _saveFocusSession(false);
       }
@@ -646,8 +702,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
       currentCycle: 0,
       totalSeconds: 0,
       elapsedSeconds: 0,
-      targetTime: null,
+      clearTargetTime: true,
       startedAt: 0,
+      sessionStartedAt: 0,
       plannedDurationSeconds: 0,
     );
     _saveState();
@@ -656,12 +713,14 @@ class TimerNotifier extends StateNotifier<TimerState> {
   void _startTimer() {
     _stopTimer();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (state.elapsedSeconds >= state.totalSeconds) {
+      final elapsed = _currentElapsedSeconds();
+      if (elapsed >= state.totalSeconds) {
         // 计时到达目标时间
+        state = state.copyWith(elapsedSeconds: state.totalSeconds);
         _onComplete();
       } else {
-        // 每秒更新已流逝时间，触发 UI 局部刷新
-        state = state.copyWith(elapsedSeconds: state.elapsedSeconds + 1);
+        // 基于绝对开始时间计算，浏览器后台节流后恢复时仍能立即校正。
+        state = state.copyWith(elapsedSeconds: elapsed);
       }
     });
   }
@@ -669,6 +728,20 @@ class TimerNotifier extends StateNotifier<TimerState> {
   void _stopTimer() {
     _timer?.cancel();
     _timer = null;
+  }
+
+  int _currentElapsedSeconds() {
+    if (state.timerStatus != TimerStatus.running) {
+      return state.elapsedSeconds;
+    }
+    if (state.startedAt <= 0) return state.elapsedSeconds + 1;
+    final calculated =
+        (DateTime.now().millisecondsSinceEpoch - state.startedAt) ~/ 1000;
+    final monotonic = calculated < state.elapsedSeconds
+        ? state.elapsedSeconds
+        : calculated;
+    if (state.totalSeconds <= 0) return monotonic.clamp(0, 1 << 31);
+    return monotonic.clamp(0, state.totalSeconds);
   }
 
   void _onComplete() {
@@ -686,7 +759,8 @@ class TimerNotifier extends StateNotifier<TimerState> {
         _saveFocusSession(true); // 保存完成的专注记录
 
         final newCycle = state.currentCycle + 1;
-        final isLongBreak = state.pomodoroConfig.enableCycle &&
+        final isLongBreak =
+            state.pomodoroConfig.enableCycle &&
             newCycle >= state.pomodoroConfig.cyclesBeforeLongBreak;
 
         if (state.pomodoroConfig.autoStartBreak) {
@@ -715,6 +789,10 @@ class TimerNotifier extends StateNotifier<TimerState> {
           state = state.copyWith(
             timerStatus: TimerStatus.idle,
             timerPhase: 'focus',
+            startedAt: 0,
+            sessionStartedAt: 0,
+            plannedDurationSeconds: 0,
+            clearTargetTime: true,
           );
         }
       }
@@ -730,7 +808,10 @@ class TimerNotifier extends StateNotifier<TimerState> {
         timerPhase: 'focus',
         totalSeconds: 0,
         elapsedSeconds: 0,
+        startedAt: 0,
+        sessionStartedAt: 0,
         plannedDurationSeconds: 0,
+        clearTargetTime: true,
       );
     }
 
@@ -749,7 +830,9 @@ class TimerNotifier extends StateNotifier<TimerState> {
 
   /// 计时结束时触发铃声 + Windows 通知中心 Toast + 应用内弹窗
   void _triggerCompletionNotification(
-      String finishedPhase, int completedDuration) {
+    String finishedPhase,
+    int completedDuration,
+  ) {
     final task = state.currentTask.isNotEmpty ? state.currentTask : null;
     final template = state.notificationTemplate;
     final durationStr = _formatDuration(completedDuration);
@@ -782,28 +865,45 @@ class TimerNotifier extends StateNotifier<TimerState> {
     );
   }
 
-  void _saveFocusSession(bool completed) async {
-    if (state.startedAt == 0) return;
-    final elapsed =
-        (DateTime.now().millisecondsSinceEpoch - state.startedAt) ~/ 1000;
+  void _saveFocusSession(bool completed) {
+    if (state.sessionStartedAt == 0) return;
+    final elapsed = _currentElapsedSeconds();
     if (elapsed < 60) return;
 
-    await AppDatabase.addFocusSession(
-      taskId: state.currentTaskId,
-      taskTitle: state.currentTask.isNotEmpty ? state.currentTask : '（未设置）',
-      timerMode: state.timerMode.name,
-      durationSeconds: elapsed,
-      plannedDurationSeconds: state.plannedDurationSeconds,
-      completed: completed,
-      startedAt: state.startedAt,
-      completedAt: DateTime.now().millisecondsSinceEpoch,
-    );
-    _ref.read(sessionUpdateProvider.notifier).state++;
+    final taskId = state.currentTaskId;
+    final taskTitle = state.currentTask.isNotEmpty
+        ? state.currentTask
+        : '（未设置）';
+    final timerMode = state.timerMode.name;
+    final plannedDurationSeconds = state.plannedDurationSeconds;
+    final sessionStartedAt = state.sessionStartedAt;
+    final completedAt = DateTime.now().millisecondsSinceEpoch;
 
-    // 触发同步
-    if (SyncService.isLoggedIn) {
-      _ref.read(taskProvider.notifier).sync();
-    }
+    unawaited(() async {
+      try {
+        await AppDatabase.addFocusSession(
+          taskId: taskId,
+          taskTitle: taskTitle,
+          timerMode: timerMode,
+          durationSeconds: elapsed,
+          plannedDurationSeconds: plannedDurationSeconds,
+          completed: completed,
+          startedAt: sessionStartedAt,
+          completedAt: completedAt,
+        );
+        if (!mounted) return;
+        _ref.read(sessionUpdateProvider.notifier).state++;
+        if (SyncService.isLoggedIn) {
+          SyncService.triggerBackgroundSync();
+        }
+      } catch (error, stackTrace) {
+        dev.log(
+          '[TimerNotifier] 保存专注记录失败',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
+    }());
   }
 
   @override

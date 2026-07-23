@@ -27,7 +27,7 @@ const _tools = [
           'listId': {
             'type': 'string',
             'description':
-                '清单 ID 或清单名。必须优先遵守系统提示；日期清单模式开启时使用当天日期清单名，不要默认 system-all-tasks。'
+                '清单 ID 或清单名。必须优先遵守系统提示；日期清单模式开启时使用当天日期清单名，不要默认 system-all-tasks。',
           },
           'dueDate': {
             'type': 'string',
@@ -39,12 +39,12 @@ const _tools = [
           },
           'expectedMinutes': {
             'type': 'integer',
-            'description': '任务持续时长（分钟）。截止时间 = 开始时间 + 持续时长'
+            'description': '任务持续时长（分钟）。截止时间 = 开始时间 + 持续时长',
           },
           'isMyDay': {
             'type': 'boolean',
             'description':
-                '是否添加到"我的一天"。仅当用户明确要求添加到"我的一天"时设为 true；日期清单模式下通常应为 false 或省略。'
+                '是否添加到"我的一天"。仅当用户明确要求添加到"我的一天"时设为 true；日期清单模式下通常应为 false 或省略。',
           },
           'isImportant': {'type': 'boolean', 'description': '是否标记为重要'},
           'reminderAt': {
@@ -108,10 +108,7 @@ const _tools = [
             'enum': ['daily', 'weekly', 'monthly', 'yearly'],
             'description': '重复频率',
           },
-          'interval': {
-            'type': 'integer',
-            'description': '间隔，如每2天/每2周',
-          },
+          'interval': {'type': 'integer', 'description': '间隔，如每2天/每2周'},
         },
         'required': ['taskId', 'frequency'],
       },
@@ -218,21 +215,19 @@ class AiChatState {
     bool? datedListEnabled,
     String? datedListFormat,
     bool? reminderOnCreate,
-  }) =>
-      AiChatState(
-        messages: messages ?? this.messages,
-        pendingOperations: pendingOperations ?? this.pendingOperations,
-        currentConversationId:
-            currentConversationId ?? this.currentConversationId,
-        isStreaming: isStreaming ?? this.isStreaming,
-        streamingText: streamingText ?? this.streamingText,
-        errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
-        isApiKeyConfigured: isApiKeyConfigured ?? this.isApiKeyConfigured,
-        customPrompt: customPrompt ?? this.customPrompt,
-        datedListEnabled: datedListEnabled ?? this.datedListEnabled,
-        datedListFormat: datedListFormat ?? this.datedListFormat,
-        reminderOnCreate: reminderOnCreate ?? this.reminderOnCreate,
-      );
+  }) => AiChatState(
+    messages: messages ?? this.messages,
+    pendingOperations: pendingOperations ?? this.pendingOperations,
+    currentConversationId: currentConversationId ?? this.currentConversationId,
+    isStreaming: isStreaming ?? this.isStreaming,
+    streamingText: streamingText ?? this.streamingText,
+    errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
+    isApiKeyConfigured: isApiKeyConfigured ?? this.isApiKeyConfigured,
+    customPrompt: customPrompt ?? this.customPrompt,
+    datedListEnabled: datedListEnabled ?? this.datedListEnabled,
+    datedListFormat: datedListFormat ?? this.datedListFormat,
+    reminderOnCreate: reminderOnCreate ?? this.reminderOnCreate,
+  );
 }
 
 class AiChatNotifier extends StateNotifier<AiChatState> {
@@ -263,8 +258,9 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
       state = state.copyWith(
         customPrompt: prompt ?? '',
         datedListEnabled: datedEnabled == 'true',
-        datedListFormat:
-            datedFormat?.isNotEmpty == true ? datedFormat! : 'yyyyMMdd',
+        datedListFormat: datedFormat?.isNotEmpty == true
+            ? datedFormat!
+            : 'yyyyMMdd',
         reminderOnCreate: reminderOnCreate == 'true',
       );
     }
@@ -423,11 +419,7 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
           }
 
           if (chunk.isDone) {
-            _finalizeMessage(
-              convId,
-              textBuffer.toString(),
-              toolCallsReceived,
-            );
+            _finalizeMessage(convId, textBuffer.toString(), toolCallsReceived);
           }
         },
         onError: (e) {
@@ -441,10 +433,7 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
       );
     } catch (e) {
       if (!_disposed) {
-        state = state.copyWith(
-          isStreaming: false,
-          errorMessage: '发送失败: $e',
-        );
+        state = state.copyWith(isStreaming: false, errorMessage: '发送失败: $e');
       }
     }
   }
@@ -542,8 +531,11 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     final op = state.pendingOperations.firstWhere((o) => o.id == operationId);
 
     // Validate
-    final error = AiOperationEngine.validate(op,
-        currentTasks: taskState.tasks, currentLists: taskState.lists);
+    final error = AiOperationEngine.validate(
+      op,
+      currentTasks: taskState.tasks,
+      currentLists: taskState.lists,
+    );
     if (error != null) {
       final failedOp = op.copyWith(
         status: AiOperationStatus.failed,
@@ -591,13 +583,18 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
     // Validate all first
     for (final op in state.pendingOperations) {
       if (op.status == AiOperationStatus.rejected) continue;
-      final error = AiOperationEngine.validate(op,
-          currentTasks: taskState.tasks, currentLists: taskState.lists);
+      final error = AiOperationEngine.validate(
+        op,
+        currentTasks: taskState.tasks,
+        currentLists: taskState.lists,
+      );
       if (error != null) {
         var ops = state.pendingOperations.map((o) {
           if (o.id == op.id) {
             return o.copyWith(
-                status: AiOperationStatus.failed, errorMessage: error);
+              status: AiOperationStatus.failed,
+              errorMessage: error,
+            );
           }
           return o;
         }).toList();
@@ -627,13 +624,16 @@ class AiChatNotifier extends StateNotifier<AiChatState> {
   }
 
   List<AiOperation> get activePendingOps => state.pendingOperations
-      .where((op) =>
-          op.status == AiOperationStatus.pending ||
-          op.status == AiOperationStatus.edited)
+      .where(
+        (op) =>
+            op.status == AiOperationStatus.pending ||
+            op.status == AiOperationStatus.edited,
+      )
       .toList();
 }
 
-final aiChatProvider =
-    StateNotifierProvider<AiChatNotifier, AiChatState>((ref) {
+final aiChatProvider = StateNotifierProvider<AiChatNotifier, AiChatState>((
+  ref,
+) {
   return AiChatNotifier(ref);
 });

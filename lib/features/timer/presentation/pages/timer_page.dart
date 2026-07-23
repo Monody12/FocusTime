@@ -21,7 +21,8 @@ class TimerPage extends ConsumerWidget {
       }
     });
 
-    final isInBreakPhase = timerState.timerMode == TimerMode.pomodoro &&
+    final isInBreakPhase =
+        timerState.timerMode == TimerMode.pomodoro &&
         (timerState.timerPhase == 'break' ||
             timerState.timerPhase == 'long-break');
 
@@ -30,12 +31,14 @@ class TimerPage extends ConsumerWidget {
     //   - focusDone: 专注阶段结束，等待用户开始休息
     //   - breakDone: 休息阶段结束，等待用户开始下一轮专注
     final isCompleted = timerState.timerStatus == TimerStatus.completed;
-    final focusDone = isCompleted &&
+    final focusDone =
+        isCompleted &&
         timerState.timerMode == TimerMode.pomodoro &&
         (timerState.timerPhase == 'break' ||
             timerState.timerPhase == 'long-break') &&
         !timerState.pomodoroConfig.autoStartBreak;
-    final breakDone = isCompleted &&
+    final breakDone =
+        isCompleted &&
         isInBreakPhase &&
         !timerState.pomodoroConfig.autoStartNext;
 
@@ -131,10 +134,7 @@ class TimerPage extends ConsumerWidget {
         children: [
           Text(
             '目标时间：${_formatTargetTime(timerState.targetTime!)}',
-            style: TextStyle(
-              fontSize: 13,
-              color: context.appColors.text,
-            ),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
           ),
           Text(
             '最少 ${timerState.singleCoreConfig.minDuration} 分钟',
@@ -184,7 +184,9 @@ class TimerPage extends ConsumerWidget {
             Text(
               cycleText,
               style: TextStyle(
-                  fontSize: 12, color: context.appColors.textSecondary),
+                fontSize: 12,
+                color: context.appColors.textSecondary,
+              ),
             ),
         ],
       ),
@@ -215,7 +217,10 @@ class TimerPage extends ConsumerWidget {
 
   /// 休息结束面板：点击"开始专注"或"跳过"
   Widget _buildBreakCompletePanel(
-      BuildContext context, WidgetRef ref, TimerState timerState) {
+    BuildContext context,
+    WidgetRef ref,
+    TimerState timerState,
+  ) {
     final timerNotifier = ref.read(timerProvider.notifier);
     final phaseName = timerState.timerPhase == 'long-break' ? '长休息' : '短休息';
 
@@ -231,10 +236,7 @@ class TimerPage extends ConsumerWidget {
           Text(
             '$phaseName完成！点击开始专注',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: context.appColors.text,
-            ),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
           ),
           const SizedBox(height: 10),
           // 按钮横向排列，使用 Expanded 让按钮等分宽度而不溢出
@@ -268,7 +270,10 @@ class TimerPage extends ConsumerWidget {
 
   /// 专注结束面板：点击"开始休息"
   Widget _buildFocusCompletePanel(
-      BuildContext context, WidgetRef ref, TimerState timerState) {
+    BuildContext context,
+    WidgetRef ref,
+    TimerState timerState,
+  ) {
     final timerNotifier = ref.read(timerProvider.notifier);
     final breakName = timerState.timerPhase == 'long-break' ? '长' : '短';
 
@@ -284,10 +289,7 @@ class TimerPage extends ConsumerWidget {
           Text(
             '专注完成！开始$breakName休息',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: context.appColors.text,
-            ),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
           ),
           const SizedBox(height: 10),
           Row(

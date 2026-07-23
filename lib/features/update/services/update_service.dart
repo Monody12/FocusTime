@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -25,6 +26,7 @@ class UpdateService {
   /// 检查是否有更新
   /// 每天最多检查一次，或者如果有忽略的版本则跳过该版本
   static Future<UpdateInfo?> checkForUpdates({bool force = false}) async {
+    if (kIsWeb) return null;
     try {
       final prefs = await SharedPreferences.getInstance();
 
@@ -44,8 +46,9 @@ class UpdateService {
 
       final data = json.decode(response.body);
       final tagName = data['tag_name'] as String; // e.g. v1.0.11
-      final latestVersion =
-          tagName.startsWith('v') ? tagName.substring(1) : tagName;
+      final latestVersion = tagName.startsWith('v')
+          ? tagName.substring(1)
+          : tagName;
 
       // 获取当前版本
       final packageInfo = await PackageInfo.fromPlatform();
@@ -65,7 +68,8 @@ class UpdateService {
         return UpdateInfo(
           version: latestVersion,
           releaseNotes: data['body'] ?? '暂无更新说明',
-          htmlUrl: data['html_url'] ??
+          htmlUrl:
+              data['html_url'] ??
               'https://github.com/Monody12/FocusTime/releases/latest',
         );
       }
@@ -87,10 +91,14 @@ class UpdateService {
 
   /// 比较版本号 (例如 1.0.11 > 1.0.10)
   static bool _isNewerVersion(String latest, String current) {
-    final latestParts =
-        latest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
-    final currentParts =
-        current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final latestParts = latest
+        .split('.')
+        .map((e) => int.tryParse(e) ?? 0)
+        .toList();
+    final currentParts = current
+        .split('.')
+        .map((e) => int.tryParse(e) ?? 0)
+        .toList();
 
     for (int i = 0; i < latestParts.length && i < currentParts.length; i++) {
       if (latestParts[i] > currentParts[i]) return true;

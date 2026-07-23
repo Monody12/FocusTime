@@ -1,11 +1,7 @@
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
-enum AppTimeZoneMode {
-  system,
-  beijing,
-  unitedStates,
-}
+enum AppTimeZoneMode { system, beijing, unitedStates }
 
 class AppTime {
   static const String settingKey = 'appTimeZoneMode';
@@ -83,7 +79,9 @@ class AppTime {
       return DateTime.fromMillisecondsSinceEpoch(milliseconds);
     }
     return tz.TZDateTime.fromMillisecondsSinceEpoch(
-        _locationForMode(_mode), milliseconds);
+      _locationForMode(_mode),
+      milliseconds,
+    );
   }
 
   static DateTime create(
@@ -99,7 +97,15 @@ class AppTime {
     initialize();
     if (_mode == AppTimeZoneMode.system) {
       return DateTime(
-          year, month, day, hour, minute, second, millisecond, microsecond);
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        millisecond,
+        microsecond,
+      );
     }
     return tz.TZDateTime(
       _locationForMode(_mode),
@@ -196,7 +202,9 @@ class AppTime {
       return DateTime.fromMillisecondsSinceEpoch(milliseconds);
     }
     return tz.TZDateTime.fromMillisecondsSinceEpoch(
-        _locationForMode(mode), milliseconds);
+      _locationForMode(mode),
+      milliseconds,
+    );
   }
 
   static tz.Location _locationForMode(AppTimeZoneMode mode) {

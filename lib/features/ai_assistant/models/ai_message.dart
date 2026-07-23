@@ -31,33 +31,33 @@ class AiMessage {
     bool clearToolCallsJson = false,
     bool clearOperations = false,
     int? createdAt,
-  }) =>
-      AiMessage(
-        id: id ?? this.id,
-        conversationId: conversationId ?? this.conversationId,
-        role: role ?? this.role,
-        content: content ?? this.content,
-        toolCallsJson:
-            clearToolCallsJson ? null : (toolCallsJson ?? this.toolCallsJson),
-        operations: clearOperations ? null : (operations ?? this.operations),
-        createdAt: createdAt ?? this.createdAt,
-      );
+  }) => AiMessage(
+    id: id ?? this.id,
+    conversationId: conversationId ?? this.conversationId,
+    role: role ?? this.role,
+    content: content ?? this.content,
+    toolCallsJson: clearToolCallsJson
+        ? null
+        : (toolCallsJson ?? this.toolCallsJson),
+    operations: clearOperations ? null : (operations ?? this.operations),
+    createdAt: createdAt ?? this.createdAt,
+  );
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'conversation_id': conversationId,
-        'role': role.name,
-        'content': content,
-        'tool_calls_json': toolCallsJson,
-        'created_at': createdAt,
-      };
+    'id': id,
+    'conversation_id': conversationId,
+    'role': role.name,
+    'content': content,
+    'tool_calls_json': toolCallsJson,
+    'created_at': createdAt,
+  };
 
   factory AiMessage.fromMap(Map<String, dynamic> map) => AiMessage(
-        id: map['id'] as String,
-        conversationId: map['conversation_id'] as String,
-        role: AiMessageRole.values.firstWhere((r) => r.name == map['role']),
-        content: map['content'] as String,
-        toolCallsJson: map['tool_calls_json'] as String?,
-        createdAt: map['created_at'] as int,
-      );
+    id: map['id'] as String,
+    conversationId: map['conversation_id'] as String,
+    role: AiMessageRole.values.firstWhere((r) => r.name == map['role']),
+    content: map['content'] as String,
+    toolCallsJson: map['tool_calls_json'] as String?,
+    createdAt: map['created_at'] as int,
+  );
 }

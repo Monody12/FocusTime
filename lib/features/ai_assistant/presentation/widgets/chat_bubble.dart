@@ -38,8 +38,9 @@ class ChatBubble extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Row(
-          mainAxisAlignment:
-              isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+          mainAxisAlignment: isUser
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             if (!isUser) ...[
@@ -48,15 +49,18 @@ class ChatBubble extends StatelessWidget {
             ],
             Flexible(
               child: Column(
-                crossAxisAlignment:
-                    isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                crossAxisAlignment: isUser
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
                   Container(
                     constraints: BoxConstraints(
                       maxWidth: MediaQuery.of(context).size.width * 0.7,
                     ),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: isUser
                           ? (context.appColors.accent)
@@ -68,8 +72,8 @@ class ChatBubble extends StatelessWidget {
                         bottomRight: Radius.circular(isUser ? 4 : 16),
                       ),
                     ),
-                    child: isStreaming &&
-                            message.role == AiMessageRole.assistant
+                    child:
+                        isStreaming && message.role == AiMessageRole.assistant
                         ? StreamingText(
                             text: message.content,
                             isStreaming: isStreaming,
@@ -121,8 +125,9 @@ class ChatBubble extends StatelessWidget {
   Widget _buildAvatar(BuildContext context, bool isUser) {
     return CircleAvatar(
       radius: 16,
-      backgroundColor:
-          isUser ? (context.appColors.accent) : (context.appColors.surface),
+      backgroundColor: isUser
+          ? (context.appColors.accent)
+          : (context.appColors.surface),
       child: Icon(
         isUser ? AppIcons.user : AppIcons.ai,
         size: AppIconSizes.action,

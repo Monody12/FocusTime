@@ -13,28 +13,28 @@ class ChatResponseChunk {
   final String? error;
 
   ChatResponseChunk.text(this.textDelta)
-      : toolCall = null,
-        isDone = false,
-        finishReason = null,
-        error = null;
+    : toolCall = null,
+      isDone = false,
+      finishReason = null,
+      error = null;
 
   ChatResponseChunk.tool({required this.toolCall})
-      : textDelta = null,
-        isDone = false,
-        finishReason = null,
-        error = null;
+    : textDelta = null,
+      isDone = false,
+      finishReason = null,
+      error = null;
 
   ChatResponseChunk.done({this.finishReason})
-      : textDelta = null,
-        toolCall = null,
-        isDone = true,
-        error = null;
+    : textDelta = null,
+      toolCall = null,
+      isDone = true,
+      error = null;
 
   ChatResponseChunk.error(this.error)
-      : textDelta = null,
-        toolCall = null,
-        isDone = true,
-        finishReason = null;
+    : textDelta = null,
+      toolCall = null,
+      isDone = true,
+      finishReason = null;
 }
 
 class DeepSeekApiClient {
@@ -120,8 +120,10 @@ class DeepSeekApiClient {
       body['tool_choice'] = 'auto';
     }
 
-    final request =
-        http.Request('POST', Uri.parse('$_baseUrl/chat/completions'));
+    final request = http.Request(
+      'POST',
+      Uri.parse('$_baseUrl/chat/completions'),
+    );
     request.headers.addAll({
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $_apiKey',
@@ -194,7 +196,9 @@ class DeepSeekApiClient {
               final func = tc['function'] as Map<String, dynamic>?;
 
               toolCallAccumulators.putIfAbsent(
-                  index, () => _ToolCallAccumulator(index));
+                index,
+                () => _ToolCallAccumulator(index),
+              );
               final acc = toolCallAccumulators[index]!;
               if (id != null) acc.id = id;
               if (func != null) {
@@ -314,10 +318,7 @@ class _ToolCallAccumulator {
       return {
         'id': id,
         'type': 'function',
-        'function': {
-          'name': name,
-          'arguments': jsonEncode(arguments),
-        },
+        'function': {'name': name, 'arguments': jsonEncode(arguments)},
         '_parsedArguments': arguments,
       };
     } catch (_) {

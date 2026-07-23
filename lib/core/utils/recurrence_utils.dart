@@ -32,21 +32,21 @@ class RecurrenceConfig {
   });
 
   Map<String, dynamic> toJson() => {
-        'frequency': frequency.name,
-        'interval': interval,
-        if (daysOfWeek != null) 'daysOfWeek': daysOfWeek,
-        if (daysOfMonth != null) 'daysOfMonth': daysOfMonth,
-        if (dayOfMonth != null) 'dayOfMonth': dayOfMonth,
-        if (weekOrdinal != null) 'weekOrdinal': weekOrdinal,
-        if (weekDay != null) 'weekDay': weekDay,
-        if (monthlyMode != null) 'monthlyMode': monthlyMode,
-        if (weekDayGroup != null) 'weekDayGroup': weekDayGroup,
-        if (monthOfYear != null) 'monthOfYear': monthOfYear,
-        if (endsAt != null) 'endsAt': endsAt,
-        if (endsAfterOccurrences != null)
-          'endsAfterOccurrences': endsAfterOccurrences,
-        'overflowPolicy': overflowPolicy,
-      };
+    'frequency': frequency.name,
+    'interval': interval,
+    if (daysOfWeek != null) 'daysOfWeek': daysOfWeek,
+    if (daysOfMonth != null) 'daysOfMonth': daysOfMonth,
+    if (dayOfMonth != null) 'dayOfMonth': dayOfMonth,
+    if (weekOrdinal != null) 'weekOrdinal': weekOrdinal,
+    if (weekDay != null) 'weekDay': weekDay,
+    if (monthlyMode != null) 'monthlyMode': monthlyMode,
+    if (weekDayGroup != null) 'weekDayGroup': weekDayGroup,
+    if (monthOfYear != null) 'monthOfYear': monthOfYear,
+    if (endsAt != null) 'endsAt': endsAt,
+    if (endsAfterOccurrences != null)
+      'endsAfterOccurrences': endsAfterOccurrences,
+    'overflowPolicy': overflowPolicy,
+  };
 
   factory RecurrenceConfig.fromJson(Map<String, dynamic> json) {
     return RecurrenceConfig(
@@ -133,7 +133,11 @@ DateTime _nextMonthlyDateWithOverflow(
     }
     if (config.overflowPolicy != 'skip') {
       return _dateWithOverflow(
-          target.year, target.month, sortedDays.first, config);
+        target.year,
+        target.month,
+        sortedDays.first,
+        config,
+      );
     }
     target = DateTime(target.year, target.month + config.interval);
   }
@@ -216,8 +220,9 @@ DateTime getNextDate(DateTime current, RecurrenceConfig config) {
     case RecurrenceFrequency.weekly:
       if (config.daysOfWeek != null && config.daysOfWeek!.isNotEmpty) {
         var next = current.add(const Duration(days: 1));
-        final anchorWeek =
-            current.subtract(Duration(days: current.weekday - 1));
+        final anchorWeek = current.subtract(
+          Duration(days: current.weekday - 1),
+        );
         for (var count = 0; count < 7 * config.interval + 7; count++) {
           final nextWeek = next.subtract(Duration(days: next.weekday - 1));
           final weekDistance = nextWeek.difference(anchorWeek).inDays ~/ 7;
@@ -232,8 +237,10 @@ DateTime getNextDate(DateTime current, RecurrenceConfig config) {
       return current.add(Duration(days: 7 * config.interval));
     case RecurrenceFrequency.monthly:
       if (config.monthlyMode == 'weekday' && config.weekOrdinal != null) {
-        var monthCursor =
-            DateTime(current.year, current.month + config.interval);
+        var monthCursor = DateTime(
+          current.year,
+          current.month + config.interval,
+        );
         for (var i = 0; i < 24; i++) {
           final next = _nthWeekdayOfMonth(
             monthCursor.year,
@@ -242,16 +249,22 @@ DateTime getNextDate(DateTime current, RecurrenceConfig config) {
             _weekDaysForGroup(config),
           );
           if (next != null) return next;
-          monthCursor =
-              DateTime(monthCursor.year, monthCursor.month + config.interval);
+          monthCursor = DateTime(
+            monthCursor.year,
+            monthCursor.month + config.interval,
+          );
         }
       }
       final days = config.daysOfMonth ?? [config.dayOfMonth ?? current.day];
       final sortedDays = [...days]..sort();
       for (final day in sortedDays) {
         if (day > current.day) {
-          final candidate =
-              _dateWithOverflow(current.year, current.month, day, config);
+          final candidate = _dateWithOverflow(
+            current.year,
+            current.month,
+            day,
+            config,
+          );
           if (candidate.month == current.month && candidate.isAfter(current)) {
             return candidate;
           }
@@ -268,8 +281,11 @@ DateTime getNextDateOnOrAfter(
   RecurrenceConfig config,
   DateTime minimumDate,
 ) {
-  final minimumDay =
-      DateTime(minimumDate.year, minimumDate.month, minimumDate.day);
+  final minimumDay = DateTime(
+    minimumDate.year,
+    minimumDate.month,
+    minimumDate.day,
+  );
   var next = getNextDate(current, config);
 
   // 防御性上限，避免异常配置造成无限循环。

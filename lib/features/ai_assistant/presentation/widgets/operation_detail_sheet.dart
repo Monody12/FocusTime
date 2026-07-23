@@ -54,13 +54,15 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
       _endDt = _tryParse(dueDate, '00:00');
     }
 
-    _durationMinutes = expectedMinutes ??
+    _durationMinutes =
+        expectedMinutes ??
         (_startDt != null && _endDt != null
             ? _endDt!.difference(_startDt!).inMinutes
             : 0);
 
-    _durationCtrl.text =
-        _durationMinutes > 0 ? _durationMinutes.toString() : '';
+    _durationCtrl.text = _durationMinutes > 0
+        ? _durationMinutes.toString()
+        : '';
   }
 
   @override
@@ -127,7 +129,12 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     final base = _startDt ?? _endDt ?? AppTime.now();
     setState(() {
       _startDt = AppTime.create(
-          base.year, base.month, base.day, picked.hour, picked.minute);
+        base.year,
+        base.month,
+        base.day,
+        picked.hour,
+        picked.minute,
+      );
       _adjustEndFromStart();
     });
   }
@@ -166,7 +173,12 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     final base = _endDt ?? _startDt ?? AppTime.now();
     setState(() {
       _endDt = AppTime.create(
-          base.year, base.month, base.day, picked.hour, picked.minute);
+        base.year,
+        base.month,
+        base.day,
+        picked.hour,
+        picked.minute,
+      );
       _recalcDuration();
     });
   }
@@ -186,8 +198,9 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
     if (_startDt != null && _endDt != null) {
       final diff = _endDt!.difference(_startDt!).inMinutes;
       _durationMinutes = diff > 0 ? diff : 0;
-      _durationCtrl.text =
-          _durationMinutes > 0 ? _durationMinutes.toString() : '';
+      _durationCtrl.text = _durationMinutes > 0
+          ? _durationMinutes.toString()
+          : '';
     }
   }
 
@@ -386,18 +399,24 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
                   fontSize: 13,
                   color: context.appColors.textSecondary,
                 ),
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 isDense: true,
               ),
               onChanged: (_) => _onDurationChanged(),
             ),
           ),
           const SizedBox(width: 8),
-          const Icon(AppIcons.arrowForward,
-              size: AppIconSizes.compact, color: Colors.grey),
+          const Icon(
+            AppIcons.arrowForward,
+            size: AppIconSizes.compact,
+            color: Colors.grey,
+          ),
           const SizedBox(width: 8),
           Text(
             _startDt != null && _durationMinutes > 0
@@ -448,19 +467,22 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color:
-                isSet ? (context.appColors.accent) : (context.appColors.border),
+            color: isSet
+                ? (context.appColors.accent)
+                : (context.appColors.border),
           ),
           color: isSet
-              ? (context.appColors.accent).withOpacity(0.08)
+              ? context.appColors.accent.withValues(alpha: 0.08)
               : Colors.transparent,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon,
-                size: 16,
-                color: isSet ? (context.appColors.accent) : Colors.grey),
+            Icon(
+              icon,
+              size: 16,
+              color: isSet ? (context.appColors.accent) : Colors.grey,
+            ),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -486,9 +508,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        side: BorderSide(
-          color: context.appColors.border,
-        ),
+        side: BorderSide(color: context.appColors.border),
       ),
       child: Text(label, style: const TextStyle(fontSize: 12)),
     );
@@ -498,9 +518,7 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
 
   List<Widget> _buildFields(bool isDark) {
     final fields = <Widget>[];
-    final style = TextStyle(
-      color: context.appColors.text,
-    );
+    final style = TextStyle(color: context.appColors.text);
 
     void addField(String key, String label, {bool isNumber = false}) {
       if (_hasTimeFields &&
@@ -515,35 +533,35 @@ class _OperationDetailSheetState extends State<OperationDetailSheet> {
         text: _params[key]?.toString() ?? '',
       );
 
-      fields.add(Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: TextFormField(
-          controller: controller,
-          decoration: InputDecoration(
-            labelText: label,
-            labelStyle: TextStyle(
-              color: context.appColors.textSecondary,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: context.appColors.border,
+      fields.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextFormField(
+            controller: controller,
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(color: context.appColors.textSecondary),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: context.appColors.border),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
               ),
             ),
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            style: style,
+            keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+            onChanged: (v) {
+              if (isNumber) {
+                _params[key] = int.tryParse(v);
+              } else {
+                _params[key] = v;
+              }
+            },
           ),
-          style: style,
-          keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-          onChanged: (v) {
-            if (isNumber) {
-              _params[key] = int.tryParse(v);
-            } else {
-              _params[key] = v;
-            }
-          },
         ),
-      ));
+      );
     }
 
     addField('title', '标题');
@@ -595,10 +613,7 @@ void showOperationDetailSheet(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
     ),
     builder: (_) => SafeArea(
-      child: OperationDetailSheet(
-        operation: operation,
-        onSave: onSave,
-      ),
+      child: OperationDetailSheet(operation: operation, onSave: onSave),
     ),
   );
 }

@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:focus_my_time/core/providers/theme_provider.dart';
+import 'package:focus_my_time/core/platform/platform_info.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
 import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
@@ -15,10 +16,12 @@ import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 import 'package:focus_my_time/features/ai_assistant/services/deepseek_api_client.dart';
+import 'package:focus_my_time/features/ai_assistant/providers/ai_chat_provider.dart';
 import 'package:focus_my_time/core/providers/package_info_provider.dart';
 import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
 import 'package:focus_my_time/features/update/services/update_service.dart';
 import 'package:focus_my_time/features/settings/presentation/widgets/archived_items_dialog.dart';
+import 'package:focus_my_time/features/settings/services/web_backup_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -50,6 +53,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late TextEditingController _syncPasswordController;
   bool _isLoggedIn = false;
   bool _isSyncing = false;
+  bool _isAuthenticating = false;
   String _syncStatus = '';
   int? _lastSyncTime;
   String _dbPath = '';
@@ -72,32 +76,42 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     super.initState();
     final timerState = ref.read(timerProvider);
     _focusDurationController = TextEditingController(
-        text: timerState.pomodoroConfig.focusDuration.toString());
+      text: timerState.pomodoroConfig.focusDuration.toString(),
+    );
     _breakDurationController = TextEditingController(
-        text: timerState.pomodoroConfig.breakDuration.toString());
+      text: timerState.pomodoroConfig.breakDuration.toString(),
+    );
     _longBreakDurationController = TextEditingController(
-        text: timerState.pomodoroConfig.longBreakDuration.toString());
+      text: timerState.pomodoroConfig.longBreakDuration.toString(),
+    );
     _cyclesController = TextEditingController(
-        text: timerState.pomodoroConfig.cyclesBeforeLongBreak.toString());
+      text: timerState.pomodoroConfig.cyclesBeforeLongBreak.toString(),
+    );
     _minDurationController = TextEditingController(
-        text: timerState.singleCoreConfig.minDuration.toString());
-    _notificationTemplateController =
-        TextEditingController(text: timerState.notificationTemplate);
+      text: timerState.singleCoreConfig.minDuration.toString(),
+    );
+    _notificationTemplateController = TextEditingController(
+      text: timerState.notificationTemplate,
+    );
     _snoozeDurationController = TextEditingController(
-        text: timerState.snoozeDurationMinutes.toString());
+      text: timerState.snoozeDurationMinutes.toString(),
+    );
     _soundEnabled = timerState.soundEnabled;
     _notificationDuration = timerState.notificationDuration;
     _autoArchiveKeepController = TextEditingController(text: '3');
 
-    _syncServerUrlController =
-        TextEditingController(text: SyncService.serverUrl);
+    _syncServerUrlController = TextEditingController(
+      text: SyncService.serverUrl,
+    );
     _syncUsernameController = TextEditingController(text: SyncService.username);
-    _syncPasswordController =
-        TextEditingController(text: SyncService.fakePassword);
+    _syncPasswordController = TextEditingController(
+      text: SyncService.fakePassword,
+    );
     _isLoggedIn = SyncService.isLoggedIn;
     _syncStatus = SyncService.syncWarning;
-    _lastSyncTime =
-        SyncService.lastSyncTime > 0 ? SyncService.lastSyncTime : null;
+    _lastSyncTime = SyncService.lastSyncTime > 0
+        ? SyncService.lastSyncTime
+        : null;
     SyncService.syncWarningListenable.addListener(_handleSyncWarningChanged);
 
     _syncUrlFocusNode = FocusNode();
@@ -118,8 +132,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _loadPermissions();
     _loadCalendarStatus();
     _loadTaskbarSettings();
-    _apiKeyController =
-        TextEditingController(text: DeepSeekApiClient.apiKey ?? '');
+    _apiKeyController = TextEditingController(
+      text: DeepSeekApiClient.apiKey ?? '',
+    );
   }
 
   Future<void> _loadCalendarStatus() async {
@@ -128,8 +143,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _loadTaskbarSettings() async {
-    final autoArchive =
-        await AppDatabase.getSetting('autoArchiveCompletedTasks');
+    final autoArchive = await AppDatabase.getSetting(
+      'autoArchiveCompletedTasks',
+    );
     final keepCount = await AppDatabase.getSetting('autoArchiveKeepCount');
     if (!mounted) return;
     setState(() {
@@ -226,21 +242,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final timerMode = ref.watch(timerProvider.select((s) => s.timerMode));
-    final singleCoreConfig =
-        ref.watch(timerProvider.select((s) => s.singleCoreConfig));
-    final pomodoroConfig =
-        ref.watch(timerProvider.select((s) => s.pomodoroConfig));
+    final singleCoreConfig = ref.watch(
+      timerProvider.select((s) => s.singleCoreConfig),
+    );
+    final pomodoroConfig = ref.watch(
+      timerProvider.select((s) => s.pomodoroConfig),
+    );
     final soundEnabled = ref.watch(timerProvider.select((s) => s.soundEnabled));
-    final notificationDuration =
-        ref.watch(timerProvider.select((s) => s.notificationDuration));
-    final notificationTemplate =
-        ref.watch(timerProvider.select((s) => s.notificationTemplate));
-    final snoozeDurationMinutes =
-        ref.watch(timerProvider.select((s) => s.snoozeDurationMinutes));
-    final rememberModeChoice =
-        ref.watch(timerProvider.select((s) => s.rememberModeChoice));
-    final preferredModeWhenOverdue =
-        ref.watch(timerProvider.select((s) => s.preferredModeWhenOverdue));
+    final notificationDuration = ref.watch(
+      timerProvider.select((s) => s.notificationDuration),
+    );
+    final notificationTemplate = ref.watch(
+      timerProvider.select((s) => s.notificationTemplate),
+    );
+    final snoozeDurationMinutes = ref.watch(
+      timerProvider.select((s) => s.snoozeDurationMinutes),
+    );
+    final rememberModeChoice = ref.watch(
+      timerProvider.select((s) => s.rememberModeChoice),
+    );
+    final preferredModeWhenOverdue = ref.watch(
+      timerProvider.select((s) => s.preferredModeWhenOverdue),
+    );
     final timeZoneMode = ref.watch(timeZoneProvider);
     final themeScheme = ref.watch(themeSchemeProvider);
 
@@ -356,8 +379,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       onChanged: (value) {
                         final mins = int.tryParse(value) ?? 15;
                         timerNotifier.updatePomodoroConfig(
-                          timerState.pomodoroConfig
-                              .copyWith(longBreakDuration: mins),
+                          timerState.pomodoroConfig.copyWith(
+                            longBreakDuration: mins,
+                          ),
                         );
                       },
                       isDark: isDark,
@@ -369,8 +393,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       onChanged: (value) {
                         final cycles = int.tryParse(value) ?? 4;
                         timerNotifier.updatePomodoroConfig(
-                          timerState.pomodoroConfig
-                              .copyWith(cyclesBeforeLongBreak: cycles),
+                          timerState.pomodoroConfig.copyWith(
+                            cyclesBeforeLongBreak: cycles,
+                          ),
                         );
                       },
                       isDark: isDark,
@@ -381,8 +406,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       value: timerState.pomodoroConfig.autoStartNext,
                       onChanged: (value) {
                         timerNotifier.updatePomodoroConfig(
-                          timerState.pomodoroConfig
-                              .copyWith(autoStartNext: value),
+                          timerState.pomodoroConfig.copyWith(
+                            autoStartNext: value,
+                          ),
                         );
                       },
                       isDark: isDark,
@@ -393,8 +419,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       value: timerState.pomodoroConfig.autoStartBreak,
                       onChanged: (value) {
                         timerNotifier.updatePomodoroConfig(
-                          timerState.pomodoroConfig
-                              .copyWith(autoStartBreak: value),
+                          timerState.pomodoroConfig.copyWith(
+                            autoStartBreak: value,
+                          ),
                         );
                       },
                       isDark: isDark,
@@ -457,10 +484,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     label: '主题配色',
                     value: themeScheme.id,
                     options: AppTheme.schemes
-                        .map((scheme) => {
-                              'value': scheme.id,
-                              'label': scheme.label,
-                            })
+                        .map(
+                          (scheme) => {
+                            'value': scheme.id,
+                            'label': scheme.label,
+                          },
+                        )
                         .toList(),
                     onChanged: (value) async {
                       try {
@@ -533,7 +562,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     value: _autoArchiveEnabled,
                     onChanged: (value) async {
                       await AppDatabase.setSetting(
-                          'autoArchiveCompletedTasks', value.toString());
+                        'autoArchiveCompletedTasks',
+                        value.toString(),
+                      );
                       setState(() => _autoArchiveEnabled = value);
                       _showSnackBar(value ? '自动归档已开启' : '自动归档已关闭');
                     },
@@ -545,10 +576,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       label: '同名已完成任务保留数量（0-9）',
                       controller: _autoArchiveKeepController,
                       onChanged: (value) async {
-                        final keepCount =
-                            (int.tryParse(value) ?? 3).clamp(0, 9);
+                        final keepCount = (int.tryParse(value) ?? 3).clamp(
+                          0,
+                          9,
+                        );
                         await AppDatabase.setSetting(
-                            'autoArchiveKeepCount', keepCount.toString());
+                          'autoArchiveKeepCount',
+                          keepCount.toString(),
+                        );
                       },
                       isDark: isDark,
                     ),
@@ -567,9 +602,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     decoration: BoxDecoration(
                       color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: context.appColors.border,
-                      ),
+                      border: Border.all(color: context.appColors.border),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -619,79 +652,88 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                   ),
 
-                  const SizedBox(height: 24),
+                  if (!PlatformInfo.isWeb) ...[
+                    const SizedBox(height: 24),
 
-                  // Calendar Sync Debug Section
-                  _buildSectionTitle('📅 日历同步高级设置', isDark),
-                  const SizedBox(height: 12),
-                  Text(
-                    '如果您的日历出现重复事件或无法修改的问题，您可以使用此按钮强制清理系统中的所有相关日历并重新同步当前有效任务。',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: context.appColors.textSecondary,
+                    // Calendar Sync Debug Section
+                    _buildSectionTitle('📅 日历同步高级设置', isDark),
+                    const SizedBox(height: 12),
+                    Text(
+                      '如果您的日历出现重复事件或无法修改的问题，您可以使用此按钮强制清理系统中的所有相关日历并重新同步当前有效任务。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.appColors.textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  _SettingButton(
-                    label: '清理日历系统并强制刷新',
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (c) => AlertDialog(
-                          title: const Text('强制清理日历'),
-                          content: const Text(
-                              '此操作将删除系统中所有名为 "FocusMyTime 提醒" 的日历，并重新同步当前的提醒任务。这需要几秒钟的时间。确定继续吗？'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(c).pop(false),
-                              child: const Text('取消'),
+                    const SizedBox(height: 12),
+                    _SettingButton(
+                      label: '清理日历系统并强制刷新',
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (c) => AlertDialog(
+                            title: const Text('强制清理日历'),
+                            content: const Text(
+                              '此操作将删除系统中所有名为 "FocusMyTime 提醒" 的日历，并重新同步当前的提醒任务。这需要几秒钟的时间。确定继续吗？',
                             ),
-                            ElevatedButton(
-                              onPressed: () => Navigator.of(c).pop(true),
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red),
-                              child: const Text('确定清理',
-                                  style: TextStyle(color: Colors.white)),
-                            ),
-                          ],
-                        ),
-                      );
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(c).pop(false),
+                                child: const Text('取消'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(c).pop(true),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                ),
+                                child: const Text(
+                                  '确定清理',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
 
-                      if (confirm == true) {
-                        if (!context.mounted) return;
-                        try {
-                          // 展示一个全局 Loading
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (c) => const Center(
-                                child: CircularProgressIndicator()),
-                          );
-
-                          final tasks = await _loadAllTaskItems();
-                          await CalendarService.forceRebuildCalendar(tasks);
-
-                          if (context.mounted) {
-                            Navigator.of(context).pop(); // 关闭 loading
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('日历系统已清理并重新同步完成！')),
+                        if (confirm == true) {
+                          if (!context.mounted) return;
+                          try {
+                            // 展示一个全局 Loading
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (c) => const Center(
+                                child: CircularProgressIndicator(),
+                              ),
                             );
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            Navigator.of(context).pop(); // 关闭 loading
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('清理失败: $e')),
-                            );
+
+                            final tasks = await _loadAllTaskItems();
+                            await CalendarService.forceRebuildCalendar(tasks);
+
+                            if (context.mounted) {
+                              Navigator.of(context).pop(); // 关闭 loading
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('日历系统已清理并重新同步完成！'),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              Navigator.of(context).pop(); // 关闭 loading
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('清理失败: $e')),
+                              );
+                            }
                           }
                         }
-                      }
-                    },
-                    isPrimary: false,
-                    isDark: isDark,
-                  ),
+                      },
+                      isPrimary: false,
+                      isDark: isDark,
+                    ),
 
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 24),
+                  ],
 
                   // Cloud Sync Section
                   _buildSectionTitle('☁ 同步服务器', isDark),
@@ -709,9 +751,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           label: '服务器地址',
                           controller: _syncServerUrlController,
                           onChanged: (value) {},
-                          hint: 'http://1.12.46.222:6677',
+                          hint: 'https://focus.dluserver.cn',
                           isDark: isDark,
-                          enabled: !_isLoggedIn,
+                          enabled: !_isLoggedIn && !_isAuthenticating,
                           focusNode: _syncUrlFocusNode,
                           nextFocusNode: _syncUsernameFocusNode,
                         ),
@@ -723,7 +765,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           onChanged: (value) {},
                           hint: '用户名',
                           isDark: isDark,
-                          enabled: !_isLoggedIn,
+                          enabled: !_isLoggedIn && !_isAuthenticating,
                           focusNode: _syncUsernameFocusNode,
                           nextFocusNode: _syncPasswordFocusNode,
                         ),
@@ -735,7 +777,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           onChanged: (value) {},
                           hint: '密码',
                           isDark: isDark,
-                          enabled: !_isLoggedIn,
+                          enabled: !_isLoggedIn && !_isAuthenticating,
                           obscureText: _obscurePassword,
                           isPassword: true,
                           onPasswordVisibilityToggle: () {
@@ -753,14 +795,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           },
                           focusNode: _syncPasswordFocusNode,
                           nextFocusNode: _syncRegisterFocusNode,
-                          onSubmitted: (_) =>
-                              _isLoggedIn ? null : _handleLogin(),
+                          onSubmitted: (_) => _isLoggedIn || _isAuthenticating
+                              ? null
+                              : _handleLogin(),
                         ),
                         const SizedBox(height: 12),
                         _buildButtonRow([
                           _SettingButton(
                             label: '注册',
-                            onPressed: _isLoggedIn ? null : _handleRegister,
+                            onPressed: _isLoggedIn || _isAuthenticating
+                                ? null
+                                : _handleRegister,
                             isPrimary: false,
                             isDark: isDark,
                             focusNode: _syncRegisterFocusNode,
@@ -768,7 +813,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           const SizedBox(width: 8),
                           _SettingButton(
                             label: '登录',
-                            onPressed: _isLoggedIn ? null : _handleLogin,
+                            onPressed: _isLoggedIn || _isAuthenticating
+                                ? null
+                                : _handleLogin,
                             isPrimary: true,
                             isDark: isDark,
                             focusNode: _syncLoginFocusNode,
@@ -799,8 +846,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   const SizedBox(height: 12),
                   _SettingButton(
                     label: _isSyncing ? '同步中...' : '立即同步',
-                    onPressed:
-                        _isLoggedIn && !_isSyncing ? _handleSyncNow : null,
+                    onPressed: _isLoggedIn && !_isSyncing
+                        ? _handleSyncNow
+                        : null,
                     isPrimary: true,
                     isAccent: true,
                     isDark: isDark,
@@ -869,9 +917,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     decoration: BoxDecoration(
                       color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: context.appColors.border,
-                      ),
+                      border: Border.all(color: context.appColors.border),
                     ),
                     child: Row(
                       children: [
@@ -907,39 +953,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     decoration: BoxDecoration(
                       color: context.appColors.surface,
                       borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: context.appColors.border,
-                      ),
+                      border: Border.all(color: context.appColors.border),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ..._permissionStatus.entries.map((e) => Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '${e.key}:',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: context.appColors.textSecondary,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    e.value,
+                        ..._permissionStatus.entries.map(
+                          (e) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '${e.key}:',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: e.value.contains('granted')
-                                          ? context.appColors.success
-                                          : Colors.orange,
+                                      color: context.appColors.textSecondary,
                                     ),
                                   ),
-                                ],
-                              ),
-                            )),
+                                ),
+                                Text(
+                                  e.value,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: e.value.contains('granted')
+                                        ? context.appColors.success
+                                        : Colors.orange,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -950,15 +996,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       onPressed: () async {
                         try {
                           await ReminderService.initialize();
-                          final granted = await ReminderService
-                              .requestNotificationPermission();
+                          final granted =
+                              await ReminderService.requestNotificationPermission();
                           await _loadPermissions();
                           if (granted) {
-                            _showSnackBar('通知权限已开启，权限状态已更新');
+                            _showSnackBar(
+                              PlatformInfo.isWeb
+                                  ? '页面内提醒已启用，权限状态已更新'
+                                  : '通知权限已开启，权限状态已更新',
+                            );
                           } else {
                             await ReminderService.openNotificationSettings();
-                            _showSnackBar('通知仍被系统拒绝，已打开 macOS 通知设置',
-                                isError: true);
+                            _showSnackBar(
+                              '通知仍被系统拒绝，已打开 macOS 通知设置',
+                              isError: true,
+                            );
                           }
                         } catch (e) {
                           _showSnackBar('检查权限失败: $e', isError: true);
@@ -967,53 +1019,62 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       isPrimary: false,
                       isDark: isDark,
                     ),
-                    _SettingButton(
-                      label: '精确闹钟',
-                      onPressed: () async {
-                        if (Platform.isAndroid) {
-                          try {
-                            await ReminderService.requestExactAlarmPermission();
-                            await _loadPermissions();
-                            _showSnackBar('精确闹钟权限请求完成');
-                          } catch (e) {
-                            _showSnackBar('请求精确闹钟权限失败: $e', isError: true);
+                    if (!PlatformInfo.isWeb) ...[
+                      const SizedBox(width: 8),
+                      _SettingButton(
+                        label: '精确闹钟',
+                        onPressed: () async {
+                          if (PlatformInfo.isAndroid) {
+                            try {
+                              await ReminderService.requestExactAlarmPermission();
+                              await _loadPermissions();
+                              _showSnackBar('精确闹钟权限请求完成');
+                            } catch (e) {
+                              _showSnackBar('请求精确闹钟权限失败: $e', isError: true);
+                            }
+                          } else {
+                            _showSnackBar('精确闹钟权限仅在 Android 平台上需要，当前平台无需配置。');
                           }
-                        } else {
-                          _showSnackBar('精确闹钟权限仅在 Android 平台上需要，当前平台无需配置。');
-                        }
-                      },
-                      isPrimary: false,
-                      isDark: isDark,
-                    ),
+                        },
+                        isPrimary: false,
+                        isDark: isDark,
+                      ),
+                    ],
                   ]),
                   const SizedBox(height: 8),
                   _buildButtonRow([
-                    _SettingButton(
-                      label: '电池优化',
-                      onPressed: () async {
-                        if (Platform.isAndroid) {
-                          try {
-                            await ReminderService
-                                .requestIgnoreBatteryOptimizations();
-                            await _loadPermissions();
-                            _showSnackBar('忽略电池优化请求完成');
-                          } catch (e) {
-                            _showSnackBar('请求忽略电池优化失败: $e', isError: true);
+                    if (!PlatformInfo.isWeb) ...[
+                      _SettingButton(
+                        label: '电池优化',
+                        onPressed: () async {
+                          if (PlatformInfo.isAndroid) {
+                            try {
+                              await ReminderService.requestIgnoreBatteryOptimizations();
+                              await _loadPermissions();
+                              _showSnackBar('忽略电池优化请求完成');
+                            } catch (e) {
+                              _showSnackBar('请求忽略电池优化失败: $e', isError: true);
+                            }
+                          } else {
+                            _showSnackBar('忽略电池优化设置仅在 Android 平台上需要，当前平台无需配置。');
                           }
-                        } else {
-                          _showSnackBar('忽略电池优化设置仅在 Android 平台上需要，当前平台无需配置。');
-                        }
-                      },
-                      isPrimary: false,
-                      isDark: isDark,
-                    ),
+                        },
+                        isPrimary: false,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     _SettingButton(
-                      label: '发送测试通知',
+                      label: PlatformInfo.isWeb ? '播放测试铃声' : '发送测试通知',
                       onPressed: () async {
                         try {
                           await ReminderService.showImmediateTestNotification();
                           await _loadPermissions();
-                          _showSnackBar('测试通知已发送，请检查系统通知中心');
+                          _showSnackBar(
+                            PlatformInfo.isWeb
+                                ? '测试铃声已播放'
+                                : '测试通知已发送，请检查系统通知中心',
+                          );
                         } catch (e) {
                           await _loadPermissions();
                           _showSnackBar('发送测试通知失败，已打开通知设置: $e', isError: true);
@@ -1023,125 +1084,140 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       isDark: isDark,
                     ),
                   ]),
-                  const SizedBox(height: 8),
-                  _buildButtonRow([
-                    _SettingButton(
-                      label: '强制清理日历',
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (c) => AlertDialog(
-                            title: const Text('强制清理日历'),
-                            content: const Text(
-                                '此操作将删除系统中所有名为 "FocusMyTime 提醒" 的日历，并重新同步当前的提醒任务。这需要几秒钟的时间。确定继续吗？'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(c).pop(false),
-                                child: const Text('取消'),
+                  if (!PlatformInfo.isWeb) ...[
+                    const SizedBox(height: 8),
+                    _buildButtonRow([
+                      _SettingButton(
+                        label: '强制清理日历',
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (c) => AlertDialog(
+                              title: const Text('强制清理日历'),
+                              content: const Text(
+                                '此操作将删除系统中所有名为 "FocusMyTime 提醒" 的日历，并重新同步当前的提醒任务。这需要几秒钟的时间。确定继续吗？',
                               ),
-                              ElevatedButton(
-                                onPressed: () => Navigator.of(c).pop(true),
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red),
-                                child: const Text('确定清理',
-                                    style: TextStyle(color: Colors.white)),
-                              ),
-                            ],
-                          ),
-                        );
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(c).pop(false),
+                                  child: const Text('取消'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.of(c).pop(true),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.red,
+                                  ),
+                                  child: const Text(
+                                    '确定清理',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
 
-                        if (confirm == true) {
-                          if (!context.mounted) return;
-                          try {
-                            showDialog(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (c) => const Center(
-                                  child: CircularProgressIndicator()),
-                            );
+                          if (confirm == true) {
+                            if (!context.mounted) return;
+                            try {
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (c) => const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
 
-                            final tasks = await _loadAllTaskItems();
-                            await CalendarService.forceRebuildCalendar(tasks);
+                              final tasks = await _loadAllTaskItems();
+                              await CalendarService.forceRebuildCalendar(tasks);
 
-                            if (context.mounted) {
-                              Navigator.of(context).pop(); // 关闭 loading
-                              _showSnackBar('日历系统已清理并重新同步完成！');
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              Navigator.of(context).pop(); // 关闭 loading
-                              _showSnackBar('清理失败: $e', isError: true);
+                              if (context.mounted) {
+                                Navigator.of(context).pop(); // 关闭 loading
+                                _showSnackBar('日历系统已清理并重新同步完成！');
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                Navigator.of(context).pop(); // 关闭 loading
+                                _showSnackBar('清理失败: $e', isError: true);
+                              }
                             }
                           }
-                        }
-                      },
-                      isPrimary: false,
-                      isDark: isDark,
-                    ),
-                  ]),
-                  const SizedBox(height: 8),
-                  _buildButtonRow([
-                    _SettingButton(
-                      label: '测试系统闹钟',
-                      onPressed: () async {
-                        try {
-                          await ReminderService.triggerTestAlarm();
-                          _showSnackBar('测试系统闹钟已发送');
-                        } catch (e) {
-                          _showSnackBar('触发测试系统闹钟失败: $e', isError: true);
-                        }
-                      },
-                      isPrimary: false,
-                      isAccent: true,
-                      isDark: isDark,
-                    ),
-                    _SettingButton(
-                      label: '测试日历同步',
-                      onPressed: () async {
-                        try {
-                          final success =
-                              await CalendarService.triggerTestSync();
-                          _showSnackBar(
-                              success ? '测试事件已添加至日历' : '日历同步测试失败，请检查权限');
-                        } catch (e) {
-                          _showSnackBar('测试日历同步异常: $e', isError: true);
-                        }
-                      },
-                      isPrimary: false,
-                      isAccent: true,
-                      isDark: isDark,
-                    ),
-                  ]),
+                        },
+                        isPrimary: false,
+                        isDark: isDark,
+                      ),
+                    ]),
+                  ],
+                  if (!PlatformInfo.isWeb) ...[
+                    const SizedBox(height: 8),
+                    _buildButtonRow([
+                      _SettingButton(
+                        label: '测试系统闹钟',
+                        onPressed: () async {
+                          try {
+                            await ReminderService.triggerTestAlarm();
+                            _showSnackBar('测试系统闹钟已发送');
+                          } catch (e) {
+                            _showSnackBar('触发测试系统闹钟失败: $e', isError: true);
+                          }
+                        },
+                        isPrimary: false,
+                        isAccent: true,
+                        isDark: isDark,
+                      ),
+                      if (!PlatformInfo.isWeb) ...[
+                        const SizedBox(width: 8),
+                        _SettingButton(
+                          label: '测试日历同步',
+                          onPressed: () async {
+                            try {
+                              final success =
+                                  await CalendarService.triggerTestSync();
+                              _showSnackBar(
+                                success ? '测试事件已添加至日历' : '日历同步测试失败，请检查权限',
+                              );
+                            } catch (e) {
+                              _showSnackBar('测试日历同步异常: $e', isError: true);
+                            }
+                          },
+                          isPrimary: false,
+                          isAccent: true,
+                          isDark: isDark,
+                        ),
+                      ],
+                    ]),
+                  ],
 
-                  const SizedBox(height: 24),
+                  if (!PlatformInfo.isWeb) ...[
+                    const SizedBox(height: 24),
 
-                  // Advanced Section
-                  _buildSectionTitle('🚀 高级功能', isDark),
-                  const SizedBox(height: 12),
-                  _buildSwitchSetting(
-                    label: '同步任务到系统日历',
-                    value: _calendarSyncEnabled,
-                    onChanged: (value) async {
-                      await CalendarService.setEnabled(value);
-                      setState(() => _calendarSyncEnabled = value);
-                      // 立即按“日历优先、通知兜底”的统一规则刷新所有任务。
-                      // 启用日历且权限正常时会创建/更新日历并取消系统通知；
-                      // 关闭日历时会回到系统通知并清理本机日历事件。
-                      final allTasks = await _loadAllTaskItems();
-                      await ReminderService.refreshAll(allTasks);
-                    },
-                    isDark: isDark,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4, left: 2),
-                    child: Text(
-                      '启用后，有提醒时间的任务将自动同步到手机系统日历中，提供更可靠的提醒。',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: context.appColors.textSecondary,
+                    // Advanced Section
+                    _buildSectionTitle('🚀 高级功能', isDark),
+                    const SizedBox(height: 12),
+                    _buildSwitchSetting(
+                      label: '同步任务到系统日历',
+                      value: _calendarSyncEnabled,
+                      onChanged: (value) async {
+                        await CalendarService.setEnabled(value);
+                        setState(() => _calendarSyncEnabled = value);
+                        // 立即按“日历优先、通知兜底”的统一规则刷新所有任务。
+                        // 启用日历且权限正常时会创建/更新日历并取消系统通知；
+                        // 关闭日历时会回到系统通知并清理本机日历事件。
+                        final allTasks = await _loadAllTaskItems();
+                        await ReminderService.refreshAll(allTasks);
+                      },
+                      isDark: isDark,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 2),
+                      child: Text(
+                        '启用后，有提醒时间的任务将自动同步到手机系统日历中，提供更可靠的提醒。',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: context.appColors.textSecondary,
+                        ),
                       ),
                     ),
-                  ),
+                  ],
 
                   const SizedBox(height: 24),
 
@@ -1193,7 +1269,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   Center(
                     child: Column(
                       children: [
-                        ref.watch(packageInfoProvider).when(
+                        ref
+                            .watch(packageInfoProvider)
+                            .when(
                               data: (info) => Text(
                                 'v${info.version}',
                                 style: TextStyle(
@@ -1246,10 +1324,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         Expanded(
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 13,
-              color: context.appColors.text,
-            ),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
           ),
         ),
         SizedBox(
@@ -1261,8 +1336,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             style: const TextStyle(fontSize: 13),
             decoration: InputDecoration(
               isDense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 8,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
               ),
@@ -1285,10 +1362,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         Expanded(
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 13,
-              color: context.appColors.text,
-            ),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
           ),
         ),
         SizedBox(
@@ -1297,7 +1371,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: context.appColors.accent,
+            activeThumbColor: context.appColors.accent,
           ),
         ),
       ],
@@ -1314,10 +1388,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Text(
                 '时区',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: context.appColors.text,
-                ),
+                style: TextStyle(fontSize: 13, color: context.appColors.text),
               ),
               const SizedBox(height: 4),
               Text(
@@ -1335,24 +1406,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           decoration: BoxDecoration(
             color: context.appColors.surface,
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: context.appColors.border,
-            ),
+            border: Border.all(color: context.appColors.border),
           ),
           child: DropdownButton<AppTimeZoneMode>(
             value: mode,
             underline: Container(),
             isDense: true,
-            style: TextStyle(
-              fontSize: 13,
-              color: context.appColors.text,
-            ),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
             dropdownColor: context.appColors.surface,
             items: AppTimeZoneMode.values.map((option) {
               return DropdownMenuItem(
                 value: option,
                 child: Text(
-                    '${AppTime.label(option)}（${AppTime.offsetLabelForMode(option)}）'),
+                  '${AppTime.label(option)}（${AppTime.offsetLabelForMode(option)}）',
+                ),
               );
             }).toList(),
             onChanged: (value) async {
@@ -1386,10 +1453,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         Expanded(
           child: Text(
             label,
-            style: TextStyle(
-              fontSize: 13,
-              color: context.appColors.text,
-            ),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
           ),
         ),
         Container(
@@ -1397,24 +1461,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           decoration: BoxDecoration(
             color: context.appColors.surface,
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: context.appColors.border,
-            ),
+            border: Border.all(color: context.appColors.border),
           ),
           child: DropdownButton<String>(
             value: value,
             underline: Container(),
             isDense: true,
-            style: TextStyle(
-              fontSize: 13,
-              color: context.appColors.text,
-            ),
+            style: TextStyle(fontSize: 13, color: context.appColors.text),
             dropdownColor: context.appColors.surface,
             items: options
-                .map((opt) => DropdownMenuItem(
-                      value: opt['value'],
-                      child: Text(opt['label']!),
-                    ))
+                .map(
+                  (opt) => DropdownMenuItem(
+                    value: opt['value'],
+                    child: Text(opt['label']!),
+                  ),
+                )
                 .toList(),
             onChanged: (v) {
               if (v != null) onChanged(v);
@@ -1430,9 +1491,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: context.appColors.warning.withOpacity(0.12),
+        color: context.appColors.warning.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: context.appColors.warning.withOpacity(0.6)),
+        border: Border.all(
+          color: context.appColors.warning.withValues(alpha: 0.6),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1446,10 +1509,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           Expanded(
             child: Text(
               message,
-              style: TextStyle(
-                fontSize: 12,
-                color: context.appColors.text,
-              ),
+              style: TextStyle(fontSize: 12, color: context.appColors.text),
             ),
           ),
         ],
@@ -1527,8 +1587,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: context.appColors.surface,
-          title:
-              Text('顶部清单自定义', style: TextStyle(color: context.appColors.text)),
+          title: Text(
+            '顶部清单自定义',
+            style: TextStyle(color: context.appColors.text),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1544,8 +1606,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 value: dontShowAgain,
                 onChanged: (value) =>
                     setDialogState(() => dontShowAgain = value == true),
-                title: Text('不再显示',
-                    style: TextStyle(color: context.appColors.text)),
+                title: Text(
+                  '不再显示',
+                  style: TextStyle(color: context.appColors.text),
+                ),
               ),
             ],
           ),
@@ -1590,10 +1654,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 13,
-            color: context.appColors.text,
-          ),
+          style: TextStyle(fontSize: 13, color: context.appColors.text),
         ),
         const SizedBox(height: 6),
         TextField(
@@ -1605,17 +1666,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           textInputAction: nextFocusNode != null
               ? TextInputAction.next
               : (onSubmitted != null
-                  ? TextInputAction.go
-                  : TextInputAction.done),
+                    ? TextInputAction.go
+                    : TextInputAction.done),
           style: const TextStyle(fontSize: 13),
           decoration: InputDecoration(
             hintText: hint,
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 8,
             ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
             suffixIcon: isPassword
                 ? InkWell(
                     borderRadius: BorderRadius.circular(20),
@@ -1663,10 +1724,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       children: [
         Text(
           label,
-          style: TextStyle(
-            fontSize: 13,
-            color: context.appColors.text,
-          ),
+          style: TextStyle(fontSize: 13, color: context.appColors.text),
         ),
         const SizedBox(height: 6),
         TextField(
@@ -1675,11 +1733,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           decoration: InputDecoration(
             hintText: hint,
             isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 8,
             ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
           ),
           onChanged: onChanged,
         ),
@@ -1695,22 +1753,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 color: context.appColors.textSecondary,
               ),
             ),
-            ...placeholderHints.map((p) => Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: context.appColors.surface,
-                    borderRadius: BorderRadius.circular(4),
+            ...placeholderHints.map(
+              (p) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: context.appColors.surface,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '${p['key']}（${p['desc']}）',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    color: context.appColors.textSecondary,
                   ),
-                  child: Text(
-                    '${p['key']}（${p['desc']}）',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      color: context.appColors.textSecondary,
-                    ),
-                  ),
-                )),
+                ),
+              ),
+            ),
           ],
         ),
       ],
@@ -1741,10 +1800,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       children: children.map((child) {
         if (child is _SettingButton) {
           return Expanded(
-              child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: child,
-          ));
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: child,
+            ),
+          );
         }
         return child;
       }).toList(),
@@ -1764,13 +1824,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _handleRegister() async {
-    if (_syncServerUrlController.text.isEmpty ||
-        _syncUsernameController.text.isEmpty ||
+    if (_isAuthenticating) return;
+    if (_syncServerUrlController.text.trim().isEmpty ||
+        _syncUsernameController.text.trim().isEmpty ||
         _syncPasswordController.text.isEmpty) {
       _showSnackBar('请填写完整信息', isError: true);
       return;
     }
 
+    setState(() => _isAuthenticating = true);
     try {
       String passwordToUse = _syncPasswordController.text;
       if (passwordToUse == SyncService.fakePassword) {
@@ -1780,12 +1842,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         }
       }
 
-      await SyncService.setServerUrl(_syncServerUrlController.text);
+      await SyncService.setServerUrl(_syncServerUrlController.text.trim());
       final result = await SyncService.register(
-        username: _syncUsernameController.text,
+        username: _syncUsernameController.text.trim(),
         password: passwordToUse,
       );
 
+      if (!mounted) return;
       if (result.success) {
         setState(() {
           _isLoggedIn = true;
@@ -1801,20 +1864,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _showSnackBar(result.error ?? '注册失败', isError: true);
       }
     } catch (e) {
-      setState(() => _syncStatus = '发生错误');
-      _showSnackBar('错误: $e', isError: true);
+      if (!mounted) return;
+      final message = e is FormatException ? e.message : '注册失败，请稍后重试';
+      setState(() => _syncStatus = message);
+      _showSnackBar(message, isError: true);
+    } finally {
+      if (mounted) setState(() => _isAuthenticating = false);
     }
     _clearStatusAfterDelay();
   }
 
   Future<void> _handleLogin() async {
-    if (_syncServerUrlController.text.isEmpty ||
-        _syncUsernameController.text.isEmpty ||
+    if (_isAuthenticating) return;
+    if (_syncServerUrlController.text.trim().isEmpty ||
+        _syncUsernameController.text.trim().isEmpty ||
         _syncPasswordController.text.isEmpty) {
       _showSnackBar('请填写完整信息', isError: true);
       return;
     }
 
+    setState(() => _isAuthenticating = true);
     try {
       String passwordToUse = _syncPasswordController.text;
       if (passwordToUse == SyncService.fakePassword) {
@@ -1824,12 +1893,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         }
       }
 
-      await SyncService.setServerUrl(_syncServerUrlController.text);
+      await SyncService.setServerUrl(_syncServerUrlController.text.trim());
       final result = await SyncService.login(
-        username: _syncUsernameController.text,
+        username: _syncUsernameController.text.trim(),
         password: passwordToUse,
       );
 
+      if (!mounted) return;
       if (result.success) {
         setState(() {
           _isLoggedIn = true;
@@ -1845,8 +1915,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _showSnackBar(result.error ?? '登录失败', isError: true);
       }
     } catch (e) {
-      setState(() => _syncStatus = '发生错误');
-      _showSnackBar('错误: $e', isError: true);
+      if (!mounted) return;
+      final message = e is FormatException ? e.message : '登录失败，请稍后重试';
+      setState(() => _syncStatus = message);
+      _showSnackBar(message, isError: true);
+    } finally {
+      if (mounted) setState(() => _isAuthenticating = false);
     }
     _clearStatusAfterDelay();
   }
@@ -1855,6 +1929,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       SyncService.stopAutoSync();
       await SyncService.logout();
+      if (!mounted) return;
       setState(() {
         _isLoggedIn = false;
         _syncStatus = '已登出';
@@ -1862,13 +1937,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         _syncPasswordController.clear();
       });
       _showSnackBar('已登出');
-    } catch (e) {
-      _showSnackBar('登出失败: $e', isError: true);
+    } catch (_) {
+      _showSnackBar('登出失败，请稍后重试', isError: true);
     }
     _clearStatusAfterDelay();
   }
 
   Future<void> _handleSyncNow() async {
+    if (_isSyncing) return;
     if (!SyncService.isLoggedIn) {
       _showSnackBar('请先登录', isError: true);
       return;
@@ -1882,6 +1958,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       final taskNotifier = ref.read(taskProvider.notifier);
       final result = await taskNotifier.sync();
+      if (!mounted) return;
 
       if (result.tokenExpired) {
         final warning = SyncService.syncWarning.isNotEmpty
@@ -1903,17 +1980,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         setState(() => _syncStatus = SyncService.lastSyncError ?? '同步失败或未配置');
         _showSnackBar(_syncStatus, isError: true);
       }
-    } catch (e) {
-      setState(() => _syncStatus = '同步失败: $e');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _syncStatus = '同步失败，请检查网络后重试');
       _showSnackBar(_syncStatus, isError: true);
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
     }
-
-    setState(() => _isSyncing = false);
     _clearStatusAfterDelay();
   }
 
   Future<void> _handleDebugInfo() async {
     final info = await AppDatabase.getDebugInfo();
+    if (!mounted) return;
     setState(() {
       _syncStatus =
           'DB:${info['dbOpen']} lists:${info['lists']} tasks:${info['tasks']} sessions:${info['sessions']}';
@@ -1938,16 +2017,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _handleExport() async {
     try {
+      if (kIsWeb) {
+        await exportWebBackup();
+        _showSnackBar('备份导出成功！登录信息和 AI 密钥不会包含在备份中。');
+        return;
+      }
       String? outputPath;
-      if (Platform.isMacOS || Platform.isWindows) {
-        outputPath = await FilePicker.platform.saveFile(
+      if (PlatformInfo.isMacOS || PlatformInfo.isWindows) {
+        outputPath = await FilePicker.saveFile(
           dialogTitle: '导出数据库备份',
           fileName: 'focus_my_time_backup.db',
           type: FileType.any,
         );
       } else {
         // Mobile platform: choose directory
-        final directoryPath = await FilePicker.platform.getDirectoryPath(
+        final directoryPath = await FilePicker.getDirectoryPath(
           dialogTitle: '选择保存备份的目录',
         );
         if (directoryPath != null) {
@@ -1967,8 +2051,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await AppDatabase.exportDatabase(outputPath);
       await _loadDbPath();
       _showSnackBar('备份导出成功！');
-    } catch (e) {
-      _showSnackBar('导出失败: $e', isError: true);
+    } catch (_) {
+      _showSnackBar('导出失败，请检查存储权限后重试', isError: true);
     }
   }
 
@@ -1995,7 +2079,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     if (confirm != true) return;
 
     try {
-      final result = await FilePicker.platform.pickFiles(
+      if (kIsWeb) {
+        final imported = await importWebBackup();
+        if (!imported) return;
+        if (!mounted) return;
+        await SyncService.resetCursorsAfterRestore();
+        await ref.read(taskProvider.notifier).reloadAfterDataRestore();
+        await ref.read(timeZoneProvider.notifier).reload();
+        ref.invalidate(aiChatProvider);
+        ref.read(sessionUpdateProvider.notifier).state++;
+        await _loadTaskbarSettings();
+        await _loadPermissions();
+        await _loadCalendarStatus();
+        if (mounted) setState(() => _lastSyncTime = null);
+        _showSnackBar('浏览器备份恢复成功，登录信息和 AI 密钥已保留；下次同步将重新核对全部数据。');
+        return;
+      }
+      final result = await FilePicker.pickFiles(
         dialogTitle: '选择要导入的数据库备份文件 (.db)',
         type: FileType.any,
       );
@@ -2003,6 +2103,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (result == null || result.files.single.path == null) {
         return;
       }
+      if (!mounted) return;
 
       final backupPath = result.files.single.path!;
       if (!backupPath.endsWith('.db') && !backupPath.endsWith('.sqlite')) {
@@ -2011,6 +2112,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       }
 
       await AppDatabase.importDatabase(backupPath);
+      if (!mounted) return;
 
       // Re-initialize lists and tasks
       await ref.read(taskProvider.notifier).loadLists();
@@ -2023,33 +2125,36 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
       _showSnackBar('数据库恢复成功！');
     } catch (e) {
-      _showSnackBar('导入失败: $e', isError: true);
+      final message = e is FormatException ? e.message : '导入失败，请确认备份文件有效后重试';
+      _showSnackBar(message, isError: true);
     }
   }
 
   Future<List<TaskItem>> _loadAllTaskItems() async {
     final allDbTasks = await AppDatabase.getAllTasks();
     return allDbTasks
-        .map((m) => TaskItem(
-              id: m['id'] as String,
-              listId: m['listId'] as String,
-              title: m['title'] as String,
-              notes: m['notes'] as String?,
-              completed: m['completed'] == true,
-              completedAt: m['completedAt'] as int?,
-              dueDate: m['dueDate'] as String?,
-              dueTime: m['dueTime'] as String?,
-              sortOrder: m['sortOrder'] as int,
-              isMyDay: m['isMyDay'] == true,
-              myDayAddedAt: m['myDayAddedAt'] as int?,
-              recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
-              expectedMinutes: m['expectedMinutes'] as int?,
-              isImportant: m['isImportant'] == true,
-              reminderAt: m['reminderAt'] as int?,
-              calendarEventId: m['calendarEventId'] as String?,
-              createdAt: m['createdAt'] as int,
-              updatedAt: m['updatedAt'] as int,
-            ))
+        .map(
+          (m) => TaskItem(
+            id: m['id'] as String,
+            listId: m['listId'] as String,
+            title: m['title'] as String,
+            notes: m['notes'] as String?,
+            completed: m['completed'] == true,
+            completedAt: m['completedAt'] as int?,
+            dueDate: m['dueDate'] as String?,
+            dueTime: m['dueTime'] as String?,
+            sortOrder: m['sortOrder'] as int,
+            isMyDay: m['isMyDay'] == true,
+            myDayAddedAt: m['myDayAddedAt'] as int?,
+            recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
+            expectedMinutes: m['expectedMinutes'] as int?,
+            isImportant: m['isImportant'] == true,
+            reminderAt: m['reminderAt'] as int?,
+            calendarEventId: m['calendarEventId'] as String?,
+            createdAt: m['createdAt'] as int,
+            updatedAt: m['updatedAt'] as int,
+          ),
+        )
         .toList();
   }
 
@@ -2063,8 +2168,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         return;
       }
       await UpdateDialog.show(context, updateInfo);
-    } catch (e) {
-      _showSnackBar('检查更新失败: $e', isError: true);
+    } catch (_) {
+      _showSnackBar('检查更新失败，请检查网络后重试', isError: true);
     }
   }
 
@@ -2097,43 +2202,53 @@ class _SettingButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = isDanger
+    final enabled = onPressed != null;
+    final enabledBackground = isDanger
         ? Colors.red
         : isAccent
-            ? (context.appColors.accentSecondary)
-            : isPrimary
-                ? (context.appColors.accent)
-                : Colors.transparent;
-
-    final textColor = isPrimary || isAccent || isDanger
+        ? (context.appColors.accentSecondary)
+        : isPrimary
+        ? (context.appColors.accent)
+        : Colors.transparent;
+    final enabledText = isPrimary || isAccent || isDanger
         ? Colors.white
         : context.appColors.text;
-
-    final borderColor = isDanger
+    final enabledBorder = isDanger
         ? Colors.red
         : isPrimary || isAccent
-            ? bgColor
-            : context.appColors.border;
+        ? enabledBackground
+        : context.appColors.border;
 
-    return Material(
-      color: bgColor,
-      borderRadius: BorderRadius.circular(6),
-      child: InkWell(
-        onTap: onPressed,
+    final bgColor = enabled
+        ? enabledBackground
+        : context.appColors.surfaceElevated.withValues(alpha: 0.55);
+    final textColor = enabled
+        ? enabledText
+        : context.appColors.textSecondary.withValues(alpha: 0.65);
+    final borderColor = enabled
+        ? enabledBorder
+        : context.appColors.border.withValues(alpha: 0.65);
+
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: Material(
+        color: bgColor,
         borderRadius: BorderRadius.circular(6),
-        focusNode: focusNode,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: borderColor),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: textColor,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(6),
+          focusNode: focusNode,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: borderColor),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 13, color: textColor),
             ),
           ),
         ),

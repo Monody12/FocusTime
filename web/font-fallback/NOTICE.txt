@@ -1,0 +1,11 @@
+FocusMyTime Web font notices
+
+The files under notosanssc/, notosanssymbols2/, and notocoloremoji/ are
+distributed under the SIL Open Font License 1.1. See OFL-1.1.txt.
+
+The file under roboto/ is distributed under the Apache License 2.0. See
+APACHE-2.0.txt.
+
+These files mirror the versioned fallback font resources referenced by the
+Flutter 3.44.7 Web engine. They are served locally so the application does not
+depend on an external font CDN at runtime.

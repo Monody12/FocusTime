@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +7,7 @@ import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
 import 'package:focus_my_time/core/providers/theme_provider.dart';
+import 'package:focus_my_time/core/platform/platform_info.dart';
 import 'package:focus_my_time/features/sidebar/presentation/widgets/sidebar.dart';
 import 'package:focus_my_time/features/timer/presentation/pages/timer_page.dart';
 import 'package:focus_my_time/features/tasks/presentation/pages/task_list_page.dart';
@@ -31,8 +31,9 @@ class FocusMyTimeApp extends ConsumerStatefulWidget {
 
 class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
     with WidgetsBindingObserver {
-  static const MethodChannel _androidBackChannel =
-      MethodChannel('focus_my_time/android_back');
+  static const MethodChannel _androidBackChannel = MethodChannel(
+    'focus_my_time/android_back',
+  );
 
   bool _showTimerPanel = false; // 默认不显示计时器，开始专注后才显示
   bool _showSettings = false;
@@ -47,7 +48,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isAndroid) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
     _scheduleAndroidForegroundSync();
@@ -70,7 +71,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
   }
 
   void _scheduleAndroidForegroundSync() {
-    if (!Platform.isAndroid || !SyncService.isLoggedIn) return;
+    if (!PlatformInfo.isAndroid || !SyncService.isLoggedIn) return;
     _foregroundSyncDebounce?.cancel();
     _foregroundSyncDebounce = Timer(const Duration(seconds: 1), () {
       if (!mounted) return;
@@ -97,22 +98,25 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
     final size = MediaQuery.of(context).size;
     final viewPadding = MediaQuery.paddingOf(context);
     final isMobile = size.width < 800;
-    final usesSystemInsets = Platform.isAndroid || Platform.isIOS;
+    final usesSystemInsets = PlatformInfo.isAndroid || PlatformInfo.isIOS;
     final topInset = usesSystemInsets ? viewPadding.top : 0.0;
     final bottomInset = usesSystemInsets ? viewPadding.bottom : 0.0;
 
-    final isDark = themeMode == ThemeMode.dark ||
+    final isDark =
+        themeMode == ThemeMode.dark ||
         (themeMode == ThemeMode.system &&
             MediaQuery.platformBrightnessOf(context) == Brightness.dark);
-    final topBarColor =
-        isDark ? context.appColors.sidebar : context.appColors.surface;
+    final topBarColor = isDark
+        ? context.appColors.sidebar
+        : context.appColors.surface;
     final systemUiStyle = SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
       systemNavigationBarColor: context.appColors.background,
-      systemNavigationBarIconBrightness:
-          isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarIconBrightness: isDark
+          ? Brightness.light
+          : Brightness.dark,
       systemNavigationBarDividerColor: Colors.transparent,
     );
 
@@ -140,7 +144,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
               width: 280,
               backgroundColor: context.appColors.sidebar,
               surfaceTintColor: Colors.transparent,
-              shadowColor: Colors.black.withOpacity(isDark ? 0.35 : 0.18),
+              shadowColor: Colors.black.withValues(alpha: isDark ? 0.35 : 0.18),
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.horizontal(
                   right: Radius.circular(18),
@@ -166,18 +170,11 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
               children: [
                 // Header (Top-level, spans full width)
                 Container(
-                  padding: EdgeInsets.fromLTRB(
-                    18,
-                    topInset + 12,
-                    18,
-                    12,
-                  ),
+                  padding: EdgeInsets.fromLTRB(18, topInset + 12, 18, 12),
                   decoration: BoxDecoration(
                     color: topBarColor,
                     border: Border(
-                      bottom: BorderSide(
-                        color: context.appColors.border,
-                      ),
+                      bottom: BorderSide(color: context.appColors.border),
                     ),
                   ),
                   child: Row(
@@ -223,8 +220,9 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                               style: TextButton.styleFrom(
                                 foregroundColor: context.appColors.warning,
                                 minimumSize: Size.zero,
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
                               ),
                             ),
                           );
@@ -233,16 +231,19 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                       // Theme toggle
                       IconButton(
                         icon: Icon(
-                            isDark ? AppIcons.lightMode : AppIcons.darkMode,
-                            size: AppIconSizes.nav),
+                          isDark ? AppIcons.lightMode : AppIcons.darkMode,
+                          size: AppIconSizes.nav,
+                        ),
                         onPressed: () => themeNotifier.toggleTheme(),
                         tooltip: '切换主题',
                         color: context.appColors.text,
                       ),
                       const SizedBox(width: 4),
                       IconButton(
-                        icon:
-                            const Icon(AppIcons.reset, size: AppIconSizes.nav),
+                        icon: const Icon(
+                          AppIcons.reset,
+                          size: AppIconSizes.nav,
+                        ),
                         onPressed: () => _syncNow(),
                         tooltip: '同步',
                         color: context.appColors.text,
@@ -263,8 +264,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                       // Settings button
                       TextButton.icon(
                         onPressed: () => setState(() => _showSettings = true),
-                        icon: const Icon(AppIcons.settings,
-                            size: AppIconSizes.nav),
+                        icon: const Icon(
+                          AppIcons.settings,
+                          size: AppIconSizes.nav,
+                        ),
                         label: isMobile ? const Text('') : const Text('设置'),
                         style: TextButton.styleFrom(
                           foregroundColor: context.appColors.text,
@@ -333,16 +336,19 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                     Flexible(
                                       child: Consumer(
                                         builder: (context, ref, child) {
-                                          final timerState =
-                                              ref.watch(timerProvider);
-                                          final taskState =
-                                              ref.watch(taskProvider);
+                                          final timerState = ref.watch(
+                                            timerProvider,
+                                          );
+                                          final taskState = ref.watch(
+                                            taskProvider,
+                                          );
                                           return _buildFocusButton(
-                                              timerState,
-                                              timerNotifier,
-                                              taskState,
-                                              isDark,
-                                              isMobile);
+                                            timerState,
+                                            timerNotifier,
+                                            taskState,
+                                            isDark,
+                                            isMobile,
+                                          );
                                         },
                                       ),
                                     ),
@@ -350,13 +356,15 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                   OutlinedButton(
                                     onPressed: () {
                                       setState(
-                                          () => _showCalendar = !_showCalendar);
+                                        () => _showCalendar = !_showCalendar,
+                                      );
                                       if (_showCalendar) _showSettings = false;
                                     },
                                     style: OutlinedButton.styleFrom(
                                       padding: EdgeInsets.symmetric(
-                                          horizontal: isMobile ? 8 : 16,
-                                          vertical: 10),
+                                        horizontal: isMobile ? 8 : 16,
+                                        vertical: 10,
+                                      ),
                                       side: BorderSide(
                                         color: context.appColors.border,
                                       ),
@@ -372,18 +380,21 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                           size: AppIconSizes.compact,
                                           color: _showCalendar
                                               ? context
-                                                  .appColors.accentSecondary
+                                                    .appColors
+                                                    .accentSecondary
                                               : context.appColors.text,
                                         ),
                                         if (!isMobile) ...[
                                           const SizedBox(
-                                              width: AppIconSpacing.compactGap),
+                                            width: AppIconSpacing.compactGap,
+                                          ),
                                           Text(
                                             '日历',
                                             style: TextStyle(
                                               color: _showCalendar
                                                   ? context
-                                                      .appColors.accentSecondary
+                                                        .appColors
+                                                        .accentSecondary
                                                   : context.appColors.text,
                                             ),
                                           ),
@@ -393,7 +404,9 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                   ),
                                   if (!isMobile) ...[
                                     const SizedBox(width: 12),
-                                    ref.watch(packageInfoProvider).when(
+                                    ref
+                                        .watch(packageInfoProvider)
+                                        .when(
                                           data: (info) => Text(
                                             'v${info.version}',
                                             style: TextStyle(
@@ -401,7 +414,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                               color: isDark
                                                   ? AppColors.darkTextSecondary
                                                   : AppColors
-                                                      .lightTextSecondary,
+                                                        .lightTextSecondary,
                                             ),
                                           ),
                                           loading: () =>
@@ -497,8 +510,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: systemUiStyle,
       child: PopScope(
-        canPop: !Platform.isAndroid,
-        onPopInvoked: (didPop) {
+        canPop: !PlatformInfo.isAndroid,
+        onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
           _handleSystemBack(isMobile);
         },
@@ -507,8 +520,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
           onKeyEvent: (node, event) => _handleDeleteShortcut(event),
           child: CallbackShortcuts(
             bindings: {
-              const SingleActivator(LogicalKeyboardKey.keyT, control: true):
-                  () {
+              const SingleActivator(
+                LogicalKeyboardKey.keyT,
+                control: true,
+              ): () {
                 if (taskState.selectedTaskId != null) {
                   final taskNotifier = ref.read(taskProvider.notifier);
                   final task = taskState.tasks
@@ -523,8 +538,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                   }
                 }
               },
-              const SingleActivator(LogicalKeyboardKey.keyD, control: true):
-                  () {
+              const SingleActivator(
+                LogicalKeyboardKey.keyD,
+                control: true,
+              ): () {
                 if (taskState.selectedTaskId != null) {
                   ref
                       .read(taskProvider.notifier)
@@ -550,8 +567,9 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
     final selectedTaskId = taskState.selectedTaskId;
     if (selectedTaskId == null) return KeyEventResult.ignored;
 
-    final task =
-        taskState.tasks.where((t) => t.id == selectedTaskId).firstOrNull;
+    final task = taskState.tasks
+        .where((t) => t.id == selectedTaskId)
+        .firstOrNull;
     if (task == null) return KeyEventResult.ignored;
 
     _confirmDeleteTask(context, task);
@@ -598,7 +616,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
       return false;
     }
 
-    if (Platform.isAndroid) {
+    if (PlatformInfo.isAndroid) {
       try {
         await _androidBackChannel.invokeMethod<void>('moveTaskToBack');
       } catch (_) {
@@ -662,8 +680,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                           onPressed: () =>
                               setState(() => _showTimerPanel = false),
                         ),
-                        const Text('专注计时',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text(
+                          '专注计时',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
                     const Expanded(child: TimerPage()),
@@ -678,13 +698,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
       // Desktop grid
       return Row(
         children: [
-          const Expanded(
-            child: TaskListView(),
-          ),
-          Container(
-            width: 1,
-            color: context.appColors.border,
-          ),
+          const Expanded(child: TaskListView()),
+          Container(width: 1, color: context.appColors.border),
           Container(
             width: 376,
             decoration: BoxDecoration(
@@ -693,7 +708,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                   : context.appColors.background,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(isDark ? 0.16 : 0.06),
+                  color: Colors.black.withValues(alpha: isDark ? 0.16 : 0.06),
                   blurRadius: 18,
                   offset: const Offset(-8, 0),
                 ),
@@ -708,14 +723,20 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
     }
   }
 
-  Widget _buildFocusButton(TimerState timerState, TimerNotifier timerNotifier,
-      TaskState taskState, bool isDark, bool isMobile) {
+  Widget _buildFocusButton(
+    TimerState timerState,
+    TimerNotifier timerNotifier,
+    TaskState taskState,
+    bool isDark,
+    bool isMobile,
+  ) {
     if (timerState.timerStatus == TimerStatus.running ||
         timerState.timerStatus == TimerStatus.paused ||
         timerState.timerStatus == TimerStatus.completed) {
       if (timerState.timerStatus == TimerStatus.completed) {
         final isPomodoro = timerState.timerMode == TimerMode.pomodoro;
-        final nextIsBreak = isPomodoro &&
+        final nextIsBreak =
+            isPomodoro &&
             (timerState.timerPhase == 'break' ||
                 timerState.timerPhase == 'long-break');
 
@@ -728,20 +749,23 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
           children: [
             if (nextIsBreak)
               _buildFooterActionButton(
-                label: isMobile ? '☕ 休息' : '☕ 开始休息',
+                icon: AppIcons.breakTime,
+                label: isMobile ? '休息' : '开始休息',
                 onTap: () => timerNotifier.startBreak(),
                 color: context.appColors.accent,
                 isPrimary: true,
               )
             else
               _buildFooterActionButton(
-                label: isMobile ? '🎯 专注' : '🎯 开始专注',
+                icon: AppIcons.focus,
+                label: isMobile ? '专注' : '开始专注',
                 onTap: () => timerNotifier.resetFocus(),
                 color: context.appColors.accentSecondary,
                 isPrimary: true,
               ),
             _buildFooterActionButton(
-              label: isMobile ? '🎯 继续' : '🎯 继续专注',
+              icon: AppIcons.play,
+              label: isMobile ? '继续' : '继续专注',
               onTap: () => timerNotifier.startFocus(),
               color: context.appColors.accent,
               isPrimary: false,
@@ -762,12 +786,20 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
           borderRadius: BorderRadius.circular(6),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            child: Text(
-              '⏱ ${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
-              style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w500),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const AppIcon(AppIcons.timer, size: 16, color: Colors.white),
+                const SizedBox(width: 6),
+                Text(
+                  '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -781,10 +813,20 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
         borderRadius: BorderRadius.circular(6),
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-          child: const Text(
-            '🎯 开始专注',
-            style: TextStyle(
-                fontSize: 14, color: Colors.white, fontWeight: FontWeight.w500),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(AppIcons.focus, size: 16, color: Colors.white),
+              SizedBox(width: 6),
+              Text(
+                '开始专注',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -792,7 +834,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
   }
 
   void _handleFooterButton(
-      TimerState timerState, TimerNotifier timerNotifier, TaskState taskState) {
+    TimerState timerState,
+    TimerNotifier timerNotifier,
+    TaskState taskState,
+  ) {
     if (timerState.timerStatus == TimerStatus.running ||
         timerState.timerStatus == TimerStatus.paused) {
       setState(() => _showTimerPanel = !_showTimerPanel);
@@ -822,6 +867,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
   }
 
   Widget _buildFooterActionButton({
+    required IconData icon,
     required String label,
     required VoidCallback onTap,
     required Color color,
@@ -842,13 +888,20 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                   borderRadius: BorderRadius.circular(6),
                 )
               : null,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: isPrimary ? Colors.white : color,
-              fontWeight: FontWeight.bold,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppIcon(icon, size: 15, color: isPrimary ? Colors.white : color),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isPrimary ? Colors.white : color,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         ),
       ),

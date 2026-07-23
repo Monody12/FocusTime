@@ -76,12 +76,10 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
           decoration: BoxDecoration(
             color: context.appColors.surfaceElevated,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: context.appColors.border,
-            ),
+            border: Border.all(color: context.appColors.border),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.14 : 0.04),
+                color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.04),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
@@ -116,10 +114,7 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                       color: context.appColors.textSecondary,
                     ),
                   ),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: context.appColors.text,
-                  ),
+                  style: TextStyle(fontSize: 14, color: context.appColors.text),
                   onSubmitted: (_) => _addTask(),
                 ),
               ),
@@ -154,10 +149,10 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                               physics: const NeverScrollableScrollPhysics(),
                               // 由 TaskItemWidget 内的 ReorderableDragStartListener 接管拖拽
                               buildDefaultDragHandles: false,
-                              onReorder: (oldIndex, newIndex) {
-                                if (newIndex > oldIndex) newIndex -= 1;
-                                final taskIds =
-                                    incompleteTasks.map((t) => t.id).toList();
+                              onReorderItem: (oldIndex, newIndex) {
+                                final taskIds = incompleteTasks
+                                    .map((t) => t.id)
+                                    .toList();
                                 final item = taskIds.removeAt(oldIndex);
                                 taskIds.insert(newIndex, item);
                                 taskNotifier.reorderTasks(taskIds);
@@ -168,11 +163,13 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                                     key: ValueKey(incompleteTasks[i].id),
                                     task: incompleteTasks[i],
                                     index: i,
-                                    isSelected: taskState.selectedTaskId ==
+                                    isSelected:
+                                        taskState.selectedTaskId ==
                                         incompleteTasks[i].id,
                                     onTap: () {
                                       taskNotifier.setSelectedTask(
-                                          incompleteTasks[i].id);
+                                        incompleteTasks[i].id,
+                                      );
                                     },
                                   ),
                               ],
@@ -184,7 +181,9 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                               Padding(
                                 key: const ValueKey('completed_header'),
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
                                 child: Row(
                                   children: [
                                     Text(
@@ -202,11 +201,13 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                                 TaskItemWidget(
                                   key: ValueKey(completedTasks[i].id),
                                   task: completedTasks[i],
-                                  isSelected: taskState.selectedTaskId ==
+                                  isSelected:
+                                      taskState.selectedTaskId ==
                                       completedTasks[i].id,
                                   onTap: () {
-                                    taskNotifier
-                                        .setSelectedTask(completedTasks[i].id);
+                                    taskNotifier.setSelectedTask(
+                                      completedTasks[i].id,
+                                    );
                                   },
                                 ),
                             ],
@@ -245,10 +246,9 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
     if (_newTaskController.text.trim().isNotEmpty) {
       final currentViewType = ref.read(taskProvider).currentViewType;
       final isMyDay = currentViewType == 'my-day';
-      await ref.read(taskProvider.notifier).createTask(
-            _newTaskController.text.trim(),
-            isMyDay: isMyDay,
-          );
+      await ref
+          .read(taskProvider.notifier)
+          .createTask(_newTaskController.text.trim(), isMyDay: isMyDay);
       _newTaskController.clear();
     }
   }

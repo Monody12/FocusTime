@@ -42,8 +42,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
     final timerState = ref.watch(timerProvider);
 
     // Get my day tasks
-    final myDayTasks =
-        taskState.tasks.where((t) => t.isMyDay && !t.completed).toList();
+    final myDayTasks = taskState.tasks
+        .where((t) => t.isMyDay && !t.completed)
+        .toList();
 
     // Sync local history with timer state history
     final displayHistory = timerState.taskHistory.isNotEmpty
@@ -77,7 +78,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                     hintText: '输入你正在专注的内容...',
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide(color: context.appColors.border),
@@ -94,9 +97,7 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                       ),
                     ),
                   ),
-                  style: TextStyle(
-                    color: context.appColors.text,
-                  ),
+                  style: TextStyle(color: context.appColors.text),
                   onTap: () => setState(() => _showHistory = true),
                   onSubmitted: (_) => _handleSubmit(),
                 ),
@@ -128,7 +129,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                   if (myDayTasks.isNotEmpty) ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       child: Row(
                         children: [
                           AppIcon(
@@ -147,8 +150,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                         ],
                       ),
                     ),
-                    ...myDayTasks.map((task) =>
-                        _buildHistoryItem(task.title, AppIcons.tasks)),
+                    ...myDayTasks.map(
+                      (task) => _buildHistoryItem(task.title, AppIcons.tasks),
+                    ),
                     if (displayHistory.isNotEmpty)
                       Divider(color: context.appColors.border),
                   ],
@@ -157,7 +161,9 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                   if (displayHistory.isNotEmpty) ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       child: Row(
                         children: [
                           AppIcon(
@@ -177,7 +183,8 @@ class _TaskInputState extends ConsumerState<TaskInput> {
                       ),
                     ),
                     ...displayHistory.map(
-                        (task) => _buildHistoryItem(task, AppIcons.recent)),
+                      (task) => _buildHistoryItem(task, AppIcons.recent),
+                    ),
                   ],
                 ],
               ),
@@ -203,10 +210,7 @@ class _TaskInputState extends ConsumerState<TaskInput> {
             Expanded(
               child: Text(
                 title,
-                style: TextStyle(
-                  color: context.appColors.text,
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: context.appColors.text, fontSize: 14),
                 overflow: TextOverflow.ellipsis,
               ),
             ),

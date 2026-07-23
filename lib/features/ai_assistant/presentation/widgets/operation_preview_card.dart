@@ -26,7 +26,8 @@ class OperationPreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDelete = operation.type.name == 'deleteTask';
-    final isCompleted = operation.status == AiOperationStatus.approved ||
+    final isCompleted =
+        operation.status == AiOperationStatus.approved ||
         operation.status == AiOperationStatus.rejected ||
         operation.status == AiOperationStatus.failed;
 
@@ -37,7 +38,7 @@ class OperationPreviewCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDelete
-              ? Colors.red.withOpacity(0.5)
+              ? Colors.red.withValues(alpha: 0.5)
               : (context.appColors.border),
           width: isDelete ? 1.5 : 1,
         ),
@@ -98,10 +99,18 @@ class OperationPreviewCard extends StatelessWidget {
                   _actionButton('拒绝', AppIcons.close, Colors.grey, onReject),
                   const SizedBox(width: 8),
                   _actionButton(
-                      '编辑', AppIcons.edit, context.appColors.accent, onEdit),
+                    '编辑',
+                    AppIcons.edit,
+                    context.appColors.accent,
+                    onEdit,
+                  ),
                   const SizedBox(width: 8),
-                  _actionButton('批准', AppIcons.taskDone,
-                      context.appColors.success, onApprove),
+                  _actionButton(
+                    '批准',
+                    AppIcons.taskDone,
+                    context.appColors.success,
+                    onApprove,
+                  ),
                 ],
               ),
             ],
@@ -138,12 +147,16 @@ class OperationPreviewCard extends StatelessWidget {
     } else if (dueDate != null) {
       try {
         final dateParts = dueDate.split('-');
-        endDt = AppTime.create(int.parse(dateParts[0]), int.parse(dateParts[1]),
-            int.parse(dateParts[2]));
+        endDt = AppTime.create(
+          int.parse(dateParts[0]),
+          int.parse(dateParts[1]),
+          int.parse(dateParts[2]),
+        );
       } catch (_) {}
     }
 
-    final duration = expectedMinutes ??
+    final duration =
+        expectedMinutes ??
         (startDt != null && endDt != null
             ? endDt.difference(startDt).inMinutes
             : null);
@@ -152,28 +165,37 @@ class OperationPreviewCard extends StatelessWidget {
     final chips = <Widget>[];
 
     if (startDt != null) {
-      chips.add(_timeChip(
-        AppIcons.reminder,
-        '提醒 ${_fmtTime(startDt)}',
-        colors,
-        accent: Colors.orange,
-      ));
+      chips.add(
+        _timeChip(
+          AppIcons.reminder,
+          '提醒 ${_fmtTime(startDt)}',
+          colors,
+          accent: Colors.orange,
+        ),
+      );
       if (endDt != null) {
-        chips.add(Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Icon(AppIcons.arrowForward,
-              size: AppIconSizes.status, color: colors.textSecondary),
-        ));
+        chips.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Icon(
+              AppIcons.arrowForward,
+              size: AppIconSizes.status,
+              color: colors.textSecondary,
+            ),
+          ),
+        );
       }
     }
     if (endDt != null) {
-      chips.add(_timeChip(
-        AppIcons.flag,
-        startDt != null
-            ? '截止 ${_fmtTime(endDt)}'
-            : '截止 ${_fmtDate(endDt)} ${_fmtTime(endDt)}',
-        colors,
-      ));
+      chips.add(
+        _timeChip(
+          AppIcons.flag,
+          startDt != null
+              ? '截止 ${_fmtTime(endDt)}'
+              : '截止 ${_fmtDate(endDt)} ${_fmtTime(endDt)}',
+          colors,
+        ),
+      );
     }
     if (duration != null && duration > 0) {
       chips.add(_timeChip(AppIcons.timer, '$duration分钟', colors));
@@ -194,13 +216,17 @@ class OperationPreviewCard extends StatelessWidget {
     );
   }
 
-  Widget _timeChip(IconData icon, String label, AppThemeColors colors,
-      {Color? accent}) {
+  Widget _timeChip(
+    IconData icon,
+    String label,
+    AppThemeColors colors, {
+    Color? accent,
+  }) {
     final color = accent ?? colors.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(
@@ -211,7 +237,10 @@ class OperationPreviewCard extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-                fontSize: 11, color: color, fontWeight: FontWeight.w500),
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -246,19 +275,26 @@ class OperationPreviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         label,
-        style:
-            TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500),
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
 
   Widget _actionButton(
-      String label, IconData icon, Color color, VoidCallback onTap) {
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(6),
@@ -272,7 +308,10 @@ class OperationPreviewCard extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                  fontSize: 13, color: color, fontWeight: FontWeight.w500),
+                fontSize: 13,
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
