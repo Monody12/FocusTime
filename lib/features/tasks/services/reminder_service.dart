@@ -392,7 +392,8 @@ class ReminderService {
   static Future<String?> scheduleUnifiedReminders(TaskItem task) async {
     if (!_initialized) await initialize();
 
-    if (task.reminderAt == null || task.completed) {
+    final latestTask = await _loadActiveTaskForScheduling(task.id);
+    if (latestTask == null) {
       await cancelReminder(task.id);
       if (task.calendarEventId != null) {
         try {
@@ -401,6 +402,20 @@ class ReminderService {
           dev.log('[ReminderService] 清理日历事件失败: ${task.title}, $e');
         }
         await AppDatabase.updateTaskCalendarEventId(task.id, null);
+      }
+      return null;
+    }
+
+    final taskToSchedule = latestTask;
+    if (taskToSchedule.reminderAt == null || taskToSchedule.completed) {
+      await cancelReminder(taskToSchedule.id);
+      if (taskToSchedule.calendarEventId != null) {
+        try {
+          await CalendarService.removeTask(taskToSchedule.calendarEventId!);
+        } catch (e) {
+          dev.log('[ReminderService] 清理日历事件失败: ${taskToSchedule.title}, $e');
+        }
+        await AppDatabase.updateTaskCalendarEventId(taskToSchedule.id, null);
       }
       return null;
     }
@@ -423,39 +438,78 @@ class ReminderService {
     );
 
     if (hasCalendarPermission && calendarEnabled) {
-      dev.log('[ReminderService] 优先使用日历同步: ${task.title}');
+      dev.log('[ReminderService] 优先使用日历同步: ${taskToSchedule.title}');
       // try-catch 保护：日历操作在桌面平台或权限异常时可能失败
       try {
-        final eventId = await CalendarService.syncTask(task);
-        if (eventId != null && eventId != task.calendarEventId) {
-          await AppDatabase.updateTaskCalendarEventId(task.id, eventId);
+        final eventId = await CalendarService.syncTask(taskToSchedule);
+        if (eventId != null && eventId != taskToSchedule.calendarEventId) {
+          await AppDatabase.updateTaskCalendarEventId(
+            taskToSchedule.id,
+            eventId,
+          );
         }
-        await cancelReminder(task.id);
+        await cancelReminder(taskToSchedule.id);
         return eventId;
       } catch (e) {
-        dev.log('[ReminderService] 日历同步失败，回退到通知: ${task.title}, $e');
+        dev.log('[ReminderService] 日历同步失败，回退到通知: ${taskToSchedule.title}, $e');
         // 日历失败后回退到系统通知
         if (hasNotificationPermission) {
-          await scheduleReminder(task);
+          await scheduleReminder(taskToSchedule);
         }
-        return task.calendarEventId;
+        return taskToSchedule.calendarEventId;
       }
     } else if (hasNotificationPermission) {
-      dev.log('[ReminderService] 使用系统通知: ${task.title}');
-      await scheduleReminder(task);
-      if (task.calendarEventId != null) {
+      dev.log('[ReminderService] 使用系统通知: ${taskToSchedule.title}');
+      await scheduleReminder(taskToSchedule);
+      if (taskToSchedule.calendarEventId != null) {
         try {
-          await CalendarService.removeTask(task.calendarEventId!);
+          await CalendarService.removeTask(taskToSchedule.calendarEventId!);
         } catch (e) {
           dev.log('[ReminderService] 清理日历事件失败（预期桌面平台）: $e');
         }
-        await AppDatabase.updateTaskCalendarEventId(task.id, null);
+        await AppDatabase.updateTaskCalendarEventId(taskToSchedule.id, null);
       }
       return null;
     } else {
-      dev.log('[ReminderService] 无任何提醒权限: ${task.title}');
-      return task.calendarEventId;
+      dev.log('[ReminderService] 无任何提醒权限: ${taskToSchedule.title}');
+      return taskToSchedule.calendarEventId;
     }
+  }
+
+  static Future<TaskItem?> _loadActiveTaskForScheduling(String taskId) async {
+    final dbTask = await AppDatabase.getTaskById(taskId);
+    if (dbTask == null) return null;
+    return _taskFromMap(dbTask);
+  }
+
+  static Future<List<TaskItem>> _loadAllTaskItemsForScheduling() async {
+    final allDbTasks = await AppDatabase.getAllTasks();
+    return allDbTasks.map(_taskFromMap).toList();
+  }
+
+  static TaskItem _taskFromMap(Map<String, dynamic> m) {
+    return TaskItem(
+      id: m['id'] as String,
+      listId: m['listId'] as String,
+      title: m['title'] as String,
+      notes: m['notes'] as String?,
+      completed: m['completed'] == true,
+      completedAt: m['completedAt'] as int?,
+      dueDate: m['dueDate'] as String?,
+      dueTime: m['dueTime'] as String?,
+      sortOrder: m['sortOrder'] as int,
+      isMyDay: m['isMyDay'] == true,
+      myDayAddedAt: m['myDayAddedAt'] as int?,
+      recurrenceConfig: m['recurrenceConfig'] as Map<String, dynamic>?,
+      expectedMinutes: m['expectedMinutes'] as int?,
+      isImportant: m['isImportant'] == true,
+      reminderAt: m['reminderAt'] as int?,
+      calendarEventId: m['calendarEventId'] as String?,
+      createdAt: m['createdAt'] as int,
+      updatedAt: m['updatedAt'] as int,
+      archived: m['archived'] == true,
+      archivedAt: m['archivedAt'] as int?,
+    );
   }
 
   /// 检查是否至少有一个提醒权限可用（日历或通知）
@@ -720,7 +774,7 @@ class ReminderService {
       // 如果在执行期间收到了新的 refreshAll 请求，再跑一次（合并多次请求）
       while (_refreshPending) {
         _refreshPending = false;
-        await _doRefreshAll(tasks);
+        await _doRefreshAll(await _loadAllTaskItemsForScheduling());
       }
     } finally {
       _refreshInProgress = false;

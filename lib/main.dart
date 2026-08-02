@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:focus_my_time/app.dart';
 import 'package:focus_my_time/core/platform/application_retry.dart';
 import 'package:focus_my_time/core/services/timer_notification_service.dart';
@@ -18,6 +20,13 @@ void main() {
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      if (kIsWeb) {
+        try {
+          await BrowserContextMenu.disableContextMenu();
+        } catch (e) {
+          debugPrint('Disable browser context menu failed: $e');
+        }
+      }
       runApp(const _BootstrapApp());
 
       try {

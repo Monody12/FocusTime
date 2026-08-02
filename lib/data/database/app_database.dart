@@ -1289,6 +1289,8 @@ class AppDatabase {
   ) async {
     final db = await database;
     final mapped = <String, dynamic>{};
+    final hasCalendarEventIdUpdate = updates.containsKey('calendarEventId');
+    final calendarEventId = updates['calendarEventId'] as String?;
 
     if (updates.containsKey('title')) mapped['title'] = updates['title'];
     if (updates.containsKey('notes')) mapped['notes'] = updates['notes'];
@@ -1323,8 +1325,16 @@ class AppDatabase {
     if (updates.containsKey('reminderAt')) {
       mapped['reminder_at'] = updates['reminderAt'];
     }
-    if (updates.containsKey('calendarEventId')) {
-      mapped['calendar_event_id'] = updates['calendarEventId'];
+
+    if (mapped.isEmpty) {
+      if (hasCalendarEventIdUpdate) {
+        await updateTaskCalendarEventId(id, calendarEventId);
+      }
+      return;
+    }
+
+    if (hasCalendarEventIdUpdate) {
+      mapped['calendar_event_id'] = calendarEventId;
     }
 
     final now = DateTime.now().millisecondsSinceEpoch;

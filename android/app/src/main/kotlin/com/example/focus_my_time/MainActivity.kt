@@ -144,8 +144,12 @@ class MainActivity : FlutterActivity() {
             val savedEventId = if (eventId == null) {
                 insertEvent(calendarId, args, start, end)
             } else {
-                updateEvent(eventId, args, start, end)
-                eventId
+                if (updateEvent(eventId, args, start, end)) {
+                    eventId
+                } else {
+                    Log.w(TAG, "Event $eventId was not found; inserting a replacement event")
+                    insertEvent(calendarId, args, start, end)
+                }
             }
 
             upsertReminders(savedEventId, reminders)
@@ -169,7 +173,7 @@ class MainActivity : FlutterActivity() {
         return ContentUris.parseId(uri)
     }
 
-    private fun updateEvent(eventId: Long, args: Map<*, *>, start: Long, end: Long) {
+    private fun updateEvent(eventId: Long, args: Map<*, *>, start: Long, end: Long): Boolean {
         val values = buildEventValues(args, start, end)
         val updateCount = contentResolver.update(
             ContentUris.withAppendedId(Events.CONTENT_URI, eventId),
@@ -177,9 +181,7 @@ class MainActivity : FlutterActivity() {
             null,
             null
         )
-        if (updateCount <= 0) {
-            throw IllegalStateException("No existing event was updated")
-        }
+        return updateCount > 0
     }
 
     private fun deleteEvent(arguments: Any?, result: MethodChannel.Result) {

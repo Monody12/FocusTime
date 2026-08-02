@@ -1679,6 +1679,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
           content: Text(message),
           action: SnackBarAction(label: '撤销', onPressed: onUndo),
           behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+          showCloseIcon: true,
         ),
       );
   }
@@ -1726,7 +1728,12 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          showCloseIcon: true,
+        ),
       );
   }
 

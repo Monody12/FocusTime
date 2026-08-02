@@ -89,7 +89,7 @@ void main() {
             'notes': 'Android 应看到的备注',
             'calendarEventId': 'remote-calendar-event',
           },
-        }
+        },
       ],
     });
 
@@ -101,8 +101,9 @@ void main() {
     expect(await AppDatabase.getTaskById(taskId), isNull);
 
     final archivedTasks = await AppDatabase.getArchivedTasks();
-    final archivedTask =
-        archivedTasks.firstWhere((record) => record['id'] == taskId);
+    final archivedTask = archivedTasks.firstWhere(
+      (record) => record['id'] == taskId,
+    );
     expect(archivedTask['archived'], true);
     expect(archivedTask['archivedAt'], isA<int>());
 
@@ -129,8 +130,9 @@ void main() {
     final baseRecord = basePayload['tasks']!.firstWhere(
       (record) => record['id'] == taskId,
     );
-    final baseData =
-        Map<String, dynamic>.from(baseRecord['data'] as Map<String, dynamic>);
+    final baseData = Map<String, dynamic>.from(
+      baseRecord['data'] as Map<String, dynamic>,
+    );
     final baseFieldUpdatedAt = Map<String, dynamic>.from(
       baseData['_fieldUpdatedAt'] as Map,
     );
@@ -159,7 +161,7 @@ void main() {
               'notes': remoteNotesUpdatedAt,
             },
           },
-        }
+        },
       ],
     });
 
@@ -183,6 +185,34 @@ void main() {
 
     final updatedTask = await AppDatabase.getTaskById(taskId);
     expect(updatedTask!['calendarEventId'], 'android-event-local');
+    expect(updatedTask['updatedAt'], originalUpdatedAt);
+
+    final payload = await AppDatabase.getSyncPayload(originalUpdatedAt);
+    expect(
+      payload['tasks']!.where((record) => record['id'] == taskId),
+      isEmpty,
+    );
+
+    await AppDatabase.deleteTask(taskId);
+  });
+
+  test('普通任务更新里的本机日历事件 ID 不会推进任务同步时间戳', () async {
+    final task = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '普通更新日历字段测试',
+    );
+    final taskId = task['id'] as String;
+    final originalUpdatedAt = task['updatedAt'] as int;
+
+    await AppDatabase.updateTask(taskId, {
+      'calendarEventId': 'android-event-from-generic-update',
+    });
+
+    final updatedTask = await AppDatabase.getTaskById(taskId);
+    expect(
+      updatedTask!['calendarEventId'],
+      'android-event-from-generic-update',
+    );
     expect(updatedTask['updatedAt'], originalUpdatedAt);
 
     final payload = await AppDatabase.getSyncPayload(originalUpdatedAt);
@@ -231,34 +261,45 @@ void main() {
     final taskId = task['id'] as String;
 
     final baseData = syncData(await syncRecord('tasks', taskId));
-    final baseVersions =
-        Map<String, dynamic>.from(baseData['_fieldUpdatedAt'] as Map);
+    final baseVersions = Map<String, dynamic>.from(
+      baseData['_fieldUpdatedAt'] as Map,
+    );
 
     await Future<void>.delayed(const Duration(milliseconds: 5));
     await AppDatabase.archiveList(listId);
 
     final archivedData = syncData(await syncRecord('tasks', taskId));
-    final archivedVersions =
-        Map<String, dynamic>.from(archivedData['_fieldUpdatedAt'] as Map);
+    final archivedVersions = Map<String, dynamic>.from(
+      archivedData['_fieldUpdatedAt'] as Map,
+    );
     expect(archivedData['archived'], true);
     expect(archivedData['archivedAt'], isA<int>());
-    expect(archivedVersions['archived'],
-        greaterThan(baseVersions['archived'] as int));
-    expect(archivedVersions['archivedAt'],
-        greaterThan(baseVersions['archivedAt'] as int));
+    expect(
+      archivedVersions['archived'],
+      greaterThan(baseVersions['archived'] as int),
+    );
+    expect(
+      archivedVersions['archivedAt'],
+      greaterThan(baseVersions['archivedAt'] as int),
+    );
 
     await Future<void>.delayed(const Duration(milliseconds: 5));
     await AppDatabase.restoreList(listId);
 
     final restoredData = syncData(await syncRecord('tasks', taskId));
-    final restoredVersions =
-        Map<String, dynamic>.from(restoredData['_fieldUpdatedAt'] as Map);
+    final restoredVersions = Map<String, dynamic>.from(
+      restoredData['_fieldUpdatedAt'] as Map,
+    );
     expect(restoredData['archived'], false);
     expect(restoredData['archivedAt'], isNull);
-    expect(restoredVersions['archived'],
-        greaterThan(archivedVersions['archived'] as int));
-    expect(restoredVersions['archivedAt'],
-        greaterThan(archivedVersions['archivedAt'] as int));
+    expect(
+      restoredVersions['archived'],
+      greaterThan(archivedVersions['archived'] as int),
+    );
+    expect(
+      restoredVersions['archivedAt'],
+      greaterThan(archivedVersions['archivedAt'] as int),
+    );
 
     await AppDatabase.deleteList(listId);
   });
@@ -279,12 +320,8 @@ void main() {
           'id': taskId,
           'updatedAt': remoteDeletedAt,
           'deleted': true,
-          'data': {
-            ...data,
-            'updatedAt': remoteDeletedAt,
-            'deleted': true,
-          },
-        }
+          'data': {...data, 'updatedAt': remoteDeletedAt, 'deleted': true},
+        },
       ],
     });
 
@@ -320,12 +357,8 @@ void main() {
           'id': taskId,
           'updatedAt': remoteDeletedAt,
           'deleted': true,
-          'data': {
-            ...baseData,
-            'updatedAt': remoteDeletedAt,
-            'deleted': true,
-          },
-        }
+          'data': {...baseData, 'updatedAt': remoteDeletedAt, 'deleted': true},
+        },
       ],
     });
 
@@ -361,7 +394,7 @@ void main() {
             'updatedAt': remoteUpdatedAt,
             'deleted': false,
           },
-        }
+        },
       ],
     });
 
@@ -374,14 +407,21 @@ void main() {
   test('远端清单归档会防御性级联归档本地子任务', () async {
     final list = await AppDatabase.createList('远端归档清单');
     final listId = list['id'] as String;
-    final task = await AppDatabase.createTask(
-      listId: listId,
-      title: '应随清单归档',
-    );
+    final task = await AppDatabase.createTask(listId: listId, title: '应随清单归档');
     final taskId = task['id'] as String;
     final listRecord = await syncRecord('lists', listId);
     final listData = syncData(listRecord);
-    final remoteArchivedAt = (listRecord['updatedAt'] as int) + 20;
+    final taskDataBeforeArchive = syncData(await syncRecord('tasks', taskId));
+    final taskVersionsBeforeArchive = Map<String, dynamic>.from(
+      taskDataBeforeArchive['_fieldUpdatedAt'] as Map,
+    );
+    final remoteArchivedAt =
+        [
+          listRecord['updatedAt'] as int,
+          taskVersionsBeforeArchive['archived'] as int,
+          taskVersionsBeforeArchive['archivedAt'] as int,
+        ].reduce((a, b) => a > b ? a : b) +
+        20;
 
     await AppDatabase.applySyncChanges({
       'lists': [
@@ -395,7 +435,7 @@ void main() {
             'archivedAt': remoteArchivedAt,
             'updatedAt': remoteArchivedAt,
           },
-        }
+        },
       ],
     });
 
@@ -405,8 +445,9 @@ void main() {
     );
     expect(archivedTasks.any((item) => item['id'] == taskId), true);
     final taskData = syncData(await syncRecord('tasks', taskId));
-    final versions =
-        Map<String, dynamic>.from(taskData['_fieldUpdatedAt'] as Map);
+    final versions = Map<String, dynamic>.from(
+      taskData['_fieldUpdatedAt'] as Map,
+    );
     expect(taskData['archived'], true);
     expect(versions['archived'], remoteArchivedAt);
   });
@@ -414,10 +455,7 @@ void main() {
   test('远端清单删除会防御性级联软删除本地子任务和会话', () async {
     final list = await AppDatabase.createList('远端删除清单');
     final listId = list['id'] as String;
-    final task = await AppDatabase.createTask(
-      listId: listId,
-      title: '应随清单删除',
-    );
+    final task = await AppDatabase.createTask(listId: listId, title: '应随清单删除');
     final taskId = task['id'] as String;
     final session = await AppDatabase.addFocusSession(
       taskId: taskId,
@@ -440,12 +478,8 @@ void main() {
           'id': listId,
           'updatedAt': remoteDeletedAt,
           'deleted': true,
-          'data': {
-            ...listData,
-            'updatedAt': remoteDeletedAt,
-            'deleted': true,
-          },
-        }
+          'data': {...listData, 'updatedAt': remoteDeletedAt, 'deleted': true},
+        },
       ],
     });
 
@@ -489,7 +523,7 @@ void main() {
             'hidden': true,
             'updatedAt': remoteUpdatedAt,
           },
-        }
+        },
       ],
     });
 
@@ -509,25 +543,24 @@ void main() {
     final taskIds = <String>[];
 
     for (var i = 0; i < 5; i++) {
-      final task = await AppDatabase.createTask(
-        listId: listId,
-        title: '重复完成项',
-      );
+      final task = await AppDatabase.createTask(listId: listId, title: '重复完成项');
       final taskId = task['id'] as String;
       taskIds.add(taskId);
       await AppDatabase.toggleTaskComplete(taskId);
       await Future<void>.delayed(const Duration(milliseconds: 2));
     }
 
-    final archivedCount =
-        await AppDatabase.autoArchiveCompletedTasks(keepCount: 3);
+    final archivedCount = await AppDatabase.autoArchiveCompletedTasks(
+      keepCount: 3,
+    );
     expect(archivedCount, 2);
 
     final activeTasks = await AppDatabase.getTasksByList(listId);
     expect(
       activeTasks
           .where(
-              (item) => item['title'] == '重复完成项' && item['completed'] == true)
+            (item) => item['title'] == '重复完成项' && item['completed'] == true,
+          )
           .length,
       3,
     );

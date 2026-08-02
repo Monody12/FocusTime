@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '发布的版本号，例如 v1.5.1'
+        description: '发布的版本号，例如 v1.5.2'
         required: true
-        default: 'v1.5.1'
+        default: 'v1.5.2'
 
 permissions:
   contents: write
@@ -31,6 +31,10 @@ jobs:
             platform: android
             artifactName: FocusMyTime-Android
             artifactPath: FocusMyTime-Android.apk
+          - os: ubuntu-latest
+            platform: web
+            artifactName: FocusMyTime-Web
+            artifactPath: FocusMyTime-Web.zip
 
     steps:
       - name: Checkout repository
@@ -91,6 +95,17 @@ jobs:
       - name: Rename Android APK
         if: matrix.platform == 'android'
         run: mv build/app/outputs/flutter-apk/app-release.apk FocusMyTime-Android.apk
+
+      - name: Build Web application
+        if: matrix.platform == 'web'
+        run: flutter build web --release
+
+      - name: Package Web application
+        if: matrix.platform == 'web'
+        shell: bash
+        run: |
+          cd build/web
+          zip -r ../../FocusMyTime-Web.zip .
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

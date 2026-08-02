@@ -1052,3 +1052,46 @@ Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提�
 - 已失败且未生成 Release 的版本标签可以在修复提交后安全地移动到正确提交，再重新触发同一版本的发布流程。
 
 *最后更新日期：2026-07-23*
+
+---
+
+## 30. Web 新增提醒同步到 Android 后日历重复事件
+
+### 30.1 问题现象
+- 在 Web 端给已有任务添加提醒时间后，Android 手机同步完成，系统日历中可能出现两条同名 `FocusMyTime` 提醒事件。
+- 同一个任务如果直接在 Android 创建提醒，或通过 Windows 客户端创建提醒后再同步到 Android，日历通常只有一条事件。
+- Web 端右键任务或清单时，可能同时弹出浏览器原生右键菜单和应用内菜单。
+- Windows 客户端编辑任务标题后，“任务标题已保存”SnackBar 显示时间过长且只有“撤销”按钮，没有关闭入口。
+
+### 30.2 根因分析
+1. 同步完成后提醒刷新可能被启动加载、前台同步、同步完成监听等路径并发触发。`ReminderService.refreshAll` 已有串行化保护，但待重跑逻辑复用了第一次传入的旧任务快照。
+2. 第一次刷新在 Android 日历插入事件后，会把新 `calendarEventId` 写回本机数据库；第二次待重跑仍使用旧快照，其中 `calendarEventId = null`，于是 Android 桥接再次走 INSERT，留下第二条日历事件。
+3. `calendarEventId` 属于本机系统集成状态，不能跨设备同步。虽然同步负载已排除该字段，但普通 `updateTask` 仍允许传入该字段并推进 `updated_at`，存在无意义同步和未来误用风险。
+4. Android 原生桥接遇到旧 eventId 无法更新时直接报错，上层回退通知并保留旧 ID；如果本机日历被系统清理或用户删除事件，后续无法自动恢复为新的日历事件。
+5. Web 端没有全局禁用浏览器 context menu；Flutter 的 `onSecondaryTapDown` 只能显示应用菜单，不能自动阻止浏览器原生菜单。
+6. 标题保存 SnackBar 使用默认行为且带 Action，在桌面端会显得停留过久；没有 close icon，用户只能等它消失或点“撤销”。
+
+### 30.3 修复方案
+1. `ReminderService.scheduleUnifiedReminders` 在真正写日历或通知前，从数据库重新读取当前任务，使用最新的 `reminderAt`、`completed` 和本机 `calendarEventId`，避免旧快照重复插入事件。
+2. `ReminderService.refreshAll` 的待重跑分支改为重新读取数据库中的全部当前任务，不再复用旧参数列表。
+3. `AppDatabase.updateTask` 将 `calendarEventId` 作为本机字段处理：只有它一个字段时调用 `updateTaskCalendarEventId`，不推进 `updated_at`，不写同步字段版本。
+4. Android `MainActivity.createOrUpdateEvent` 对有 eventId 的任务优先 UPDATE；只有 `updateCount == 0` 表示旧事件确实不存在时，才 INSERT 替代事件并返回新 ID。权限异常仍抛出，不盲目新建。
+5. Web 启动阶段调用 `BrowserContextMenu.disableContextMenu()`，阻止浏览器原生右键菜单。
+6. 任务详情保存提示增加较短 `duration` 和 `showCloseIcon`，保留撤销操作。
+7. Release 工作流新增 Web 构建 zip，并同步更新 `pubspec.yaml`、Windows Inno Setup、GitHub Actions 默认版本与 README 版本号。
+
+### 30.4 验证
+- 新增单测覆盖普通任务更新误带 `calendarEventId` 时不推进同步时间戳、不进入增量同步负载。
+- `flutter analyze` 通过。
+- `flutter test` 全量通过。
+- `npm run build` 在 `server/` 下通过，服务端包版本显示 `1.5.2`。
+- `flutter build web --release` 通过，新增的 Web zip 打包命令已本地验证可生成产物。
+- 本机缺 Android SDK，无法执行 Android release build；Windows 安装包也需要 Windows runner。Android APK、Windows 安装包与 Web zip 的最终发布验证以 GitHub Actions `v1.5.2` Release 工作流为准。
+
+### 30.5 教训
+- 提醒和日历刷新必须把数据库当前状态作为权威来源；任何合并并发请求的逻辑，都不能用旧快照重放外部系统写入。
+- 本机外部系统 ID 既不能跨设备同步，也不应该推进业务记录的同步时间戳。
+- Android 日历 UPDATE 失败要区分“事件不存在”和“权限/Provider 拒绝”。前者可以安全新建，后者不能 INSERT 兜底，否则可能制造重复事件。
+- Web 桌面式右键交互需要显式关闭浏览器原生 context menu，否则应用内菜单无法独占右键行为。
+
+*最后更新日期：2026-08-02*
