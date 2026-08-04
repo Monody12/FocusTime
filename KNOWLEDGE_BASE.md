@@ -1095,3 +1095,35 @@ Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提�
 - Web 桌面式右键交互需要显式关闭浏览器原生 context menu，否则应用内菜单无法独占右键行为。
 
 *最后更新日期：2026-08-02*
+
+---
+
+## 31. Windows 裸机缺少 MSVC 运行库与 Web 原生右键菜单
+
+### 31.1 问题现象
+- Windows 用户重装系统后安装 FocusMyTime，启动时报“由于找不到 MSVCP140.dll，无法继续执行代码”；手动安装 Visual C++ Redistributable 2015-2022 后才能运行。
+- Web 端已经调用 `BrowserContextMenu.disableContextMenu()`，部分用户右键页面时仍会看到浏览器原生菜单，干扰应用内任务和清单菜单。
+
+### 31.2 根因分析
+1. Flutter Windows 引擎及原生插件动态依赖 Visual C++ v14 x64 运行库。旧发布流程只打包 `build/windows/x64/runner/Release` 原有内容，没有安装或随应用部署 MSVC CRT；开发机和长期使用的系统通常已有运行库，因此问题只在重装后的干净系统暴露。
+2. 仅依赖 Flutter 引擎层的右键菜单开关缺少宿主页面兜底。调用异常只会写入调试日志，而且浏览器事件发生在宿主 DOM，单一引擎层防护无法保证加载阶段及不同浏览器环境都阻止原生默认行为。
+
+### 31.3 修复方案
+1. 新增 `windows/packaging/bundle_msvc_runtime.ps1`，从 Visual Studio 的 `VCToolsRedistDir` 或 `vswhere` 定位当前工具链对应的 `x64/Microsoft.VC143.CRT`，将其中全部 DLL 复制到 Windows Release 目录。
+2. 脚本强制校验 `msvcp140.dll` 和 `vcruntime140.dll` 已进入产物；任一文件缺失就终止构建。Inno Setup 继续递归打包 Release 目录，因此运行库与 EXE 安装到同一应用目录，不需要联网、管理员权限或用户手工安装。
+3. Web `index.html` 在 Flutter 引擎加载前，以捕获阶段注册全局 `contextmenu` 监听并调用 `preventDefault()`。监听器不停止事件传播，Flutter 仍可接收二级点击并显示应用内菜单；Dart 层原有开关继续作为第二层保护。
+4. Release 工作流新增版本一致性门禁，校验标签/手动发布版本、`pubspec.yaml`、服务端包、Inno Setup 和 README 当前版本一致。
+
+### 31.4 验证
+- 静态检查 Windows 打包脚本会复制完整 CRT 目录，并对两个关键 DLL 做失败即停的产物校验。
+- Web Release 构建后检查宿主脚本存在，并通过真实浏览器右键事件验证 `defaultPrevented = true`。
+- `flutter analyze`、`flutter test`、`flutter build web --release` 与服务端 TypeScript 构建均作为发布前门禁执行。
+- GitHub Actions Windows 作业负责在 Windows 构建机上最终验证 CRT 定位、安装包构建及 Release 产物上传。
+
+### 31.5 教训
+- Windows 桌面发布不能把开发机已安装的系统运行库当作用户环境前提；安装包必须明确处理所有 Native DLL，并在 CI 对关键文件做断言。
+- 应用本地部署避免了额外安装和提权，但 CRT 安全更新不会由系统集中维护；每次发布都应使用构建机当前受支持的运行库重新打包。
+- 浏览器默认行为应在最接近浏览器的 DOM 层阻止，框架层开关可以保留为附加保护，不能作为唯一保障。
+- 发布版本一致性应自动校验，不能只依赖人工同步多个文件。
+
+*最后更新日期：2026-08-04*

@@ -40,7 +40,14 @@
 | 音频 | audioplayers |
 | 同步服务 | LWW 增量同步协议 |
 
-### 🚀 最近更新 (v1.5.2)
+### 🚀 最近更新 (v1.5.3)
+- **Windows 裸机启动修复**：
+    - Windows 安装包现在随应用携带构建版本对应的 Visual C++ x64 运行库，重装系统后无需用户另行查找或安装 Visual C++ Redistributable。
+    - 发布流水线会校验关键运行库 DLL 与项目各处版本号，缺少依赖或版本不一致时直接阻止发布。
+- **Web 右键体验修复**：
+    - 在 Flutter 启动前由 Web 宿主页面全局拦截浏览器原生右键菜单，同时保留应用内任务和清单操作菜单。
+
+### 🚀 历史更新 (v1.5.2)
 - **跨端提醒与日历同步修复**：
     - 修复 Web 端新增提醒同步到 Android 后，系统日历可能出现两条同名事件的问题；提醒刷新会读取最新本机日历事件 ID，避免并发刷新用旧快照重复插入。
     - Android 日历桥接在旧 eventId 已不存在时会安全新建替代事件；普通任务更新误带 `calendarEventId` 时也不会推进同步时间戳。
@@ -314,4 +321,4 @@ pm2 start ecosystem.config.js
 
 ## 版本
 
-当前版本：v1.5.2 (Cross-platform Reminder Sync)
+当前版本：v1.5.3 (Windows Runtime & Web Context Menu)
