@@ -33,6 +33,12 @@
 
   <title>FocusMyTime</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    // Register before Flutter starts so the native menu never races the app menu.
+    document.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+    }, { capture: true });
+  </script>
   <style>
     @font-face {
       font-family: "FocusLoaderSC0";
