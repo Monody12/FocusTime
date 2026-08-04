@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '发布的版本号，例如 v1.5.2'
+        description: '发布的版本号，例如 v1.5.3'
         required: true
-        default: 'v1.5.2'
+        default: 'v1.5.3'
 
 permissions:
   contents: write
@@ -39,6 +39,28 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate release version
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          app_version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          server_version="$(node -p "require('./server/package.json').version")"
+          installer_version="$(sed -n 's/^AppVersion=//p' windows/packaging/inno_setup.iss)"
+          readme_version="$(sed -n 's/^当前版本：v\([^ ]*\).*/\1/p' README.md)"
+
+          if [ "$RELEASE_VERSION" != "v$app_version" ]; then
+            echo "Release version $RELEASE_VERSION does not match pubspec version v$app_version."
+            exit 1
+          fi
+
+          for version in "$server_version" "$installer_version" "$readme_version"; do
+            if [ "$version" != "$app_version" ]; then
+              echo "Project version $version does not match pubspec version $app_version."
+              exit 1
+            fi
+          done
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -78,6 +100,11 @@ jobs:
       - name: Build Windows application
         if: matrix.platform == 'windows'
         run: flutter build windows --release
+
+      - name: Bundle Visual C++ runtime
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./windows/packaging/bundle_msvc_runtime.ps1 -Destination "build/windows/x64/runner/Release"
 
       - name: Install Inno Setup
         if: matrix.platform == 'windows'

@@ -1,7 +1,7 @@
 [Setup]
 AppId={{E6F7C8A9-9B8D-4C7E-B3A2-1F4D5E6C7B8A}
 AppName=FocusMyTime
-AppVersion=1.5.2
+AppVersion=1.5.3
 AppPublisher=Monody12
 AppPublisherURL=https://github.com/Monody12/FocusTime
 DefaultDirName={autopf}\FocusMyTime
@@ -19,7 +19,7 @@ PrivilegesRequired=lowest
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; The source path will be passed from GitHub Action or defaults to release folder
+; The release directory includes the app-local Visual C++ runtime copied by CI.
 Source: "..\..\build\windows\x64\runner\Release\focus_my_time.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
