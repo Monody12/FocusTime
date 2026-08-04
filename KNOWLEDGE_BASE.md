@@ -1119,7 +1119,9 @@ Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提�
 - Chromium 桌面 `1440x900` 与移动 `390x844` 视口均通过真实右键输入验证：事件继续传播且 `defaultPrevented = true`，页面无横向或纵向溢出。
 - GitHub Actions `v1.5.3` 的 Web、Android 和 Windows Release 构建全部通过，三个产物均成功上传并发布。
 - Windows 构建日志确认从 Visual Studio 2022 的 VC143 CRT 目录复制了 10 个 DLL；Inno Setup 日志确认 `msvcp140.dll`、`vcruntime140.dll` 及其配套 DLL 已实际压缩进安装包。
-- 本机未安装 Flutter/Dart SDK，未重复执行 `flutter analyze` 和 `flutter test`；本次没有修改 Dart 业务代码，三端 Release 编译作为 Dart/原生集成验证。
+- 使用本机 `/opt/flutter` 的 Flutter 3.44.7 执行 `flutter analyze` 无问题，`flutter test` 全量 91 项通过；服务端 `npm run build` 通过。
+- Web 按生产参数重新构建并原子部署到 `/www/wwwroot/focus.dluserver.cn/releases/20260804224844`，线上 `version.json` 为 `1.5.3+26`，生产 `main.dart.js` 哈希与本机构建一致。
+- 本机 PM2 同步服务已更新为 1.5.3，保留原 `.env`、SQLite 数据与日志；重启后本机及同域 `/api/health`、登录参数校验路由均正常。
 
 ### 31.5 教训
 - Windows 桌面发布不能把开发机已安装的系统运行库当作用户环境前提；安装包必须明确处理所有 Native DLL，并在 CI 对关键文件做断言。
