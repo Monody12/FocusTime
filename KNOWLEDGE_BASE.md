@@ -1115,10 +1115,11 @@ Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提�
 4. Release 工作流新增版本一致性门禁，校验标签/手动发布版本、`pubspec.yaml`、服务端包、Inno Setup 和 README 当前版本一致。
 
 ### 31.4 验证
-- 静态检查 Windows 打包脚本会复制完整 CRT 目录，并对两个关键 DLL 做失败即停的产物校验。
-- Web Release 构建后检查宿主脚本存在，并通过真实浏览器右键事件验证 `defaultPrevented = true`。
-- `flutter analyze`、`flutter test`、`flutter build web --release` 与服务端 TypeScript 构建均作为发布前门禁执行。
-- GitHub Actions Windows 作业负责在 Windows 构建机上最终验证 CRT 定位、安装包构建及 Release 产物上传。
+- `npm run build` 服务端 TypeScript 构建通过，项目版本一致性脚本通过。
+- Chromium 桌面 `1440x900` 与移动 `390x844` 视口均通过真实右键输入验证：事件继续传播且 `defaultPrevented = true`，页面无横向或纵向溢出。
+- GitHub Actions `v1.5.3` 的 Web、Android 和 Windows Release 构建全部通过，三个产物均成功上传并发布。
+- Windows 构建日志确认从 Visual Studio 2022 的 VC143 CRT 目录复制了 10 个 DLL；Inno Setup 日志确认 `msvcp140.dll`、`vcruntime140.dll` 及其配套 DLL 已实际压缩进安装包。
+- 本机未安装 Flutter/Dart SDK，未重复执行 `flutter analyze` 和 `flutter test`；本次没有修改 Dart 业务代码，三端 Release 编译作为 Dart/原生集成验证。
 
 ### 31.5 教训
 - Windows 桌面发布不能把开发机已安装的系统运行库当作用户环境前提；安装包必须明确处理所有 Native DLL，并在 CI 对关键文件做断言。
