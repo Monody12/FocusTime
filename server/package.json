@@ -1,6 +1,6 @@
 {
   "name": "focus-timer-sync",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Focus Timer 同步服务器 - 类似 Anki 的多设备同步服务",
   "main": "dist/index.js",
   "scripts": {
