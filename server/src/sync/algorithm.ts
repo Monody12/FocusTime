@@ -1,5 +1,9 @@
 import { db } from '../db/schema'
 import { SyncRecord, SyncTables, TableName, ALL_TABLES, UserRecord } from './types'
+import {
+  ArchiveRepairContext,
+  getMisappliedArchiveRepairTime
+} from './archive_repair'
 
 let lastIssuedServerTime = 0
 
@@ -259,10 +263,102 @@ export function applyClientTables(userId: string, tables: Partial<SyncTables>): 
         recordsReceived += applyClientRecords(userId, tableName, records)
       }
     }
+    repairMisappliedTaskArchives(userId)
     return recordsReceived
   })
 
   return applyTables()
+}
+
+interface ArchiveRepairRow {
+  user_id: string
+  record_id: string
+  data_json: string
+  updated_at: number
+  deleted: number
+}
+
+function repairMisappliedTaskArchives(userId?: string): number {
+  const userClause = userId ? ' AND user_id = ?' : ''
+  const queryArgs = userId ? [userId] : []
+  const listRows = db.prepare(`
+    SELECT user_id, record_id, data_json, updated_at, deleted
+    FROM sync_records
+    WHERE table_name = 'lists'${userClause}
+  `).all(...queryArgs) as ArchiveRepairRow[]
+
+  const contexts = new Map<string, ArchiveRepairContext>()
+  for (const row of listRows) {
+    const data = parseDataJson(row.data_json)
+    const context = contexts.get(row.user_id) || {
+      activeListIds: new Set<string>(),
+      archivedListTimes: new Set<number>()
+    }
+    if (row.deleted === 0 && data.archived !== true) {
+      context.activeListIds.add(row.record_id)
+    }
+    if (
+      data.archived === true &&
+      typeof data.archivedAt === 'number' &&
+      Number.isSafeInteger(data.archivedAt)
+    ) {
+      context.archivedListTimes.add(data.archivedAt)
+    }
+    contexts.set(row.user_id, context)
+  }
+
+  if (contexts.size === 0) return 0
+  const taskRows = db.prepare(`
+    SELECT user_id, record_id, data_json, updated_at, deleted
+    FROM sync_records
+    WHERE table_name = 'tasks' AND deleted = 0${userClause}
+  `).all(...queryArgs) as ArchiveRepairRow[]
+  const updateStmt = db.prepare(`
+    UPDATE sync_records
+    SET data_json = ?, updated_at = ?, server_updated_at = ?, deleted = 0
+    WHERE user_id = ? AND table_name = 'tasks' AND record_id = ? AND deleted = 0
+  `)
+
+  let repaired = 0
+  for (const row of taskRows) {
+    const context = contexts.get(row.user_id)
+    if (!context) continue
+    const data = parseDataJson(row.data_json)
+    const versions = readTaskFieldVersions(data, row.updated_at)
+    const repairUpdatedAt = getMisappliedArchiveRepairTime(
+      data,
+      row.updated_at,
+      {
+        listId: versions.listId,
+        archived: versions.archived,
+        archivedAt: versions.archivedAt
+      },
+      context
+    )
+    if (repairUpdatedAt === null) continue
+
+    versions.archived = repairUpdatedAt
+    versions.archivedAt = repairUpdatedAt
+    const repairedData = withTaskFieldVersions(
+      {...data, archived: false, archivedAt: null},
+      versions,
+      repairUpdatedAt,
+      false
+    )
+    updateStmt.run(
+      JSON.stringify(repairedData),
+      repairUpdatedAt,
+      nextServerChangeTime(),
+      row.user_id,
+      row.record_id
+    )
+    repaired++
+  }
+  return repaired
+}
+
+export function repairAllMisappliedTaskArchives(): number {
+  return db.transaction(() => repairMisappliedTaskArchives())()
 }
 
 function applyClientTaskRecords(userId: string, records: SyncRecord[]): number {

@@ -3,6 +3,7 @@ import cors from 'cors'
 import { db, initDatabase } from './db/schema'
 import authRoutes from './auth/routes'
 import syncRoutes from './sync/routes'
+import { repairAllMisappliedTaskArchives } from './sync/algorithm'
 
 const PORT = Number.parseInt(process.env.PORT || '6677', 10)
 const HOST = process.env.HOST?.trim() || '127.0.0.1'
@@ -63,6 +64,10 @@ function authRateLimit(
 
 // Initialize database
 initDatabase()
+const repairedTasks = repairAllMisappliedTaskArchives()
+if (repairedTasks > 0) {
+  console.log(`Repaired ${repairedTasks} task archive sync record(s)`)
+}
 
 const app = express()
 
