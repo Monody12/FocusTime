@@ -187,7 +187,7 @@ void main() {
     expect(updatedTask!['calendarEventId'], 'android-event-local');
     expect(updatedTask['updatedAt'], originalUpdatedAt);
 
-    final payload = await AppDatabase.getSyncPayload(originalUpdatedAt);
+    final payload = await AppDatabase.getSyncPayload(originalUpdatedAt + 1);
     expect(
       payload['tasks']!.where((record) => record['id'] == taskId),
       isEmpty,
@@ -215,7 +215,7 @@ void main() {
     );
     expect(updatedTask['updatedAt'], originalUpdatedAt);
 
-    final payload = await AppDatabase.getSyncPayload(originalUpdatedAt);
+    final payload = await AppDatabase.getSyncPayload(originalUpdatedAt + 1);
     expect(
       payload['tasks']!.where((record) => record['id'] == taskId),
       isEmpty,
@@ -302,6 +302,267 @@ void main() {
     );
 
     await AppDatabase.deleteList(listId);
+  });
+
+  test('同批次先移动任务再归档旧清单时任务在新清单保持可见', () async {
+    final oldList = await AppDatabase.createList('待归档旧清单');
+    final newList = await AppDatabase.createList('新清单');
+    final oldListId = oldList['id'] as String;
+    final newListId = newList['id'] as String;
+    final task = await AppDatabase.createTask(
+      listId: oldListId,
+      title: '跨清单移动任务',
+    );
+    final taskId = task['id'] as String;
+    final oldListRecord = await syncRecord('lists', oldListId);
+    final oldListData = syncData(oldListRecord);
+    final taskRecord = await syncRecord('tasks', taskId);
+    final taskData = syncData(taskRecord);
+    final taskVersions = Map<String, dynamic>.from(
+      taskData['_fieldUpdatedAt'] as Map,
+    );
+    final moveAt = (taskRecord['updatedAt'] as int) + 100;
+    final archiveAt = moveAt + 100;
+
+    await AppDatabase.applySyncChanges({
+      'lists': [
+        {
+          'id': oldListId,
+          'updatedAt': archiveAt,
+          'deleted': false,
+          'data': {
+            ...oldListData,
+            'archived': true,
+            'archivedAt': archiveAt,
+            'updatedAt': archiveAt,
+          },
+        },
+      ],
+      'tasks': [
+        {
+          'id': taskId,
+          'updatedAt': moveAt,
+          'deleted': false,
+          'data': {
+            ...taskData,
+            'listId': newListId,
+            'updatedAt': moveAt,
+            '_fieldUpdatedAt': {...taskVersions, 'listId': moveAt},
+          },
+        },
+      ],
+    });
+
+    final movedTask = await AppDatabase.getTaskById(taskId);
+    expect(movedTask, isNotNull);
+    expect(movedTask!['listId'], newListId);
+    expect(movedTask['archived'], false);
+    expect(
+      (await AppDatabase.getTasksByList(newListId)).map((item) => item['id']),
+      contains(taskId),
+    );
+
+    await AppDatabase.deleteList(oldListId);
+    await AppDatabase.deleteList(newListId);
+  });
+
+  test('已同步的错误归档状态会自动恢复并生成增量修复记录', () async {
+    final oldList = await AppDatabase.createList('历史归档清单');
+    final newList = await AppDatabase.createList('历史目标清单');
+    final oldListId = oldList['id'] as String;
+    final newListId = newList['id'] as String;
+    final task = await AppDatabase.createTask(
+      listId: oldListId,
+      title: '历史错乱任务',
+    );
+    final taskId = task['id'] as String;
+    final oldListRecord = await syncRecord('lists', oldListId);
+    final oldListData = syncData(oldListRecord);
+    final taskRecord = await syncRecord('tasks', taskId);
+    final taskData = syncData(taskRecord);
+    final taskVersions = Map<String, dynamic>.from(
+      taskData['_fieldUpdatedAt'] as Map,
+    );
+    final moveAt = (taskRecord['updatedAt'] as int) + 100;
+    final archiveAt = moveAt + 100;
+    final renamedAt = archiveAt + 100;
+
+    await AppDatabase.applySyncChanges({
+      'lists': [
+        {
+          'id': oldListId,
+          'updatedAt': archiveAt,
+          'deleted': false,
+          'data': {
+            ...oldListData,
+            'archived': true,
+            'archivedAt': archiveAt,
+            'updatedAt': archiveAt,
+          },
+        },
+      ],
+      'tasks': [
+        {
+          'id': taskId,
+          'updatedAt': renamedAt,
+          'deleted': false,
+          'data': {
+            ...taskData,
+            'listId': newListId,
+            'title': '改名后仍不可见的任务',
+            'archived': true,
+            'archivedAt': archiveAt,
+            'updatedAt': renamedAt,
+            '_fieldUpdatedAt': {
+              ...taskVersions,
+              'listId': moveAt,
+              'title': renamedAt,
+              'archived': archiveAt,
+              'archivedAt': archiveAt,
+            },
+          },
+        },
+      ],
+    });
+
+    final repairedTask = await AppDatabase.getTaskById(taskId);
+    expect(repairedTask, isNotNull);
+    expect(repairedTask!['listId'], newListId);
+    expect(repairedTask['title'], '改名后仍不可见的任务');
+    expect(repairedTask['archived'], false);
+    expect(repairedTask['archivedAt'], isNull);
+
+    final repairPayload = await AppDatabase.getSyncPayload(renamedAt);
+    final repairRecord = repairPayload['tasks']!.firstWhere(
+      (item) => item['id'] == taskId,
+    );
+    final repairData = syncData(repairRecord);
+    final repairVersions = Map<String, dynamic>.from(
+      repairData['_fieldUpdatedAt'] as Map,
+    );
+    expect(repairData['archived'], false);
+    expect(repairData['archivedAt'], isNull);
+    expect(repairVersions['archived'], greaterThan(archiveAt));
+    expect(repairVersions['archivedAt'], greaterThan(archiveAt));
+
+    await AppDatabase.deleteList(oldListId);
+    await AppDatabase.deleteList(newListId);
+  });
+
+  test('Schema 12 升级到 13 时会恢复本机已有的错误归档任务', () async {
+    final oldList = await AppDatabase.createList('迁移旧清单');
+    final newList = await AppDatabase.createList('迁移目标清单');
+    final oldListId = oldList['id'] as String;
+    final newListId = newList['id'] as String;
+    final task = await AppDatabase.createTask(
+      listId: oldListId,
+      title: '迁移恢复任务',
+    );
+    final taskId = task['id'] as String;
+    final moveAt = (task['updatedAt'] as int) + 100;
+    final archiveAt = moveAt + 100;
+    final corruptedUpdatedAt = archiveAt + 100;
+    final db = await AppDatabase.database;
+
+    await db.transaction((txn) async {
+      await txn.update(
+        'lists',
+        {'archived': 1, 'archived_at': archiveAt, 'updated_at': archiveAt},
+        where: 'id = ?',
+        whereArgs: [oldListId],
+      );
+      await txn.update(
+        'tasks',
+        {
+          'list_id': newListId,
+          'archived': 1,
+          'archived_at': archiveAt,
+          'updated_at': corruptedUpdatedAt,
+        },
+        where: 'id = ?',
+        whereArgs: [taskId],
+      );
+      for (final entry in {
+        'listId': moveAt,
+        'archived': archiveAt,
+        'archivedAt': archiveAt,
+      }.entries) {
+        await txn.insert('sync_field_versions', {
+          'table_name': 'tasks',
+          'record_id': taskId,
+          'field_name': entry.key,
+          'updated_at': entry.value,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    });
+    await db.setVersion(12);
+    await AppDatabase.close();
+
+    final upgradedDb = await AppDatabase.database;
+    expect(await upgradedDb.getVersion(), 13);
+    final repairedTask = await AppDatabase.getTaskById(taskId);
+    expect(repairedTask, isNotNull);
+    expect(repairedTask!['listId'], newListId);
+    expect(repairedTask['archived'], false);
+    expect(repairedTask['archivedAt'], isNull);
+
+    final repairPayload = await AppDatabase.getSyncPayload(corruptedUpdatedAt);
+    final repairRecord = repairPayload['tasks']!.firstWhere(
+      (item) => item['id'] == taskId,
+    );
+    final repairData = syncData(repairRecord);
+    final repairVersions = Map<String, dynamic>.from(
+      repairData['_fieldUpdatedAt'] as Map,
+    );
+    expect(repairVersions['archived'], greaterThan(archiveAt));
+    expect(repairVersions['archivedAt'], greaterThan(archiveAt));
+
+    await AppDatabase.deleteList(oldListId);
+    await AppDatabase.deleteList(newListId);
+  });
+
+  test('任务修改后撤销只需增量同步最终字段状态', () async {
+    final task = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '撤销前标题',
+    );
+    final taskId = task['id'] as String;
+    final baseline = task['updatedAt'] as int;
+
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await AppDatabase.updateTask(taskId, {'title': '临时标题'});
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    await AppDatabase.updateTask(taskId, {'title': '撤销前标题'});
+
+    final payload = await AppDatabase.getSyncPayload(baseline);
+    final changedTasks = payload['tasks']!.where(
+      (item) => item['id'] == taskId,
+    );
+    expect(changedTasks, hasLength(1));
+    final revertedData = syncData(changedTasks.single);
+    final versions = Map<String, dynamic>.from(
+      revertedData['_fieldUpdatedAt'] as Map,
+    );
+    expect(revertedData['title'], '撤销前标题');
+    expect(versions['title'], greaterThan(baseline));
+
+    await AppDatabase.deleteTask(taskId);
+  });
+
+  test('增量同步包含恰好落在同步水位毫秒的任务变更', () async {
+    final task = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '水位边界任务',
+    );
+    final taskId = task['id'] as String;
+    final updatedAt = task['updatedAt'] as int;
+    final payload = await AppDatabase.getSyncPayload(updatedAt);
+    expect(
+      payload['tasks']!.where((record) => record['id'] == taskId),
+      hasLength(1),
+    );
+
+    await AppDatabase.deleteTask(taskId);
   });
 
   test('远端任务删除会保留本地墓碑并继续进入同步负载', () async {

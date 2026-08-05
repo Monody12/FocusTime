@@ -689,6 +689,10 @@ class SyncService {
   /// 启动定时同步，每隔 [interval] 自动执行一次后台同步
   static void startAutoSync({Duration interval = const Duration(minutes: 5)}) {
     _autoSyncTimer?.cancel();
+    if (isLoggedIn) {
+      // 登录或应用启动后立即收敛本机迁移/离线变更，后续仍按固定间隔检查。
+      triggerBackgroundSync(debounce: Duration.zero);
+    }
     _autoSyncTimer = Timer.periodic(interval, (_) {
       triggerBackgroundSync();
     });

@@ -10,7 +10,7 @@ import 'package:focus_my_time/data/database/database_file_operations.dart'
 class AppDatabase {
   static Database? _database;
   static const _uuid = Uuid();
-  static const _schemaVersion = 12;
+  static const _schemaVersion = 13;
   static const Map<String, String> _taskSyncFields = {
     'listId': 'list_id',
     'title': 'title',
@@ -108,7 +108,7 @@ class AppDatabase {
   ///
   /// 检查项：
   /// 1. 文件是否存在
-  /// 2. 数据库版本号是否在支持范围内（≤ 当前版本 12）
+  /// 2. 数据库版本号是否在支持范围内（≤ 当前版本 13）
   /// 3. 必要的数据表是否存在（lists, tasks, sessions, settings）
   static Future<void> validateBackupFile(String backupPath) async {
     if (kIsWeb) {
@@ -123,7 +123,7 @@ class AppDatabase {
       // 以只读模式打开备份文件进行校验，不修改原始备份
       backupDb = await file_operations.openReadOnlyDatabaseFile(backupPath);
       final version = await backupDb.getVersion();
-      if (version > 12) {
+      if (version > _schemaVersion) {
         throw Exception('备份数据库版本过高: $version');
       }
 
@@ -468,6 +468,10 @@ class AppDatabase {
     if (oldVersion < 12) {
       await _addListCustomizationColumns(db);
     }
+
+    if (oldVersion < 13) {
+      await _repairMisappliedListArchives(db);
+    }
   }
 
   static Future<void> _addListCustomizationColumns(DatabaseExecutor db) async {
@@ -726,6 +730,81 @@ class AppDatabase {
       'archived',
       'archivedAt',
     ], updatedAt);
+  }
+
+  /// 修复旧版同步顺序造成的错误归档：任务已经移动到活动清单，但仍继承
+  /// 另一已归档清单的归档状态和字段时间戳。
+  static Future<int> _repairMisappliedListArchives(DatabaseExecutor db) async {
+    final activeListRows = await db.query(
+      'lists',
+      columns: ['id'],
+      where: 'deleted = 0 AND archived = 0',
+    );
+    final activeListIds = activeListRows
+        .map((row) => row['id'] as String)
+        .toSet();
+    if (activeListIds.isEmpty) return 0;
+
+    final archivedListRows = await db.query(
+      'lists',
+      columns: ['archived_at'],
+      where: 'archived = 1 AND archived_at IS NOT NULL',
+    );
+    final archivedListTimes = archivedListRows
+        .map((row) => row['archived_at'] as int?)
+        .whereType<int>()
+        .toSet();
+    if (archivedListTimes.isEmpty) return 0;
+
+    final taskRows = await db.query(
+      'tasks',
+      columns: ['id', 'list_id', 'updated_at', 'archived_at'],
+      where: 'deleted = 0 AND archived = 1 AND archived_at IS NOT NULL',
+    );
+    var repaired = 0;
+    for (final row in taskRows) {
+      final listId = row['list_id'] as String;
+      final archivedAt = row['archived_at'] as int?;
+      if (!activeListIds.contains(listId) ||
+          archivedAt == null ||
+          !archivedListTimes.contains(archivedAt)) {
+        continue;
+      }
+
+      final taskId = row['id'] as String;
+      final taskUpdatedAt = row['updated_at'] as int? ?? 0;
+      final versions = await _getFieldVersions(db, 'tasks', taskId);
+      final listIdVersion = versions['listId'] ?? taskUpdatedAt;
+      final archivedVersion = versions['archived'] ?? taskUpdatedAt;
+      final archivedAtVersion = versions['archivedAt'] ?? taskUpdatedAt;
+      if (listIdVersion >= archivedVersion ||
+          archivedAtVersion != archivedVersion ||
+          archivedAt != archivedVersion) {
+        continue;
+      }
+
+      var repairUpdatedAt = DateTime.now().millisecondsSinceEpoch + 1;
+      for (final timestamp in [
+        taskUpdatedAt,
+        listIdVersion,
+        archivedVersion,
+        archivedAtVersion,
+      ]) {
+        if (repairUpdatedAt <= timestamp) repairUpdatedAt = timestamp + 1;
+      }
+      await db.update(
+        'tasks',
+        {'archived': 0, 'archived_at': null, 'updated_at': repairUpdatedAt},
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [taskId],
+      );
+      await _setFieldVersions(db, 'tasks', taskId, const [
+        'archived',
+        'archivedAt',
+      ], repairUpdatedAt);
+      repaired++;
+    }
+    return repaired;
   }
 
   // ========== 清单 ==========
@@ -1852,7 +1931,7 @@ class AppDatabase {
     final settingsRecords = await db.query(
       'settings',
       where:
-          'updated_at > ? AND key NOT IN (${syncKeys.map((_) => '?').join(',')})',
+          'updated_at >= ? AND key NOT IN (${syncKeys.map((_) => '?').join(',')})',
       whereArgs: [lastSyncTime, ...syncKeys],
     );
 
@@ -1878,7 +1957,8 @@ class AppDatabase {
     // 必须同时查询软删除记录（deleted = 1），否则删除操作无法跨设备同步
     final records = await db.query(
       table,
-      where: 'updated_at > ? OR deleted = 1',
+      // 包含水位边界，避免修改时间与同步开始时间落在同一毫秒时漏传。
+      where: 'updated_at >= ? OR deleted = 1',
       whereArgs: [lastSyncTime],
     );
     final result = <Map<String, dynamic>>[];
@@ -1913,11 +1993,13 @@ class AppDatabase {
   static Future<void> applySyncChanges(Map<String, dynamic> tables) async {
     final db = await database;
     await db.transaction((txn) async {
-      if (tables['lists'] != null) {
-        await _applyTableChanges(txn, 'lists', tables['lists'], _unmapList);
-      }
+      // 任务必须先于清单处理。否则同批次的“移动任务 + 归档旧清单”会
+      // 先把仍指向旧清单的本地任务错误级联归档。
       if (tables['tasks'] != null) {
         await _applyTableChanges(txn, 'tasks', tables['tasks'], _unmapTask);
+      }
+      if (tables['lists'] != null) {
+        await _applyTableChanges(txn, 'lists', tables['lists'], _unmapList);
       }
       if (tables['sessions'] != null) {
         await _applyTableChanges(
@@ -1938,6 +2020,7 @@ class AppDatabase {
       if (tables['settings'] != null) {
         await _applySettingsChanges(txn, tables['settings']);
       }
+      await _repairMisappliedListArchives(txn);
     });
   }
 
