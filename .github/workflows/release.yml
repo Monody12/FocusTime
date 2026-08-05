@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '发布的版本号，例如 v1.5.5'
+        description: '发布的版本号，例如 v1.6.0'
         required: true
-        default: 'v1.5.5'
+        default: 'v1.6.0'
 
 permissions:
   contents: write
