@@ -48,3 +48,19 @@ Android 14+ 对 `ContentResolver.delete()` 施加严格权限检查，Android 16
 
 - **推送前检查**：每次推送代码或发布新版本前，必须检查并更新版本号（主文件为 `pubspec.yaml`）。
 - **版本一致性**：确保项目中各个位置展示或记录的版本号保持统一和一致（如 `README.md` 的更新日志、GitHub Actions `.github/workflows` 中的版本号过滤等）。
+
+## 生产发布完成条件（强制）
+
+**创建 GitHub Release 不代表发布完成。** `https://focus.dluserver.cn/` 同时承载 Web 前端，并将 `/api/` 反向代理到本机同步服务；每次发版都必须更新这台服务器上的前端和服务端。
+
+1. GitHub Actions 三端构建和 GitHub Release 全部成功后，在生产服务器的项目根目录执行 `tool/deploy_production.sh`。
+2. 脚本必须完成服务端程序备份、PM2 更新、Web 生产构建、时间戳目录部署和 `current` 符号链接原子切换；不得覆盖 `.env`、SQLite 数据或日志。
+3. 发布结束前必须确认：
+   - `https://focus.dluserver.cn/version.json` 与 `pubspec.yaml` 的版本号和 build number 一致；
+   - PM2 中 `focus-timer-sync` 的版本与客户端版本一致且状态为 `online`；
+   - `https://focus.dluserver.cn/api/health` 返回 `status=ok`；
+   - 线上 `main.dart.js` 与本次本机构建哈希一致；
+   - 真实浏览器桌面和移动视口可正常加载；涉及 Web 交互时必须验证对应交互。
+4. 任一项未完成或无法验证时，必须明确告诉用户“GitHub Release 已创建，但生产部署未完成”，不能用“已发布”结束任务。
+
+生产路径、构建参数和回滚说明见 [docs/web-deployment.md](docs/web-deployment.md)。

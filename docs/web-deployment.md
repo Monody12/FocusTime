@@ -1,5 +1,29 @@
 # Web 构建与部署
 
+## 生产发布
+
+本项目的正式发布包含 GitHub Release、线上 Web 前端和同域同步服务，三者缺一不可。
+在 GitHub Release 成功后，从生产服务器的项目根目录执行：
+
+```bash
+tool/deploy_production.sh
+```
+
+脚本会检查版本一致性和 GitHub Release，运行 Flutter 分析与测试，按生产参数构建
+Web，备份并更新 `/root/focus-timer-sync`，重启 PM2，然后把静态产物复制到
+`/www/wwwroot/focus.dluserver.cn/releases/<timestamp>` 并原子切换 `current`。
+部署结束时会再次检查线上版本、PM2、同域 API、Wasm MIME 和 `main.dart.js` 哈希。
+
+只检查当前线上部署是否与仓库版本一致，不执行部署：
+
+```bash
+tool/deploy_production.sh --verify-only
+```
+
+服务端程序备份保存在 `/root/focus-timer-sync/backups/pre-v<version>-<timestamp>`；
+旧 Web 版本保留在站点 `releases/` 目录。需要回滚时，恢复服务端备份并将 `current`
+原子切回上一个静态目录，然后重新验证 PM2 和 `/api/health`。
+
 ## 构建
 
 使用 Flutter 3.44 或更高版本，并在构建前生成 SQLite Web 运行资源：
