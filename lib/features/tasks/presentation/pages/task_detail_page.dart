@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,6 +45,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   late final TaskNotifier _taskNotifier;
   bool _confirmingExpectedMinutes = false;
   bool _confirmingTitle = false;
+  Timer? _undoSnackBarTimer;
 
   // FocusNode 用于监听焦点变化，实现鼠标离开自动保存
   late FocusNode _titleFocusNode;
@@ -73,6 +76,7 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
 
   @override
   void dispose() {
+    _undoSnackBarTimer?.cancel();
     _saveAllEdits(taskId: widget.taskId, showUndo: false);
     WidgetsBinding.instance.removeObserver(this);
     _titleFocusNode.removeListener(_onTitleFocusChange);
@@ -1672,17 +1676,31 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
     required String message,
     required VoidCallback onUndo,
   }) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          action: SnackBarAction(label: '撤销', onPressed: onUndo),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 3),
-          showCloseIcon: true,
-        ),
-      );
+    const duration = Duration(seconds: 10);
+    _undoSnackBarTimer?.cancel();
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(label: '撤销', onPressed: onUndo),
+        behavior: SnackBarBehavior.floating,
+        duration: duration,
+        showCloseIcon: true,
+      ),
+    );
+
+    // Flutter 在无障碍导航开启时不会自动关闭带 Action 的 SnackBar。
+    // 独立计时器保证所有平台都遵守 10 秒无操作自动关闭。
+    final dismissTimer = Timer(duration, () {
+      if (mounted) messenger.hideCurrentSnackBar();
+    });
+    _undoSnackBarTimer = dismissTimer;
+    controller.closed.whenComplete(() {
+      if (identical(_undoSnackBarTimer, dismissTimer)) {
+        dismissTimer.cancel();
+        _undoSnackBarTimer = null;
+      }
+    });
   }
 
   Future<void> _restoreTaskTitle(String taskId, String title) async {
@@ -1725,6 +1743,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   void _showRestoredSnackBar(String message) {
+    _undoSnackBarTimer?.cancel();
+    _undoSnackBarTimer = null;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
