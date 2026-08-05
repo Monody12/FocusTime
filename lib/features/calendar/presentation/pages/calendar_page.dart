@@ -6,12 +6,17 @@ import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/providers/time_zone_provider.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
-import 'package:focus_my_time/core/utils/recurrence_utils.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/features/calendar/models/calendar_task_activity.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
+import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
+
+typedef CalendarTaskSelected = void Function(String taskId);
 
 class CalendarPage extends ConsumerStatefulWidget {
-  const CalendarPage({super.key});
+  const CalendarPage({super.key, required this.onTaskSelected});
+
+  final CalendarTaskSelected onTaskSelected;
 
   @override
   ConsumerState<CalendarPage> createState() => _CalendarPageState();
@@ -22,9 +27,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
   String _selectedDate = AppTime.formatDate(AppTime.now());
   Map<String, Map<String, dynamic>> _dayStats = {};
   List<Map<String, dynamic>> _selectedDateSessions = [];
-  List<Map<String, dynamic>> _selectedDateTasks = [];
-  List<Map<String, dynamic>> _selectedDateRecurringTasks = [];
-  Set<String> _selectedDateCompletions = {};
+  List<CalendarTaskActivity> _selectedDateActivities = [];
   int _monthLoadRequest = 0;
   int _detailLoadRequest = 0;
 
@@ -45,7 +48,10 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
       final startStr = AppTime.formatDate(startDate);
       final endStr = AppTime.formatDate(endDate);
 
-      final allTasks = await AppDatabase.getAllTasks();
+      final allTasks = await AppDatabase.getCalendarTasksByDateRange(
+        startStr,
+        endStr,
+      );
       final sessions = await AppDatabase.getSessionsByDateRange(
         startStr,
         endStr,
@@ -70,31 +76,24 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
         stats[date] = existing;
       }
 
-      final recurring = allTasks
-          .where((t) => t['recurrenceConfig'] != null && t['dueDate'] != null)
-          .toList();
-      for (final task in recurring) {
-        final dates = getRecurrenceDatesInRange(
-          RecurrenceConfig.fromJson(
-            task['recurrenceConfig'] as Map<String, dynamic>,
-          ),
-          task['dueDate'] as String,
-          startStr,
-          endStr,
-        );
-        for (final date in dates) {
-          final dateStr = AppTime.formatDate(date);
-          final existing =
-              stats[dateStr] ??
-              {
-                'focusMinutes': 0,
-                'taskCount': 0,
-                'completedCount': 0,
-                'recurringCount': 0,
-              };
-          existing['recurringCount'] = (existing['recurringCount'] as int) + 1;
-          stats[dateStr] = existing;
-        }
+      final taskStats = buildCalendarTaskStats(
+        tasks: allTasks,
+        startDate: startStr,
+        endDate: endStr,
+      );
+      for (final entry in taskStats.entries) {
+        final existing =
+            stats[entry.key] ??
+            {
+              'focusMinutes': 0,
+              'taskCount': 0,
+              'completedCount': 0,
+              'recurringCount': 0,
+            };
+        existing['taskCount'] = entry.value.taskCount;
+        existing['completedCount'] = entry.value.completedCount;
+        existing['recurringCount'] = entry.value.recurringCount;
+        stats[entry.key] = existing;
       }
 
       if (!mounted || request != _monthLoadRequest || month != _currentMonth) {
@@ -112,39 +111,23 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     final request = ++_detailLoadRequest;
     final selectedDate = _selectedDate;
     try {
-      final allTasks = await AppDatabase.getAllTasks();
+      final allTasks = await AppDatabase.getCalendarTasksByDateRange(
+        selectedDate,
+        selectedDate,
+      );
       final sessions = await AppDatabase.getSessionsByDate(selectedDate);
-      final dayTasks = allTasks
-          .where((t) => t['dueDate'] == selectedDate)
-          .toList();
-      final recurringCandidates = allTasks
-          .where((t) => t['recurrenceConfig'] != null && t['dueDate'] != null)
-          .toList();
-
-      final recurringOnDate = <Map<String, dynamic>>[];
-      final completions = <String>{};
-      for (final task in recurringCandidates) {
-        final dates = getRecurrenceDatesInRange(
-          RecurrenceConfig.fromJson(
-            task['recurrenceConfig'] as Map<String, dynamic>,
-          ),
-          task['dueDate'] as String,
-          selectedDate,
-          selectedDate,
-        );
-        if (dates.isNotEmpty) {
-          recurringOnDate.add(task);
-          final taskCompletions =
-              await AppDatabase.getRecurrenceCompletionsByDateRange(
-                task['id'] as String,
-                selectedDate,
-                selectedDate,
-              );
-          if (taskCompletions.isNotEmpty) {
-            completions.add(task['id'] as String);
-          }
-        }
-      }
+      final recurrenceCompletions =
+          await AppDatabase.getAllRecurrenceCompletionsByDateRange(
+            selectedDate,
+            selectedDate,
+          );
+      final activities = buildCalendarTaskActivities(
+        tasks: allTasks,
+        date: selectedDate,
+        recurrenceCompletedTaskIds: recurrenceCompletions
+            .map((item) => item['taskId'] as String)
+            .toSet(),
+      );
 
       if (!mounted ||
           request != _detailLoadRequest ||
@@ -153,9 +136,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
       }
       setState(() {
         _selectedDateSessions = sessions;
-        _selectedDateTasks = dayTasks;
-        _selectedDateRecurringTasks = recurringOnDate;
-        _selectedDateCompletions = completions;
+        _selectedDateActivities = activities;
       });
     } catch (_) {
       if (!mounted || request != _detailLoadRequest) return;
@@ -194,6 +175,11 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
     // Listen for session updates to refresh calendar data
     ref.listen(sessionUpdateProvider, (previous, next) {
       if (previous != next) {
+        _loadMonthData();
+      }
+    });
+    ref.listen(taskProvider.select((state) => state.tasks), (previous, next) {
+      if (!identical(previous, next)) {
         _loadMonthData();
       }
     });
@@ -240,6 +226,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   children: [
                     IconButton(
                       icon: const Icon(AppIcons.previous),
+                      tooltip: '上个月',
                       onPressed: () => _changeMonth(-1),
                     ),
                     Text(
@@ -252,6 +239,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                     ),
                     IconButton(
                       icon: const Icon(AppIcons.next),
+                      tooltip: '下个月',
                       onPressed: () => _changeMonth(1),
                     ),
                   ],
@@ -288,7 +276,7 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                   final cellWidth = (constraints.maxWidth - 32) / 7;
                   final cellHeight = math
                       .min(cellWidth / 1.3, heightCellLimit)
-                      .clamp(44.0, 80.0)
+                      .clamp(42.0, 64.0)
                       .toDouble();
                   return GridView.builder(
                     shrinkWrap: true,
@@ -366,15 +354,36 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                                                         .textSecondary,
                                             ),
                                           ),
+                                        if ((stat['focusMinutes'] as int) > 0 &&
+                                            (stat['taskCount'] as int) > 0)
+                                          const SizedBox(width: 3),
+                                        if ((stat['taskCount'] as int) > 0) ...[
+                                          Text(
+                                            '${stat['taskCount']}项',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              color: isSelected
+                                                  ? Colors.white70
+                                                  : context
+                                                        .appColors
+                                                        .textSecondary,
+                                            ),
+                                          ),
+                                        ],
                                         if ((stat['recurringCount'] as int) > 0)
-                                          AppIcon(
-                                            AppIcons.repeat,
-                                            size: 8,
-                                            color: isSelected
-                                                ? Colors.white70
-                                                : context
-                                                      .appColors
-                                                      .textSecondary,
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 3,
+                                            ),
+                                            child: AppIcon(
+                                              AppIcons.repeat,
+                                              size: 10,
+                                              color: isSelected
+                                                  ? Colors.white70
+                                                  : context
+                                                        .appColors
+                                                        .textSecondary,
+                                            ),
                                           ),
                                       ],
                                     ),
@@ -408,99 +417,56 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
                     ),
                     const SizedBox(height: 12),
                     if (_selectedDateSessions.isNotEmpty ||
-                        _selectedDateTasks.isNotEmpty ||
-                        _selectedDateRecurringTasks.isNotEmpty) ...[
-                      // 将统计信息改为 Wrap，防止在小屏幕上由于文字过长导致像素溢出
+                        _selectedDateActivities.isNotEmpty) ...[
                       Wrap(
                         spacing: 16,
                         runSpacing: 8,
                         children: [
-                          if (_selectedDateSessions.isNotEmpty)
-                            Text(
-                              '专注 ${_selectedDateSessions.fold<int>(0, (sum, s) => sum + ((s['durationSeconds'] as int) / 60).floor())} 分钟',
-                              style: TextStyle(color: context.appColors.text),
+                          if (_selectedDateActivities.isNotEmpty)
+                            _buildMetric(
+                              AppIcons.tasks,
+                              '${_selectedDateActivities.length} 个相关任务',
                             ),
-                          if (_selectedDateTasks.isNotEmpty)
-                            Text(
-                              '完成 ${_selectedDateTasks.where((t) => t['completed'] == true).length} 项任务',
-                              style: TextStyle(
-                                color: context.appColors.textSecondary,
-                              ),
+                          if (_selectedDateActivities.any(
+                            (activity) => activity.isCompleted,
+                          ))
+                            _buildMetric(
+                              AppIcons.taskComplete,
+                              '${_selectedDateActivities.where((activity) => activity.isCompleted).length} 个当前已完成',
+                            ),
+                          if (_selectedDateSessions.isNotEmpty)
+                            _buildMetric(
+                              AppIcons.focus,
+                              '专注 ${_selectedDateSessions.fold<int>(0, (sum, s) => sum + ((s['durationSeconds'] as int) / 60).floor())} 分钟',
                             ),
                         ],
                       ),
                       const SizedBox(height: 16),
                     ],
-                    if (_selectedDateRecurringTasks.isNotEmpty) ...[
-                      _buildSectionTitle('🔄 重复任务', isDark),
-                      ..._selectedDateRecurringTasks.map(
-                        (task) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Row(
-                            children: [
-                              Text(
-                                _selectedDateCompletions.contains(task['id'])
-                                    ? '☑'
-                                    : '☐',
-                                style: TextStyle(color: context.appColors.text),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  task['title'] as String,
-                                  style: TextStyle(
-                                    color: context.appColors.text,
-                                    decoration:
-                                        _selectedDateCompletions.contains(
-                                          task['id'],
-                                        )
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    if (_selectedDateTasks.isNotEmpty) ...[
-                      _buildSectionTitle('📅 普通任务', isDark),
-                      ..._selectedDateTasks.map(
-                        (task) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Row(
-                            children: [
-                              Text(
-                                task['completed'] == true ? '☑' : '☐',
-                                style: TextStyle(color: context.appColors.text),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  task['title'] as String,
-                                  style: TextStyle(
-                                    color: context.appColors.text,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    if (_selectedDateActivities.isNotEmpty) ...[
+                      _buildSectionTitle('当天任务', isDark),
+                      ..._selectedDateActivities.map(_buildActivityRow),
                     ],
                     if (_selectedDateSessions.isEmpty &&
-                        _selectedDateRecurringTasks.isEmpty &&
-                        _selectedDateTasks.isEmpty)
+                        _selectedDateActivities.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 32),
                         child: Center(
-                          child: Text(
-                            '暂无记录',
-                            style: TextStyle(
-                              color: context.appColors.textSecondary,
-                            ),
+                          child: Column(
+                            children: [
+                              AppIcon(
+                                AppIcons.emptyTasks,
+                                size: AppIconSizes.empty,
+                                color: context.appColors.border,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '当天没有任务记录',
+                                style: TextStyle(
+                                  color: context.appColors.textSecondary,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -525,6 +491,188 @@ class _CalendarPageState extends ConsumerState<CalendarPage> {
           color: context.appColors.text,
         ),
       ),
+    );
+  }
+
+  Widget _buildMetric(IconData icon, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppIcon(
+          icon,
+          size: AppIconSizes.status,
+          color: context.appColors.textSecondary,
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: context.appColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActivityRow(CalendarTaskActivity activity) {
+    final completed = activity.isCompleted;
+    final (
+      activityIcon,
+      activityLabel,
+      activityColor,
+    ) = switch (activity.primaryKind) {
+      CalendarTaskActivityKind.createdAndCompleted => (
+        AppIcons.taskComplete,
+        '当天创建并完成',
+        context.appColors.success,
+      ),
+      CalendarTaskActivityKind.completed => (
+        AppIcons.taskComplete,
+        '当天完成',
+        context.appColors.success,
+      ),
+      CalendarTaskActivityKind.created => (
+        AppIcons.add,
+        '当天创建',
+        context.appColors.accentSecondary,
+      ),
+      CalendarTaskActivityKind.recurring => (
+        AppIcons.repeat,
+        '循环计划',
+        context.appColors.accent,
+      ),
+      CalendarTaskActivityKind.due => (
+        AppIcons.calendar,
+        '截止当天',
+        context.appColors.warning,
+      ),
+    };
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Material(
+        color: context.appColors.surface,
+        borderRadius: BorderRadius.circular(6),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => widget.onTaskSelected(activity.id),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+            decoration: BoxDecoration(
+              border: Border.all(color: context.appColors.border),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _buildCompletionMark(completed),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        activity.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: completed
+                              ? context.appColors.textSecondary
+                              : context.appColors.text,
+                          decoration: completed
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 5,
+                        children: [
+                          _buildActivityMeta(
+                            activityIcon,
+                            activityLabel,
+                            activityColor,
+                          ),
+                          if (activity.recurringOnDate &&
+                              activity.primaryKind !=
+                                  CalendarTaskActivityKind.recurring)
+                            _buildActivityMeta(
+                              AppIcons.repeat,
+                              '循环',
+                              context.appColors.accent,
+                            ),
+                          if (activity.dueOnDate &&
+                              activity.primaryKind !=
+                                  CalendarTaskActivityKind.due)
+                            _buildActivityMeta(
+                              AppIcons.calendar,
+                              '截止',
+                              context.appColors.textSecondary,
+                            ),
+                          if (activity.archived)
+                            _buildActivityMeta(
+                              AppIcons.archive,
+                              '已归档',
+                              context.appColors.warning,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                AppIcon(
+                  AppIcons.arrowForward,
+                  size: AppIconSizes.compact,
+                  color: context.appColors.textSecondary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompletionMark(bool completed) {
+    return Semantics(
+      label: completed ? '已完成' : '未完成',
+      checked: completed,
+      child: ExcludeSemantics(
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: completed ? context.appColors.success : Colors.transparent,
+            border: Border.all(
+              color: completed
+                  ? context.appColors.success
+                  : context.appColors.border,
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: completed
+              ? const Icon(AppIcons.taskDone, size: 14, color: Colors.white)
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActivityMeta(IconData icon, String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppIcon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 11, color: color)),
+      ],
     );
   }
 }

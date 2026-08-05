@@ -49,12 +49,14 @@ class RecurrenceConfig {
   };
 
   factory RecurrenceConfig.fromJson(Map<String, dynamic> json) {
+    final rawInterval = json['interval'];
+    final interval = rawInterval is int && rawInterval > 0 ? rawInterval : 1;
     return RecurrenceConfig(
       frequency: RecurrenceFrequency.values.firstWhere(
         (e) => e.name == json['frequency'],
         orElse: () => RecurrenceFrequency.daily,
       ),
-      interval: json['interval'] ?? 1,
+      interval: interval,
       daysOfWeek: json['daysOfWeek'] != null
           ? List<int>.from(json['daysOfWeek'])
           : null,
@@ -197,17 +199,27 @@ List<DateTime> getRecurrenceDatesInRange(
   final start = DateTime.parse(startStr);
   final end = DateTime.parse(endStr);
   var current = DateTime.parse(anchorDate);
+  final configuredEnd = config.endsAt == null
+      ? null
+      : DateTime.tryParse(config.endsAt!);
+  final occurrenceLimit = config.endsAfterOccurrences;
+  var occurrence = 1;
 
-  // 如果开始日期在锚点之前，从锚点开始
-  if (current.isBefore(start)) {
-    current = getNextDate(current, config);
-  }
-
-  while (!current.isAfter(end)) {
+  // Bound malformed or extremely old synced series so calendar loading cannot
+  // get stuck. A valid recurrence always advances to a later date.
+  for (var iteration = 0; iteration < 10000; iteration++) {
+    if (current.isAfter(end) ||
+        (configuredEnd != null && current.isAfter(configuredEnd)) ||
+        (occurrenceLimit != null && occurrence > occurrenceLimit)) {
+      break;
+    }
     if (!current.isBefore(start)) {
       dates.add(current);
     }
-    current = getNextDate(current, config);
+    final next = getNextDate(current, config);
+    if (!next.isAfter(current)) break;
+    current = next;
+    occurrence++;
   }
 
   return dates;

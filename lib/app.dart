@@ -14,6 +14,7 @@ import 'package:focus_my_time/features/tasks/presentation/pages/task_list_page.d
 import 'package:focus_my_time/features/tasks/presentation/pages/task_detail_page.dart';
 import 'package:focus_my_time/features/settings/presentation/pages/settings_page.dart';
 import 'package:focus_my_time/features/calendar/presentation/pages/calendar_page.dart';
+import 'package:focus_my_time/features/calendar/presentation/pages/calendar_task_detail_page.dart';
 import 'package:focus_my_time/features/ai_assistant/presentation/pages/ai_chat_page.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
@@ -38,6 +39,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
   bool _showTimerPanel = false; // 默认不显示计时器，开始专注后才显示
   bool _showSettings = false;
   bool _showCalendar = false;
+  String? _calendarTaskId;
   bool _showAiChat = false;
   bool _showNoTaskToast = false;
   Timer? _foregroundSyncDebounce;
@@ -299,7 +301,13 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                           children: [
                             Expanded(
                               child: _showCalendar
-                                  ? const CalendarPage()
+                                  ? CalendarPage(
+                                      onTaskSelected: (taskId) {
+                                        setState(
+                                          () => _calendarTaskId = taskId,
+                                        );
+                                      },
+                                    )
                                   : _buildMainContent(isDark, isMobile),
                             ),
                             // Footer
@@ -355,10 +363,19 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                   const SizedBox(width: 8),
                                   OutlinedButton(
                                     onPressed: () {
-                                      setState(
-                                        () => _showCalendar = !_showCalendar,
-                                      );
-                                      if (_showCalendar) _showSettings = false;
+                                      final showCalendar = !_showCalendar;
+                                      setState(() {
+                                        _showCalendar = showCalendar;
+                                        _calendarTaskId = null;
+                                        if (showCalendar) {
+                                          _showSettings = false;
+                                        }
+                                      });
+                                      if (showCalendar) {
+                                        ref
+                                            .read(taskProvider.notifier)
+                                            .setSelectedTask(null);
+                                      }
                                     },
                                     style: OutlinedButton.styleFrom(
                                       padding: EdgeInsets.symmetric(
@@ -378,6 +395,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                         AppIcon(
                                           AppIcons.calendar,
                                           size: AppIconSizes.compact,
+                                          semanticLabel: isMobile ? '日历' : null,
                                           color: _showCalendar
                                               ? context
                                                     .appColors
@@ -443,6 +461,13 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                 .setSelectedTask(null);
                           },
                         ),
+                      if (!isMobile && _showCalendar && _calendarTaskId != null)
+                        CalendarTaskDetailPage(
+                          taskId: _calendarTaskId!,
+                          onClose: () {
+                            setState(() => _calendarTaskId = null);
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -459,6 +484,18 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                   taskId: taskState.selectedTaskId!,
                   onClose: () {
                     ref.read(taskProvider.notifier).setSelectedTask(null);
+                  },
+                ),
+              ),
+            ),
+          if (isMobile && _showCalendar && _calendarTaskId != null)
+            Positioned.fill(
+              child: Container(
+                color: context.appColors.background,
+                child: CalendarTaskDetailPage(
+                  taskId: _calendarTaskId!,
+                  onClose: () {
+                    setState(() => _calendarTaskId = null);
                   },
                 ),
               ),

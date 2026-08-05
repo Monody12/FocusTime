@@ -34,5 +34,51 @@ void main() {
       final next = getNextDate(DateTime(2026, 7, 7), config);
       expect(next.weekday, DateTime.friday);
     });
+
+    test('range respects the configured end date', () {
+      final config = RecurrenceConfig(
+        frequency: RecurrenceFrequency.daily,
+        endsAt: '2026-08-03',
+      );
+
+      final dates = getRecurrenceDatesInRange(
+        config,
+        '2026-08-01',
+        '2026-08-01',
+        '2026-08-10',
+      );
+
+      expect(dates, [
+        DateTime(2026, 8, 1),
+        DateTime(2026, 8, 2),
+        DateTime(2026, 8, 3),
+      ]);
+    });
+
+    test('range respects the remaining occurrence count', () {
+      final config = RecurrenceConfig(
+        frequency: RecurrenceFrequency.daily,
+        endsAfterOccurrences: 2,
+      );
+
+      final dates = getRecurrenceDatesInRange(
+        config,
+        '2026-08-01',
+        '2026-08-01',
+        '2026-08-10',
+      );
+
+      expect(dates, [DateTime(2026, 8, 1), DateTime(2026, 8, 2)]);
+    });
+
+    test('invalid synced interval falls back to one', () {
+      final config = RecurrenceConfig.fromJson({
+        'frequency': 'daily',
+        'interval': 0,
+      });
+
+      expect(config.interval, 1);
+      expect(getNextDate(DateTime(2026, 8, 1), config), DateTime(2026, 8, 2));
+    });
   });
 }

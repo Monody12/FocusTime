@@ -1065,16 +1065,63 @@ class AppDatabase {
 
   // ========== 任务 ==========
 
-  static Future<Map<String, dynamic>?> getTaskById(String id) async {
+  static Future<Map<String, dynamic>?> getTaskById(
+    String id, {
+    bool includeArchived = false,
+  }) async {
     final db = await database;
     // 过滤已删除任务，防止调用方操作已被软删除的僵尸任务
-    final result = await db.query(
-      'tasks',
-      where: 'id = ? AND deleted = 0 AND archived = 0',
-      whereArgs: [id],
+    final archivedFilter = includeArchived ? '' : 'AND t.archived = 0';
+    final result = await db.rawQuery(
+      '''
+      SELECT t.*, l.name AS list_name
+      FROM tasks t
+      LEFT JOIN lists l ON l.id = t.list_id AND l.deleted = 0
+      WHERE t.id = ? AND t.deleted = 0 $archivedFilter
+      LIMIT 1
+    ''',
+      [id],
     );
     if (result.isEmpty) return null;
-    return _mapTask(result.first);
+    final task = _mapTask(result.first);
+    task['listName'] = result.first['list_name'];
+    return task;
+  }
+
+  /// Returns every non-deleted task that can contribute to a calendar range.
+  /// Archived tasks stay visible as historical records.
+  static Future<List<Map<String, dynamic>>> getCalendarTasksByDateRange(
+    String startDate,
+    String endDate,
+  ) async {
+    final db = await database;
+    final start = AppTime.startOfDateMilliseconds(startDate);
+    final end = AppTime.endOfDateMilliseconds(endDate);
+    final result = await db.rawQuery(
+      '''
+      SELECT t.*, l.name AS list_name
+      FROM tasks t
+      LEFT JOIN lists l ON l.id = t.list_id AND l.deleted = 0
+      WHERE t.deleted = 0
+        AND (
+          t.created_at BETWEEN ? AND ?
+          OR t.completed_at BETWEEN ? AND ?
+          OR t.due_date BETWEEN ? AND ?
+          OR (
+            t.recurrence_config IS NOT NULL
+            AND t.due_date IS NOT NULL
+            AND t.due_date <= ?
+          )
+        )
+      ORDER BY COALESCE(t.completed_at, t.created_at) DESC
+    ''',
+      [start, end, start, end, startDate, endDate, endDate],
+    );
+    return result.map((row) {
+      final task = _mapTask(row);
+      task['listName'] = row['list_name'];
+      return task;
+    }).toList();
   }
 
   static Future<List<Map<String, dynamic>>> getTasksByList(
@@ -1815,6 +1862,21 @@ class AppDatabase {
       'task_recurrence_completions',
       where: 'task_id = ? AND completion_date BETWEEN ? AND ? AND deleted = 0',
       whereArgs: [taskId, startDate, endDate],
+      orderBy: 'completion_date DESC',
+    );
+    return result.map(_mapRecurrenceCompletion).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>>
+  getAllRecurrenceCompletionsByDateRange(
+    String startDate,
+    String endDate,
+  ) async {
+    final db = await database;
+    final result = await db.query(
+      'task_recurrence_completions',
+      where: 'completion_date BETWEEN ? AND ? AND deleted = 0',
+      whereArgs: [startDate, endDate],
       orderBy: 'completion_date DESC',
     );
     return result.map(_mapRecurrenceCompletion).toList();

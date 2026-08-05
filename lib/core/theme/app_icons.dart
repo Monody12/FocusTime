@@ -120,17 +120,19 @@ class AppIcon extends StatelessWidget {
     super.key,
     this.color,
     this.size = AppIconSizes.action,
+    this.semanticLabel,
   });
 
   final IconData icon;
   final Color? color;
   final double size;
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox.square(
       dimension: size,
-      child: Icon(icon, size: size, color: color),
+      child: Icon(icon, size: size, color: color, semanticLabel: semanticLabel),
     );
   }
 }
