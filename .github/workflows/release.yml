@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '发布的版本号，例如 v1.5.4'
+        description: '发布的版本号，例如 v1.5.5'
         required: true
-        default: 'v1.5.4'
+        default: 'v1.5.5'
 
 permissions:
   contents: write
@@ -125,7 +125,9 @@ jobs:
 
       - name: Build Web application
         if: matrix.platform == 'web'
-        run: flutter build web --release
+        run: |
+          tool/setup_web_fonts.sh
+          flutter build web --release
 
       - name: Package Web application
         if: matrix.platform == 'web'

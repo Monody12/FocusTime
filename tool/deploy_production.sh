@@ -122,6 +122,7 @@ else
 fi
 
 rm -rf build/web
+tool/setup_web_fonts.sh
 flutter build web --release \
   --no-web-resources-cdn \
   --dart-define="SYNC_SERVER_URL=$production_url"

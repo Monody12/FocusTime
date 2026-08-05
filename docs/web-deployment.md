@@ -42,8 +42,10 @@ flutter build web --release \
 `web/sqflite_sw.js`。这两个文件必须随静态产物一起部署，其中 Wasm 文件需
 以 `application/wasm` MIME 类型返回。
 
-`tool/setup_web_fonts.sh` 会把 Flutter 引擎当前版本所需的简体中文、常用符号
-和彩色表情回退字体下载到 `web/font-fallback/`。构建时使用
+`tool/setup_web_fonts.sh` 会把 Flutter 引擎当前版本所需的简体中文、日文汉字、
+常用符号和彩色表情回退字体下载到 `web/font-fallback/`。英文系统环境输入中文时，
+Flutter 可能选择 Noto Sans JP，因此该字体也必须随包部署。Release 和生产部署脚本
+都会在 Web 构建前执行字体清单准备与数量校验。构建时使用
 `--no-web-resources-cdn`，并由启动脚本将字体回退指向站点本地目录，生产运行不
 依赖 Google CDN。`assets/fonts/FocusNotoSansSC-UI.ttf` 是应用界面常用字形的
 内置子集，用于避免冷启动首帧出现缺字方框；完整字库仍负责用户输入等动态文本。
