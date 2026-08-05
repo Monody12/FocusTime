@@ -116,8 +116,10 @@ flutter pub get
 if ! $skip_tests; then
   flutter analyze
   flutter test
+  npm --prefix server test
+else
+  npm --prefix server run build
 fi
-npm --prefix server run build
 
 rm -rf build/web
 flutter build web --release \
@@ -149,6 +151,25 @@ cp -a \
   "$server_root/src" \
   "$server_root/dist" \
   "$backup_dir/"
+
+server_db="$server_root/data/sync-server.db"
+if [[ -f "$server_db" ]]; then
+  SERVER_ROOT="$server_root" SOURCE_DB="$server_db" BACKUP_DB="$backup_dir/sync-server.db" \
+    node <<'NODE'
+const path = require('path')
+const Database = require(path.join(process.env.SERVER_ROOT, 'node_modules/better-sqlite3'))
+const database = new Database(process.env.SOURCE_DB, { readonly: true, fileMustExist: true })
+
+database.backup(process.env.BACKUP_DB)
+  .then(() => database.close())
+  .catch((error) => {
+    database.close()
+    console.error(error)
+    process.exit(1)
+  })
+NODE
+  [[ -s "$backup_dir/sync-server.db" ]] || fail "SQLite backup was not created"
+fi
 
 cp -a server/src/. "$server_root/src/"
 install -m 644 server/package.json "$server_root/package.json"

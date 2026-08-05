@@ -9,8 +9,8 @@
 tool/deploy_production.sh
 ```
 
-脚本会检查版本一致性和 GitHub Release，运行 Flutter 分析与测试，按生产参数构建
-Web，备份并更新 `/root/focus-timer-sync`，重启 PM2，然后把静态产物复制到
+脚本会检查版本一致性和 GitHub Release，运行 Flutter 与服务端测试，按生产参数构建
+Web，使用 SQLite 在线备份 API 保存一致的数据快照，备份并更新 `/root/focus-timer-sync`，重启 PM2，然后把静态产物复制到
 `/www/wwwroot/focus.dluserver.cn/releases/<timestamp>` 并原子切换 `current`。
 部署结束时会再次检查线上版本、PM2、同域 API、Wasm MIME 和 `main.dart.js` 哈希。
 
@@ -20,7 +20,7 @@ Web，备份并更新 `/root/focus-timer-sync`，重启 PM2，然后把静态产
 tool/deploy_production.sh --verify-only
 ```
 
-服务端程序备份保存在 `/root/focus-timer-sync/backups/pre-v<version>-<timestamp>`；
+服务端程序和 `sync-server.db` 一致性快照保存在 `/root/focus-timer-sync/backups/pre-v<version>-<timestamp>`；
 旧 Web 版本保留在站点 `releases/` 目录。需要回滚时，恢复服务端备份并将 `current`
 原子切回上一个静态目录，然后重新验证 PM2 和 `/api/health`。
 
