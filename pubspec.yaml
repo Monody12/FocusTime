@@ -1,7 +1,7 @@
 name: focus_my_time
 description: "FocusMyTime - 番茄工作法 + 单核工作法计时器"
 publish_to: 'none'
-version: 1.7.2+32
+version: 1.7.3+33
 
 environment:
   sdk: ^3.12.0
@@ -55,6 +55,7 @@ dependencies:
   markdown: ^7.3.1
   image: ^4.9.2
   path_provider: ^2.1.6
+  highlight: ^0.7.0
 
 dev_dependencies:
   flutter_test:

@@ -75,6 +75,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
     bool? pinned,
     bool? archived,
     bool? aiAllowed,
+    bool snapshot = true,
   }) async {
     final current = await MemoDatabase.getMemo(id);
     if (current == null) return;
@@ -110,14 +111,18 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
           : nextTitle;
       updates['bodyMd'] = null;
     }
-    await MemoDatabase.createVersion(
-      id,
-      title: current['title'] as String?,
-      bodyMd: current['bodyMd'] as String?,
-      encryptedPayload: current['encryptedPayload'] as String?,
-      isPrivate: current['isPrivate'] == true,
-      pinned: current['pinned'] == true,
-    );
+    // 自动保存不生成版本快照，避免高频保存挤掉用户有意义的版本历史；
+    // 手动保存和恢复历史前仍会先保存当前版本。
+    if (snapshot) {
+      await MemoDatabase.createVersion(
+        id,
+        title: current['title'] as String?,
+        bodyMd: current['bodyMd'] as String?,
+        encryptedPayload: current['encryptedPayload'] as String?,
+        isPrivate: current['isPrivate'] == true,
+        pinned: current['pinned'] == true,
+      );
+    }
     await MemoDatabase.updateMemo(id, updates);
     await refresh();
   }

@@ -870,6 +870,11 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
   final _previewScrollController = ScrollController();
   final _previewText = ValueNotifier<String>('');
   Timer? _previewDebounce;
+  Timer? _autoSaveTimer;
+  String? _savedTitle;
+  String? _savedBody;
+  _AutoSaveStatus _autoSaveStatus = _AutoSaveStatus.none;
+  DateTime? _lastSavedAt;
   bool _syncingScroll = false;
   bool _loaded = false;
   bool _saving = false;
@@ -877,9 +882,114 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
   @override
   void initState() {
     super.initState();
-    _bodyController.addListener(_schedulePreviewUpdate);
+    _bodyController.addListener(_onContentChanged);
+    _titleController.addListener(_scheduleAutoSave);
     _editorScrollController.addListener(() => _syncScroll(fromEditor: true));
     _previewScrollController.addListener(() => _syncScroll(fromEditor: false));
+  }
+
+  void _onContentChanged() {
+    _schedulePreviewUpdate();
+    _scheduleAutoSave();
+  }
+
+  bool get _isDirty =>
+      _titleController.text != (_savedTitle ?? '') ||
+      _bodyController.text != (_savedBody ?? '');
+
+  /// 停止输入 2.5 秒后自动保存；自动保存不生成版本快照。
+  void _scheduleAutoSave() {
+    if (!_isDirty) return;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(milliseconds: 2500), () {
+      _performSave(snapshot: false, manual: false);
+    });
+  }
+
+  Future<void> _performSave({required bool snapshot, required bool manual}) async {
+    if (_saving || !_isDirty) {
+      if (manual && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('没有需要保存的修改')));
+      }
+      return;
+    }
+    _saving = true;
+    if (mounted) setState(() => _autoSaveStatus = _AutoSaveStatus.saving);
+    try {
+      await ref
+          .read(memoProvider.notifier)
+          .updateMemo(
+            widget.memoId,
+            title: _titleController.text,
+            bodyMd: _bodyController.text,
+            snapshot: snapshot,
+          );
+      _savedTitle = _titleController.text;
+      _savedBody = _bodyController.text;
+      if (!mounted) return;
+      setState(() {
+        _autoSaveStatus = _AutoSaveStatus.saved;
+        _lastSavedAt = DateTime.now();
+      });
+      if (manual) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('备忘录已保存')));
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _autoSaveStatus = _AutoSaveStatus.error);
+      if (manual) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+      }
+    } finally {
+      _saving = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Widget _buildAutoSaveStatus() {
+    switch (_autoSaveStatus) {
+      case _AutoSaveStatus.saving:
+        return const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 10,
+              height: 10,
+              child: CircularProgressIndicator(strokeWidth: 1.5),
+            ),
+            SizedBox(width: 6),
+            Text('正在保存…', style: TextStyle(fontSize: 11)),
+          ],
+        );
+      case _AutoSaveStatus.saved:
+        final time = _lastSavedAt;
+        final label = time == null
+            ? '已保存'
+            : '已保存 ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+        return Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: context.appColors.textSecondary,
+          ),
+        );
+      case _AutoSaveStatus.error:
+        return GestureDetector(
+          onTap: () => _performSave(snapshot: false, manual: false),
+          child: const Text(
+            '保存失败 · 点击重试',
+            style: TextStyle(fontSize: 11, color: Colors.red),
+          ),
+        );
+      case _AutoSaveStatus.none:
+        return const SizedBox.shrink();
+    }
   }
 
   /// 输入防抖后刷新预览面板，避免每次按键都重新解析 Markdown。
@@ -906,8 +1016,21 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
 
   @override
   void dispose() {
-    _previewDebounce?.cancel();
-    _bodyController.removeListener(_schedulePreviewUpdate);
+    // 离开编辑器（切走或退出备忘录）时冲刷未保存内容；自动保存不占版本历史。
+    if (_isDirty) {
+      final notifier = ref.read(memoProvider.notifier);
+      notifier
+          .updateMemo(
+            widget.memoId,
+            title: _titleController.text,
+            bodyMd: _bodyController.text,
+            snapshot: false,
+          )
+          .catchError((Object _) {});
+    }
+    _autoSaveTimer?.cancel();
+    _bodyController.removeListener(_onContentChanged);
+    _titleController.removeListener(_scheduleAutoSave);
     _titleController.dispose();
     _bodyController.dispose();
     _editorScrollController.dispose();
@@ -952,6 +1075,8 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
       _titleController.text = title;
       _bodyController.text = body;
       _previewText.value = body;
+      _savedTitle = title;
+      _savedBody = body;
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
@@ -974,6 +1099,8 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
                 onPressed: _insertImage,
                 icon: const Icon(Icons.image_outlined),
               ),
+              _buildAutoSaveStatus(),
+              const SizedBox(width: 4),
               IconButton(
                 tooltip: '附件管理',
                 onPressed: _showAttachmentsDialog,
@@ -1436,33 +1563,18 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
     _saving = true;
     if (mounted) setState(() {});
     try {
-      await ref
-          .read(memoProvider.notifier)
-          .updateMemo(
-            widget.memoId,
-            title: _titleController.text,
-            bodyMd: _bodyController.text,
-          );
+      await _performSave(snapshot: true, manual: !silent);
       if (!mounted) return;
       // 保存后触发附件上传队列（登录状态下）。
       final failure = await MemoImageService.instance.flushUploadQueue();
       if (!mounted) return;
-      if (!silent) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(failure == null ? '备忘录已保存' : '已保存，部分附件上传失败：\n$failure'),
-          ),
-        );
+      if (!silent && failure == null) {
+        // _performSave 已展示“备忘录已保存”。
       } else if (failure != null) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('部分附件上传失败：\n$failure')));
       }
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
     } finally {
       _saving = false;
       if (mounted) setState(() {});
@@ -1667,3 +1779,6 @@ class _AttachmentsDialogState extends ConsumerState<_AttachmentsDialog> {
     return '${(value / 1024 / 1024).toStringAsFixed(1)} MB';
   }
 }
+
+/// 编辑器自动保存状态；自动保存失败时提供点击重试入口。
+enum _AutoSaveStatus { none, saving, saved, error }

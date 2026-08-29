@@ -32,7 +32,10 @@ void main() {
     expect(paragraph, findsOneWidget);
     expect(find.textContaining('加粗', findRichText: true), findsOneWidget);
     expect(find.textContaining('行内代码', findRichText: true), findsOneWidget);
-    expect(find.textContaining('void main()'), findsOneWidget);
+    expect(find.textContaining('void main()'), findsNothing);
+    // 代码块经语法高亮后按 token 拆分为多个着色 span
+    expect(find.textContaining('void', findRichText: true), findsWidgets);
+    expect(find.textContaining('main', findRichText: true), findsWidgets);
     expect(find.text('引用内容'), findsOneWidget);
   });
 
@@ -43,6 +46,15 @@ void main() {
     );
     expect(find.text('<script>alert(1)</script>'), findsOneWidget);
     expect(find.text('普通段落'), findsOneWidget);
+  });
+
+  testWidgets('中文输入法产生的全角引号围栏被宽容渲染为代码块', (tester) async {
+    await pumpPreview(
+      tester,
+      '‘’‘java\npublic static void main\n```\n\n正文里“单引号”不受影响',
+    );
+    expect(find.textContaining('public static', findRichText: true), findsOneWidget);
+    expect(find.textContaining('“单引号”', findRichText: true), findsOneWidget);
   });
 
   testWidgets('memo-attachment 图片引用走附件解析且缺失时优雅降级', (tester) async {

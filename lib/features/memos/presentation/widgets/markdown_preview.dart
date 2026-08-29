@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:highlight/highlight.dart' as hl;
 import 'package:markdown/markdown.dart' as md;
 
 import 'package:focus_my_time/core/theme/app_theme.dart';
@@ -40,7 +41,14 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
 
   List<Widget> _parseBlocks() {
     final document = md.Document(extensionSet: md.ExtensionSet.gitHubFlavored);
-    final nodes = document.parse(widget.data);
+    // 中文输入法常把行首的 ``` 转成全角引号（''' / ‘’‘），渲染层把
+    // 行首连续 3 个及以上弯引号宽容处理为代码围栏。仅影响预览显示，
+    // 正文原文仍按用户输入保存。
+    final normalized = widget.data.replaceAllMapped(
+      RegExp('^[‘’]{3,}', multiLine: true),
+      (_) => '```',
+    );
+    final nodes = document.parse(normalized);
     return [for (final node in nodes) ..._buildBlock(node, baseLevel: 0)];
   }
 
@@ -122,7 +130,10 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
         ];
       case 'pre':
         final code = node.children?.firstOrNull;
-        final codeText = code is md.Element ? code.textContent : node.textContent;
+        final codeText = _decodeHtmlEntities(
+          code is md.Element ? code.textContent : node.textContent,
+        );
+        final highlighted = _highlightSpans(context, codeText, code);
         return [
           Container(
             width: double.infinity,
@@ -134,12 +145,17 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
             ),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Text(
-                codeText.endsWith('\n')
-                    ? codeText.substring(0, codeText.length - 1)
-                    : codeText,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-              ),
+              child: highlighted != null
+                  ? RichText(text: highlighted)
+                  : Text(
+                      codeText.endsWith('\n')
+                          ? codeText.substring(0, codeText.length - 1)
+                          : codeText,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                      ),
+                    ),
             ),
           ),
         ];
@@ -172,6 +188,61 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
                 ),
               ];
     }
+  }
+
+  /// 围栏代码块按语言做语法高亮；语言未知或解析失败时返回 null，
+  /// 由调用方回退为纯文本等宽渲染。
+  TextSpan? _highlightSpans(BuildContext context, String codeText, md.Node? codeNode) {
+    final classAttr =
+        codeNode is md.Element ? codeNode.attributes['class'] ?? '' : '';
+    if (!classAttr.startsWith('language-')) return null;
+    final language = classAttr.substring('language-'.length).trim();
+    if (language.isEmpty || language == 'text' || language == 'plain') {
+      return null;
+    }
+    final hl.Result result;
+    try {
+      result = hl.highlight.parse(codeText, language: language);
+    } catch (_) {
+      return null;
+    }
+    final spans = <InlineSpan>[];
+    final palette = Theme.of(context).brightness == Brightness.dark
+        ? _darkCodePalette
+        : _lightCodePalette;
+
+    // highlight 包把 token 颜色标在分支节点上、文本放在 children 里，
+    // 需要沿子树继承父节点的配色。
+    void walk(List<hl.Node>? nodes, TextStyle? inherited) {
+      for (final node in nodes ?? const <hl.Node>[]) {
+        final tokenClass = node.className?.split(' ').first;
+        final color = tokenClass == null ? null : palette[tokenClass];
+        final style = color == null ? inherited : TextStyle(color: color);
+        if (node.value != null && node.value!.isNotEmpty) {
+          spans.add(TextSpan(text: node.value, style: style));
+        }
+        walk(node.children, style);
+      }
+    }
+
+    walk(result.nodes, null);
+    if (spans.isEmpty) return null;
+    return TextSpan(
+      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+      children: spans,
+    );
+  }
+
+  /// markdown 包会把代码块内容做 HTML 转义，自渲染时需要还原实体。
+  String _decodeHtmlEntities(String input) {
+    return input
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&apos;', "'")
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&');
   }
 
   List<Widget> _buildListItem(md.Node node, String listTag, int index) {
@@ -368,6 +439,91 @@ Future<void> openExternalLink(BuildContext context, String href) async {
     context,
   ).showSnackBar(const SnackBar(content: Text('链接已复制到剪贴板')));
 }
+
+/// 代码高亮配色（按 highlight.js 的 className 分组）。
+const Map<String, Color> _darkCodePalette = {
+  'keyword': Color(0xFFC678DD),
+  'built_in': Color(0xFFE6C07B),
+  'type': Color(0xFFE5C07B),
+  'literal': Color(0xFFD19A66),
+  'number': Color(0xFFD19A66),
+  'operator': Color(0xFF56B6C2),
+  'regexp': Color(0xFF56B6C2),
+  'string': Color(0xFF98C379),
+  'subst': Color(0xFFABB2BF),
+  'symbol': Color(0xFF56B6C2),
+  'class': Color(0xFFE6C07B),
+  'function': Color(0xFF61AFEF),
+  'title': Color(0xFF61AFEF),
+  'params': Color(0xFFABB2BF),
+  'comment': Color(0xFF7F848E),
+  'doctag': Color(0xFFC678DD),
+  'meta': Color(0xFF61AFEF),
+  'variable': Color(0xFFE06C75),
+  'variable.language': Color(0xFFE06C75),
+  'attr': Color(0xFFD19A66),
+  'attribute': Color(0xFFD19A66),
+  'name': Color(0xFFE06C75),
+  'tag': Color(0xFFE06C75),
+  'section': Color(0xFFE06C75),
+  'selector-tag': Color(0xFFE06C75),
+  'selector-id': Color(0xFF61AFEF),
+  'selector-class': Color(0xFFD19A66),
+  'selector-attr': Color(0xFFD19A66),
+  'selector-pseudo': Color(0xFF56B6C2),
+  'template-variable': Color(0xFFE06C75),
+  'addition': Color(0xFF98C379),
+  'deletion': Color(0xFFE06C75),
+  'quote': Color(0xFF5C6370),
+  'bullet': Color(0xFFD19A66),
+  'code': Color(0xFF98C379),
+  'emphasis': Color(0xFFE06C75),
+  'strong': Color(0xFFE06C75),
+  'formula': Color(0xFFC678DD),
+  'link': Color(0xFF61AFEF),
+  'link_quote': Color(0xFF98C379),
+};
+
+const Map<String, Color> _lightCodePalette = {
+  'keyword': Color(0xFF0033B3),
+  'built_in': Color(0xFF326D74),
+  'type': Color(0xFF000000),
+  'literal': Color(0xFF871094),
+  'number': Color(0xFF871094),
+  'operator': Color(0xFF0033B3),
+  'regexp': Color(0xFF871094),
+  'string': Color(0xFF067D17),
+  'symbol': Color(0xFF871094),
+  'class': Color(0xFF000000),
+  'function': Color(0xFF00627A),
+  'title': Color(0xFF00627A),
+  'params': Color(0xFF080808),
+  'comment': Color(0xFF8C8C8C),
+  'doctag': Color(0xFF0033B3),
+  'meta': Color(0xFF871094),
+  'variable': Color(0xFF080808),
+  'attr': Color(0xFF871094),
+  'attribute': Color(0xFF871094),
+  'name': Color(0xFF871094),
+  'tag': Color(0xFF0033B3),
+  'section': Color(0xFF0033B3),
+  'selector-tag': Color(0xFF0033B3),
+  'selector-id': Color(0xFF00627A),
+  'selector-class': Color(0xFF871094),
+  'selector-attr': Color(0xFF871094),
+  'selector-pseudo': Color(0xFF326D74),
+  'template-variable': Color(0xFF871094),
+  'addition': Color(0xFF067D17),
+  'deletion': Color(0xFF871094),
+  'quote': Color(0xFF8C8C8C),
+  'bullet': Color(0xFF871094),
+  'code': Color(0xFF067D17),
+  'emphasis': Color(0xFF871094),
+  'strong': Color(0xFF871094),
+  'formula': Color(0xFF0033B3),
+  'link': Color(0xFF00627A),
+  'link_quote': Color(0xFF067D17),
+};
 
 class _MemoImage extends StatelessWidget {
   const _MemoImage({required this.href});
