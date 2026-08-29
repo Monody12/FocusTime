@@ -6,11 +6,12 @@ import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:uuid/uuid.dart';
 import 'package:focus_my_time/data/database/database_file_operations.dart'
     as file_operations;
+import 'package:focus_my_time/data/database/memo_database.dart';
 
 class AppDatabase {
   static Database? _database;
   static const _uuid = Uuid();
-  static const _schemaVersion = 13;
+  static const _schemaVersion = 14;
   static const Map<String, String> _taskSyncFields = {
     'listId': 'list_id',
     'title': 'title',
@@ -286,6 +287,8 @@ class AppDatabase {
       )
     ''');
 
+    await _createMemoTables(db);
+
     // 加速提醒查询的复合索引
     await db.execute(
       'CREATE INDEX idx_tasks_reminders ON tasks(deleted, completed, reminder_at)',
@@ -329,6 +332,162 @@ class AppDatabase {
       'created_at': now,
       'updated_at': now,
     });
+  }
+
+  /// Memo data is kept in separate tables so the editor, attachment manager,
+  /// and sync layer can evolve without coupling to task records.  All tables
+  /// carry updated/deleted fields because memo content must sync offline and
+  /// deletions must remain as tombstones until every device has seen them.
+  static Future<void> _createMemoTables(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS memo_folders (
+        id TEXT PRIMARY KEY,
+        parent_id TEXT,
+        name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        archived INTEGER NOT NULL DEFAULT 0,
+        archived_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memo_folders_parent ON memo_folders(parent_id, deleted, sort_order)',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS memo_tags (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        color INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS memos (
+        id TEXT PRIMARY KEY,
+        folder_id TEXT,
+        title TEXT,
+        body_md TEXT,
+        is_private INTEGER NOT NULL DEFAULT 0,
+        encrypt_title INTEGER NOT NULL DEFAULT 0,
+        encrypted_payload TEXT,
+        crypto_version INTEGER NOT NULL DEFAULT 1,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        archived INTEGER NOT NULL DEFAULT 0,
+        archived_at INTEGER,
+        ai_allowed INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memos_list ON memos(folder_id, deleted, archived, pinned, updated_at)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memos_updated ON memos(deleted, updated_at)',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS memo_tag_links (
+        id TEXT PRIMARY KEY,
+        memo_id TEXT NOT NULL,
+        tag_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(memo_id, tag_id)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memo_tag_links_memo ON memo_tag_links(memo_id, deleted)',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS memo_versions (
+        id TEXT PRIMARY KEY,
+        memo_id TEXT NOT NULL,
+        version_number INTEGER NOT NULL,
+        title TEXT,
+        body_md TEXT,
+        encrypted_payload TEXT,
+        is_private INTEGER NOT NULL DEFAULT 0,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(memo_id, version_number)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memo_versions_memo ON memo_versions(memo_id, deleted, version_number DESC)',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS memo_attachments (
+        id TEXT PRIMARY KEY,
+        memo_id TEXT,
+        version_id TEXT,
+        filename TEXT,
+        mime_type TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        storage_key TEXT,
+        sha256 TEXT,
+        is_private INTEGER NOT NULL DEFAULT 0,
+        encrypted_payload TEXT,
+        upload_status TEXT NOT NULL DEFAULT 'pending',
+        width INTEGER,
+        height INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memo_attachments_memo ON memo_attachments(memo_id, version_id, deleted)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memo_attachments_updated ON memo_attachments(deleted, updated_at)',
+    );
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS memo_shares (
+        id TEXT PRIMARY KEY,
+        attachment_id TEXT NOT NULL,
+        share_kind TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        expires_at INTEGER,
+        password_hash TEXT,
+        public_storage_key TEXT,
+        revoked INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS privacy_vault (
+        id TEXT PRIMARY KEY,
+        kdf_name TEXT NOT NULL,
+        kdf_params TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        wrapped_master_key TEXT NOT NULL,
+        wrap_nonce TEXT NOT NULL,
+        recovery_wrapped_master_key TEXT NOT NULL,
+        recovery_nonce TEXT NOT NULL,
+        crypto_version INTEGER NOT NULL DEFAULT 1,
+        config_revision INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
   }
 
   static Future<void> _onUpgrade(
@@ -471,6 +630,10 @@ class AppDatabase {
 
     if (oldVersion < 13) {
       await _repairMisappliedListArchives(db);
+    }
+
+    if (oldVersion < 14) {
+      await _createMemoTables(db);
     }
   }
 
@@ -1946,8 +2109,9 @@ class AppDatabase {
 
   /// 获取自上次同步以来发生变更的所有记录
   static Future<Map<String, List<Map<String, dynamic>>>> getSyncPayload(
-    int lastSyncTime,
-  ) async {
+    int lastSyncTime, {
+    int? memoLastSyncTime,
+  }) async {
     final db = await database;
     final payload = <String, List<Map<String, dynamic>>>{};
 
@@ -2006,6 +2170,14 @@ class AppDatabase {
           },
         )
         .toList();
+
+    // 备忘录使用独立映射层和独立水位线：连接旧版服务器时备忘录负载会被
+    // 跳过，任务水位线继续前进，备忘录的本地变更在服务器升级后仍可补传。
+    // 服务端只保存 data 中的密文/元数据，不会尝试解密隐私内容。
+    final memoPayload = await MemoDatabase.getSyncPayload(
+      memoLastSyncTime ?? lastSyncTime,
+    );
+    payload.addAll(memoPayload);
 
     return payload;
   }
@@ -2084,6 +2256,10 @@ class AppDatabase {
       }
       await _repairMisappliedListArchives(txn);
     });
+
+    // 备忘录表使用自己的字段映射和墓碑策略。放在主事务完成后应用，
+    // 避免在 sqflite 事务中嵌套另一个 Database.transaction。
+    await MemoDatabase.applySyncChanges(tables);
   }
 
   static Future<void> _applyTableChanges(
@@ -2407,9 +2583,18 @@ class AppDatabase {
     'ai_conversations',
     'ai_messages',
     'ai_operations',
+    ...MemoDatabase.syncTables,
   ];
 
   static const _backupTableClearOrder = <String>[
+    'memo_shares',
+    'memo_attachments',
+    'memo_versions',
+    'memo_tag_links',
+    'memos',
+    'memo_tags',
+    'memo_folders',
+    'privacy_vault',
     'ai_operations',
     'ai_messages',
     'ai_conversations',
@@ -2444,6 +2629,7 @@ class AppDatabase {
     'ai_conversations',
     'ai_messages',
     'ai_operations',
+    ...MemoDatabase.syncTables,
   };
 
   /// 跨平台备份格式。浏览器通过 JSON 下载，原生端可在后续版本复用。

@@ -1,0 +1,1234 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:focus_my_time/core/theme/app_icons.dart';
+import 'package:focus_my_time/data/database/memo_database.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
+import 'package:focus_my_time/features/memos/providers/memo_provider.dart';
+import 'package:focus_my_time/features/memos/services/memo_attachment_service.dart';
+import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
+import 'package:focus_my_time/features/memos/services/memo_image_service.dart';
+import 'package:focus_my_time/features/memos/presentation/widgets/markdown_preview.dart';
+
+class MemoPage extends ConsumerStatefulWidget {
+  const MemoPage({super.key});
+
+  @override
+  ConsumerState<MemoPage> createState() => _MemoPageState();
+}
+
+class _MemoPageState extends ConsumerState<MemoPage> {
+  final _searchController = TextEditingController();
+  String? _selectedId;
+  bool _preview = false;
+  bool _showTrash = false;
+  List<Map<String, dynamic>>? _trashItems;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final memos = ref.watch(memoProvider);
+    final crypto = MemoCryptoService.instance;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          child: Row(
+            children: [
+              Text('备忘录', style: Theme.of(context).textTheme.headlineSmall),
+              const Spacer(),
+              IconButton(
+                tooltip: crypto.isUnlocked ? '锁定隐私内容' : '解锁隐私内容',
+                onPressed: () => _toggleVault(),
+                icon: Icon(crypto.isUnlocked ? AppIcons.unlock : AppIcons.lock),
+              ),
+              IconButton(
+                tooltip: _showTrash ? '返回备忘录列表' : '回收站',
+                onPressed: () => setState(() {
+                  _showTrash = !_showTrash;
+                  if (_showTrash) _loadTrash();
+                }),
+                icon: Icon(_showTrash ? Icons.arrow_back : Icons.delete_outline),
+              ),
+              IconButton(
+                tooltip: '新建备忘录',
+                onPressed: () => _createMemo(context),
+                icon: const Icon(AppIcons.add),
+              ),
+            ],
+          ),
+        ),
+        if (!_showTrash)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) =>
+                  ref.read(memoProvider.notifier).refresh(query: value),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: '搜索备忘录（解锁后可搜索隐私内容）',
+                isDense: true,
+              ),
+            ),
+          ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: memos.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(child: Text('加载失败：$error')),
+            data: (items) => _showTrash
+                ? _buildTrashList(_trashItems ?? const [])
+                : Row(
+                    children: [
+                      SizedBox(
+                        width: 280,
+                        child: ListView.builder(
+                          itemCount: items.length,
+                          itemBuilder: (context, index) =>
+                              _buildMemoTile(items[index]),
+                        ),
+                      ),
+                      const VerticalDivider(width: 1),
+                      Expanded(
+                        child: _selectedId == null
+                            ? const Center(child: Text('选择一篇备忘录开始编辑'))
+                            : _MemoEditor(
+                                key: ValueKey(_selectedId),
+                                memoId: _selectedId!,
+                                preview: _preview,
+                                onPreviewChanged: (value) =>
+                                    setState(() => _preview = value),
+                                onTrash: () {
+                                  setState(() => _selectedId = null);
+                                  ref.read(memoProvider.notifier).refresh();
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMemoTile(Map<String, dynamic> memo) {
+    final crypto = MemoCryptoService.instance;
+    final id = memo['id'] as String;
+    final isPrivate = memo['isPrivate'] == true;
+    final encryptedTitle = memo['encryptTitle'] == true;
+    final locked = isPrivate && !crypto.isUnlocked;
+    final title = locked && encryptedTitle
+        ? '隐私备忘录'
+        : (memo['title'] as String? ?? '未命名备忘录');
+    final pinned = memo['pinned'] == true;
+    return ListTile(
+      selected: _selectedId == id,
+      leading: Icon(isPrivate ? AppIcons.lock : AppIcons.memo, size: 20),
+      title: Row(
+        children: [
+          if (pinned) ...[
+            Icon(Icons.push_pin, size: 12, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 4),
+          ],
+          Expanded(
+            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+      subtitle: Text(_formatDate(memo['updatedAt'] as int?), maxLines: 1),
+      onTap: () => setState(() => _selectedId = id),
+    );
+  }
+
+  Widget _buildTrashList(List<Map<String, dynamic>> items) {
+    if (items.isEmpty) {
+      return const Center(child: Text('回收站是空的'));
+    }
+    return ListView.builder(
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final memo = items[index];
+        return ListTile(
+          leading: const Icon(Icons.delete_outline, size: 20),
+          title: Text(
+            memo['title'] as String? ?? '未命名备忘录',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text('删除于 ${_formatDate(memo['updatedAt'] as int?)}'),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: '恢复',
+                icon: const Icon(Icons.restore),
+                onPressed: () async {
+                  await ref.read(memoProvider.notifier).restore(memo['id'] as String);
+                  await _loadTrash();
+                },
+              ),
+              IconButton(
+                tooltip: '彻底删除',
+                icon: const Icon(Icons.delete_forever),
+                onPressed: () => _confirmPurge(memo),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _loadTrash() async {
+    final items = await ref.read(memoProvider.notifier).loadTrash();
+    if (mounted) setState(() => _trashItems = items);
+  }
+
+  Future<void> _confirmPurge(Map<String, dynamic> memo) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('彻底删除'),
+        content: const Text(
+          '将物理删除这篇备忘录及其全部版本历史，此操作无法撤销。附件记录保留，可在容量管理中清理。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('彻底删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref.read(memoProvider.notifier).purge(memo['id'] as String);
+    await _loadTrash();
+  }
+
+  Future<void> _toggleVault() async {
+    final crypto = MemoCryptoService.instance;
+    if (crypto.isUnlocked) {
+      crypto.lock();
+      setState(() {});
+      return;
+    }
+    final password = await _askPassword(context, '解锁隐私备忘录');
+    if (password == null) return;
+    final ok = await crypto.unlockWithPassword(password);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('隐私密码不正确')));
+      return;
+    }
+    setState(() {});
+    ref.invalidate(memoProvider);
+    // 解锁后立即清理上传队列中的私密附件。
+    try {
+      final failure = await MemoImageService.instance.flushUploadQueue();
+      if (!mounted) return;
+      if (failure != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('部分附件上传失败：\n$failure')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('附件上传队列处理失败：$error')));
+      }
+    }
+  }
+
+  Future<void> _createMemo(BuildContext context) async {
+    final titleController = TextEditingController();
+    final bodyController = TextEditingController();
+    var isPrivate = false;
+    var encryptTitle = false;
+    var aiAllowed = false;
+    String? folderId;
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('新建备忘录'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(labelText: '标题'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: bodyController,
+                  maxLines: 5,
+                  decoration: const InputDecoration(labelText: 'Markdown 内容'),
+                ),
+                const SizedBox(height: 8),
+                FutureBuilder<List<Map<String, dynamic>>>(
+                  future: ref.read(memoProvider.notifier).loadFolders(),
+                  builder: (context, snapshot) {
+                    final folders = snapshot.data ?? const [];
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String?>(
+                            initialValue: folderId,
+                            decoration: const InputDecoration(
+                              labelText: '所属文件夹',
+                              isDense: true,
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                value: null,
+                                child: Text('不放入文件夹'),
+                              ),
+                              for (final folder in folders)
+                                DropdownMenuItem(
+                                  value: folder['id'] as String,
+                                  child: Text(folder['name'] as String? ?? ''),
+                                ),
+                            ],
+                            onChanged: (value) =>
+                                setDialogState(() => folderId = value),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '新建文件夹',
+                          icon: const Icon(Icons.create_new_folder_outlined),
+                          onPressed: () async {
+                            final name = await _askText(
+                              dialogContext,
+                              '新建文件夹',
+                              '文件夹名称',
+                            );
+                            if (name == null || name.trim().isEmpty) return;
+                            try {
+                              final folder = await ref
+                                  .read(memoProvider.notifier)
+                                  .createFolder(name.trim());
+                              setDialogState(() => folderId = folder['id'] as String);
+                            } catch (error) {
+                              if (dialogContext.mounted) {
+                                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                  SnackBar(content: Text('文件夹创建失败：$error')),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: isPrivate,
+                  onChanged: (value) => setDialogState(() {
+                    isPrivate = value == true;
+                    if (!isPrivate) encryptTitle = false;
+                  }),
+                  title: const Text('设为隐私备忘录'),
+                ),
+                if (isPrivate)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: encryptTitle,
+                    onChanged: (value) =>
+                        setDialogState(() => encryptTitle = value == true),
+                    title: const Text('同时加密标题（隐藏文件夹和标签关系）'),
+                  ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: aiAllowed,
+                  onChanged: (value) =>
+                      setDialogState(() => aiAllowed = value == true),
+                  title: const Text('允许 AI 助手读取本篇内容'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  final memo = await ref
+                      .read(memoProvider.notifier)
+                      .create(
+                        title: titleController.text.trim().isEmpty
+                            ? '未命名备忘录'
+                            : titleController.text.trim(),
+                        bodyMd: bodyController.text,
+                        folderId: folderId,
+                        isPrivate: isPrivate,
+                        encryptTitle: encryptTitle,
+                        aiAllowed: aiAllowed,
+                      );
+                  setState(() => _selectedId = memo['id'] as String);
+                  if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+                } catch (error) {
+                  if (dialogContext.mounted) {
+                    ScaffoldMessenger.of(
+                      dialogContext,
+                    ).showSnackBar(SnackBar(content: Text('$error')));
+                  }
+                }
+              },
+              child: const Text('创建'),
+            ),
+          ],
+        ),
+      ),
+    );
+    titleController.dispose();
+    bodyController.dispose();
+    if (created == true && mounted) setState(() {});
+  }
+
+  Future<String?> _askText(
+    BuildContext dialogContext,
+    String title,
+    String label,
+  ) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: dialogContext,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          onSubmitted: (value) => Navigator.pop(context, value),
+          decoration: InputDecoration(labelText: label),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<String?> _askPassword(BuildContext context, String title) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          onSubmitted: (value) => Navigator.pop(dialogContext, value),
+          decoration: const InputDecoration(labelText: '隐私密码'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  static String _formatDate(int? timestamp) => formatMemoDate(timestamp);
+}
+
+String formatMemoDate(int? timestamp) {
+  if (timestamp == null) return '';
+  final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+  return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+}
+
+class _MemoEditor extends ConsumerStatefulWidget {
+  const _MemoEditor({
+    super.key,
+    required this.memoId,
+    required this.preview,
+    required this.onPreviewChanged,
+    required this.onTrash,
+  });
+
+  final String memoId;
+  final bool preview;
+  final ValueChanged<bool> onPreviewChanged;
+  final VoidCallback onTrash;
+
+  @override
+  ConsumerState<_MemoEditor> createState() => _MemoEditorState();
+}
+
+class _MemoEditorState extends ConsumerState<_MemoEditor> {
+  final _titleController = TextEditingController();
+  final _bodyController = TextEditingController();
+  bool _loaded = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _bodyController.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic>? get _currentMemo => ref
+      .watch(memoProvider)
+      .valueOrNull
+      ?.where((m) => m['id'] == widget.memoId)
+      .firstOrNull;
+
+  @override
+  Widget build(BuildContext context) {
+    final memo = _currentMemo;
+    if (memo == null) return const SizedBox.shrink();
+    final isPrivate = memo['isPrivate'] == true;
+    if (isPrivate && !MemoCryptoService.instance.isUnlocked) {
+      return const Center(child: Text('该备忘录已加密，请先解锁隐私内容'));
+    }
+    if (!_loaded) {
+      _loaded = true;
+      var title = memo['title'] as String? ?? '';
+      var body = memo['bodyMd'] as String? ?? '';
+      if (isPrivate) {
+        final encrypted = memo['encryptedPayload'] as String?;
+        if (encrypted != null && encrypted.isNotEmpty) {
+          try {
+            final decoded = MemoCryptoService.instance.decryptText(encrypted);
+            final separator = decoded.indexOf('\u0000');
+            if (separator >= 0) {
+              title = decoded.substring(0, separator);
+              body = decoded.substring(separator + 1);
+            }
+          } catch (_) {
+            // 密文损坏时保持空白编辑器，保存前由 provider 阻止覆盖。
+          }
+        }
+      }
+      _titleController.text = title;
+      _bodyController.text = body;
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _titleController,
+                  decoration: const InputDecoration(
+                    hintText: '标题',
+                    border: InputBorder.none,
+                  ),
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              IconButton(
+                tooltip: '插入图片',
+                onPressed: _insertImage,
+                icon: const Icon(Icons.image_outlined),
+              ),
+              IconButton(
+                tooltip: '附件管理',
+                onPressed: _showAttachmentsDialog,
+                icon: const Icon(Icons.attach_file),
+              ),
+              IconButton(
+                tooltip: '更多操作',
+                onPressed: () => _showMoreMenu(memo),
+                icon: const Icon(Icons.more_vert),
+              ),
+              IconButton(
+                tooltip: widget.preview ? '编辑 Markdown' : '预览 Markdown',
+                onPressed: () => widget.onPreviewChanged(!widget.preview),
+                icon: Icon(widget.preview ? Icons.edit : Icons.preview),
+              ),
+              IconButton(
+                tooltip: '保存',
+                onPressed: _saving ? null : _save,
+                icon: const Icon(Icons.save_outlined),
+              ),
+            ],
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: widget.preview
+                ? SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: MarkdownPreview(data: _bodyController.text),
+                  )
+                : TextField(
+                    controller: _bodyController,
+                    expands: true,
+                    maxLines: null,
+                    minLines: null,
+                    textAlignVertical: TextAlignVertical.top,
+                    decoration: const InputDecoration(
+                      hintText: '使用 Markdown 编写内容，支持表格、任务列表和图片',
+                      border: InputBorder.none,
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMoreMenu(Map<String, dynamic> memo) {
+    final pinned = memo['pinned'] == true;
+    final archived = memo['archived'] == true;
+    final aiAllowed = memo['aiAllowed'] == true;
+    final isPrivate = memo['isPrivate'] == true;
+    showDialog(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('更多操作'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => _applyUpdate(pinned: !pinned, pop: dialogContext),
+            child: Row(
+              children: [
+                const Icon(Icons.push_pin, size: 18),
+                const SizedBox(width: 8),
+                Text(pinned ? '取消置顶' : '置顶'),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () =>
+                _applyUpdate(archived: !archived, pop: dialogContext),
+            child: Row(
+              children: [
+                const Icon(Icons.archive_outlined, size: 18),
+                const SizedBox(width: 8),
+                Text(archived ? '取消归档' : '归档'),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _showTagsDialog();
+            },
+            child: const Row(
+              children: [
+                Icon(Icons.label_outline, size: 18),
+                SizedBox(width: 8),
+                Text('标签管理'),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _showVersionHistoryDialog(isPrivate: isPrivate);
+            },
+            child: const Row(
+              children: [
+                Icon(Icons.history, size: 18),
+                SizedBox(width: 8),
+                Text('版本历史'),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () =>
+                _applyUpdate(aiAllowed: !aiAllowed, pop: dialogContext),
+            child: Row(
+              children: [
+                Icon(
+                  aiAllowed ? Icons.smart_toy : Icons.smart_toy_outlined,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(aiAllowed ? '禁止 AI 读取本篇' : '允许 AI 读取本篇'),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await _save();
+              await MemoDatabase.deleteMemo(widget.memoId);
+              widget.onTrash();
+              if (mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('已移到回收站')));
+              }
+            },
+            child: const Row(
+              children: [
+                Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                SizedBox(width: 8),
+                Text('移到回收站', style: TextStyle(color: Colors.red)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _applyUpdate({
+    bool? pinned,
+    bool? archived,
+    bool? aiAllowed,
+    required BuildContext pop,
+  }) async {
+    Navigator.pop(pop);
+    try {
+      await _save(silent: true);
+      await ref
+          .read(memoProvider.notifier)
+          .updateMemo(widget.memoId, pinned: pinned, archived: archived, aiAllowed: aiAllowed);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败：$error')));
+      }
+    }
+  }
+
+  Future<void> _showTagsDialog() async {
+    final notifier = ref.read(memoProvider.notifier);
+    final tags = await notifier.loadTags();
+    final linked = (await MemoDatabase.getMemo(widget.memoId))?['tags'] as List? ?? [];
+    final linkedIds = linked.map((t) => (t as Map)['id'] as String).toSet();
+    if (!mounted) return;
+    final selected = {...linkedIds};
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('标签管理'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final tag in tags)
+                      FilterChip(
+                        label: Text(tag['name'] as String? ?? ''),
+                        selected: selected.contains(tag['id']),
+                        onSelected: (value) => setDialogState(() {
+                          value
+                              ? selected.add(tag['id'] as String)
+                              : selected.remove(tag['id']);
+                        }),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () async {
+                    final name = await showDialog<String>(
+                      context: dialogContext,
+                      builder: (context) {
+                        final controller = TextEditingController();
+                        return AlertDialog(
+                          title: const Text('新建标签'),
+                          content: TextField(
+                            controller: controller,
+                            autofocus: true,
+                            onSubmitted: (value) =>
+                                Navigator.pop(context, value),
+                            decoration: const InputDecoration(labelText: '标签名称'),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('取消'),
+                            ),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.pop(context, controller.text),
+                              child: const Text('创建'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                    if (name == null || name.trim().isEmpty) return;
+                    try {
+                      final tag = await notifier.createTag(name.trim());
+                      setDialogState(() => selected.add(tag['id'] as String));
+                    } catch (error) {
+                      if (dialogContext.mounted) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(content: Text('标签创建失败：$error')),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text('新建标签'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == true) {
+      await notifier.setTags(widget.memoId, selected.toList());
+    }
+  }
+
+  Future<void> _showVersionHistoryDialog({required bool isPrivate}) async {
+    final versions = await ref.read(memoProvider.notifier).loadVersions(widget.memoId);
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('版本历史（最多保留 20 个）'),
+        content: SizedBox(
+          width: 420,
+          height: 360,
+          child: versions.isEmpty
+              ? const Center(child: Text('暂无历史版本'))
+              : ListView.builder(
+                  itemCount: versions.length,
+                  itemBuilder: (context, index) {
+                    final version = versions[index];
+                    final time = version['createdAt'] as int?;
+                    return ListTile(
+                      leading: Text('#${version['versionNumber'] ?? index + 1}'),
+                      title: Text(
+                        _versionTitle(version, isPrivate),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        formatMemoDate(time),
+                        maxLines: 1,
+                      ),
+                      trailing: TextButton(
+                        onPressed: () async {
+                          final ok = await _restoreVersion(version, isPrivate: isPrivate);
+                          if (ok && dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                        },
+                        child: const Text('恢复'),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _versionTitle(Map<String, dynamic> version, bool isPrivate) {
+    if (!isPrivate) return version['title'] as String? ?? '(无标题)';
+    final payload = version['encryptedPayload'] as String?;
+    if (payload == null) return '(加密版本)';
+    try {
+      final decoded = MemoCryptoService.instance.decryptText(payload);
+      final separator = decoded.indexOf('\u0000');
+      return separator >= 0 ? decoded.substring(0, separator) : '(加密版本)';
+    } catch (_) {
+      return '(无法解密)';
+    }
+  }
+
+  Future<bool> _restoreVersion(
+    Map<String, dynamic> version, {
+    required bool isPrivate,
+  }) async {
+    try {
+      if (isPrivate) {
+        final payload = version['encryptedPayload'] as String?;
+        if (payload == null) throw StateError('该版本没有可恢复内容');
+        final decoded = MemoCryptoService.instance.decryptText(payload);
+        final separator = decoded.indexOf('\u0000');
+        final title = separator >= 0 ? decoded.substring(0, separator) : '';
+        final body = separator >= 0 ? decoded.substring(separator + 1) : decoded;
+        await ref
+            .read(memoProvider.notifier)
+            .updateMemo(widget.memoId, title: title, bodyMd: body);
+      } else {
+        await ref
+            .read(memoProvider.notifier)
+            .updateMemo(
+              widget.memoId,
+              title: version['title'] as String?,
+              bodyMd: version['bodyMd'] as String?,
+            );
+      }
+      _loaded = false;
+      if (mounted) setState(() {});
+      return true;
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('恢复失败：$error')));
+      }
+      return false;
+    }
+  }
+
+  Future<void> _insertImage() async {
+    final memo = _currentMemo;
+    if (memo == null) return;
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp', 'gif'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    try {
+      Uint8List bytes;
+      if (file.bytes != null) {
+        bytes = file.bytes!;
+      } else if (file.path != null) {
+        bytes = await File(file.path!).readAsBytes();
+      } else {
+        throw StateError('无法读取所选图片');
+      }
+      final attachment = await MemoImageService.instance.saveImportedImage(
+        filename: file.name,
+        bytes: bytes,
+        memoId: widget.memoId,
+        isPrivate: memo['isPrivate'] == true,
+      );
+      final name = (attachment['filename'] as String?) ?? '图片';
+      final markdown = '![${name.replaceAll(']', '')}](memo-attachment://${attachment['id']})';
+      final offset = _bodyController.selection.baseOffset;
+      final text = _bodyController.text;
+      final insertAt = (offset < 0 || offset > text.length) ? text.length : offset;
+      final leading =
+          insertAt == 0 || text.substring(0, insertAt).endsWith('\n')
+          ? ''
+          : '\n\n';
+      _bodyController.value = TextEditingValue(
+        text:
+            '${text.substring(0, insertAt)}$leading$markdown\n\n${text.substring(insertAt)}',
+        selection: TextSelection.collapsed(
+          offset: insertAt + markdown.length + 2,
+        ),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('图片已插入，保存后开始上传')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('插入图片失败：$error')));
+      }
+    }
+  }
+
+  Future<void> _showAttachmentsDialog() async {
+    final memo = _currentMemo;
+    if (memo == null) return;
+    await showDialog(
+      context: context,
+      builder: (dialogContext) => _AttachmentsDialog(memoId: widget.memoId),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _save({bool silent = false}) async {
+    if (_saving) return;
+    _saving = true;
+    if (mounted) setState(() {});
+    try {
+      await ref
+          .read(memoProvider.notifier)
+          .updateMemo(
+            widget.memoId,
+            title: _titleController.text,
+            bodyMd: _bodyController.text,
+          );
+      if (!mounted) return;
+      // 保存后触发附件上传队列（登录状态下）。
+      final failure = await MemoImageService.instance.flushUploadQueue();
+      if (!mounted) return;
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(failure == null ? '备忘录已保存' : '已保存，部分附件上传失败：\n$failure'),
+          ),
+        );
+      } else if (failure != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('部分附件上传失败：\n$failure')));
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+    } finally {
+      _saving = false;
+      if (mounted) setState(() {});
+    }
+  }
+}
+
+class _AttachmentsDialog extends ConsumerStatefulWidget {
+  const _AttachmentsDialog({required this.memoId});
+
+  final String memoId;
+
+  @override
+  ConsumerState<_AttachmentsDialog> createState() => _AttachmentsDialogState();
+}
+
+class _AttachmentsDialogState extends ConsumerState<_AttachmentsDialog> {
+  List<Map<String, dynamic>>? _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    final items = await MemoDatabase.getAttachments(memoId: widget.memoId);
+    if (mounted) setState(() => _items = items);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items;
+    return AlertDialog(
+      title: const Text('附件管理'),
+      content: SizedBox(
+        width: 460,
+        height: 380,
+        child: items == null
+            ? const Center(child: CircularProgressIndicator())
+            : items.isEmpty
+            ? const Center(child: Text('本篇还没有附件'))
+            : ListView.builder(
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final attachment = items[index];
+                  final status = attachment['uploadStatus'] as String? ?? 'pending';
+                  final storageKey = attachment['storageKey'] as String?;
+                  final isPrivate = attachment['isPrivate'] == true;
+                  return ListTile(
+                    leading: Icon(
+                      attachment['mimeType'] == 'image/gif'
+                          ? Icons.gif
+                          : Icons.image_outlined,
+                      size: 20,
+                    ),
+                    title: Text(
+                      attachment['filename'] as String? ?? '（文件名已加密）',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      '${_humanSize(attachment['sizeBytes'] as int?)} · '
+                      '${isPrivate ? '私密（端到端加密）' : '普通'} · '
+                      '${status == 'uploaded' ? '已上传' : '待上传'}',
+                    ),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (action) => _handleAction(action, attachment),
+                      itemBuilder: (context) => [
+                        if (status != 'uploaded')
+                          const PopupMenuItem(value: 'retry', child: Text('立即上传')),
+                        if (storageKey != null && storageKey.isNotEmpty)
+                          const PopupMenuItem(value: 'share', child: Text('创建分享链接')),
+                        const PopupMenuItem(value: 'delete', child: Text('删除附件')),
+                      ],
+                    ),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('关闭'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleAction(String action, Map<String, dynamic> attachment) async {
+    final id = attachment['id'] as String;
+    try {
+      switch (action) {
+        case 'retry':
+          await MemoImageService.instance.retryUpload(id);
+          _toast('附件已上传');
+        case 'share':
+          await _createShare(attachment);
+        case 'delete':
+          await MemoDatabase.updateAttachment(id, {'deleted': true});
+          final storageKey = attachment['storageKey'] as String?;
+          if (storageKey != null && storageKey.isNotEmpty && SyncService.isLoggedIn) {
+            try {
+              await MemoAttachmentService.instance.revokeShare('');
+            } catch (_) {
+              // 忽略：附件的远端对象删除走独立接口，失败不阻塞本地删除。
+            }
+          }
+          _toast('附件已删除');
+      }
+      await _reload();
+    } catch (error) {
+      _toast('操作失败：$error');
+    }
+  }
+
+  Future<void> _createShare(Map<String, dynamic> attachment) async {
+    final passwordController = TextEditingController();
+    var expiresDays = 7;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('创建分享链接'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int>(
+                initialValue: expiresDays,
+                decoration: const InputDecoration(labelText: '有效期'),
+                items: const [
+                  DropdownMenuItem(value: 1, child: Text('1 天')),
+                  DropdownMenuItem(value: 7, child: Text('7 天')),
+                  DropdownMenuItem(value: 30, child: Text('30 天')),
+                  DropdownMenuItem(value: 0, child: Text('永不过期')),
+                ],
+                onChanged: (value) =>
+                    setDialogState(() => expiresDays = value ?? 7),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: '访问密码（可选，至少 8 位）',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('创建'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    final password = passwordController.text;
+    if (password.isNotEmpty && password.length < 8) {
+      _toast('分享密码至少 8 位');
+      return;
+    }
+    final token = await MemoAttachmentService.instance.createShare(
+      objectKey: attachment['storageKey'] as String,
+      expiresAt: expiresDays > 0
+          ? DateTime.now().add(Duration(days: expiresDays))
+          : null,
+      password: password.isEmpty ? null : password,
+    );
+    final link = '${SyncService.serverUrl}/share/$token';
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('分享链接已创建'),
+        content: SelectableText(link),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  static String _humanSize(int? bytes) {
+    final value = bytes ?? 0;
+    if (value < 1024) return '$value B';
+    if (value < 1024 * 1024) return '${(value / 1024).toStringAsFixed(1)} KB';
+    return '${(value / 1024 / 1024).toStringAsFixed(1)} MB';
+  }
+}

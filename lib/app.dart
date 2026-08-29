@@ -22,6 +22,8 @@ import 'package:focus_my_time/core/providers/package_info_provider.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/update/services/update_service.dart';
 import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
+import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
+import 'package:focus_my_time/features/memos/presentation/pages/memo_page.dart';
 
 class FocusMyTimeApp extends ConsumerStatefulWidget {
   const FocusMyTimeApp({super.key});
@@ -41,6 +43,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
   bool _showCalendar = false;
   String? _calendarTaskId;
   bool _showAiChat = false;
+  bool _showMemos = false;
   bool _showNoTaskToast = false;
   Timer? _foregroundSyncDebounce;
 
@@ -54,6 +57,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
     _scheduleAndroidForegroundSync();
+    unawaited(MemoCryptoService.instance.loadPersistedSettings());
     // 延迟检查更新，避免阻塞首屏
     Future.delayed(const Duration(seconds: 2), _checkUpdate);
   }
@@ -69,6 +73,11 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _scheduleAndroidForegroundSync();
+      MemoCryptoService.instance.onAppResumed();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      MemoCryptoService.instance.onAppBackground();
     }
   }
 
@@ -131,10 +140,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
       }
     });
 
-    // Reset task selection when list changes (Riverpod handles this, but we can listen for side effects)
+    // 记录最后停留的清单；即时保存也能覆盖 Web 标签页被直接关闭的场景。
     ref.listen(taskProvider, (previous, next) {
       if (previous != null && previous.currentListId != next.currentListId) {
-        // List changed logic can be added here if needed
+        unawaited(_persistLastViewedList(next.currentListId));
       }
     });
 
@@ -253,6 +262,21 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                       const SizedBox(width: 4),
                       // AI Assistant button
                       TextButton.icon(
+                        onPressed: () => setState(() {
+                          _showMemos = true;
+                          _showCalendar = false;
+                          _showSettings = false;
+                        }),
+                        icon: const Icon(AppIcons.memo, size: AppIconSizes.nav),
+                        label: isMobile ? const Text('') : const Text('备忘录'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: context.appColors.text,
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      TextButton.icon(
                         onPressed: () => setState(() => _showAiChat = true),
                         icon: const Icon(AppIcons.ai, size: AppIconSizes.nav),
                         label: isMobile ? const Text('') : const Text('AI'),
@@ -300,7 +324,9 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                         child: Column(
                           children: [
                             Expanded(
-                              child: _showCalendar
+                              child: _showMemos
+                                  ? const MemoPage()
+                                  : _showCalendar
                                   ? CalendarPage(
                                       onTaskSelected: (taskId) {
                                         setState(
@@ -591,6 +617,19 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
         ),
       ),
     );
+  }
+
+  Future<void> _persistLastViewedList(String listId) async {
+    try {
+      await ref.read(taskProvider.notifier).persistLastViewedList(listId);
+    } catch (_) {
+      if (!mounted) return;
+      final scaffoldContext = _scaffoldKey.currentContext;
+      if (scaffoldContext == null || !scaffoldContext.mounted) return;
+      ScaffoldMessenger.of(
+        scaffoldContext,
+      ).showSnackBar(const SnackBar(content: Text('保存上次停留清单失败，请重试')));
+    }
   }
 
   KeyEventResult _handleDeleteShortcut(KeyEvent event) {

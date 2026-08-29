@@ -4,6 +4,7 @@ import { db, initDatabase } from './db/schema'
 import authRoutes from './auth/routes'
 import syncRoutes from './sync/routes'
 import { repairAllMisappliedTaskArchives } from './sync/algorithm'
+import storageRoutes, { publicStorageRouter } from './storage/routes'
 
 const PORT = Number.parseInt(process.env.PORT || '6677', 10)
 const HOST = process.env.HOST?.trim() || '127.0.0.1'
@@ -92,7 +93,12 @@ app.use(express.json({ limit: '10mb' }))
 
 // Health check
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() })
+  res.json({
+    status: 'ok',
+    timestamp: Date.now(),
+    // 能力标志：旧版服务器没有该字段，客户端据此降级为不同步备忘录表
+    memoSync: true,
+  })
 })
 
 // Auth routes
@@ -100,6 +106,8 @@ app.use('/api/auth', authRateLimit, authRoutes)
 
 // Sync routes
 app.use('/api/sync', syncRoutes)
+app.use('/api/storage', storageRoutes)
+app.use('/share', publicStorageRouter)
 
 // 404 handler
 app.use((_req, res) => {

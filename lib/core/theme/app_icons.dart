@@ -64,6 +64,7 @@ class AppIcons {
   static const IconData editNote = Icons.edit_note;
   static const IconData repeat = Icons.repeat;
   static const IconData reorder = Icons.reorder;
+  static const IconData sort = Icons.sort;
   static const IconData playlistAdd = Icons.playlist_add;
   static const IconData playlistRemove = Icons.playlist_remove;
   static const IconData help = Icons.help_outline;
@@ -89,6 +90,9 @@ class AppIcons {
   static const IconData hidden = Icons.visibility_off;
   static const IconData warning = Icons.warning_amber_rounded;
   static const IconData emptyTasks = Icons.assignment_outlined;
+  static const IconData memo = Icons.sticky_note_2_outlined;
+  static const IconData lock = Icons.lock_outline;
+  static const IconData unlock = Icons.lock_open_outlined;
 
   static const Map<String, IconData> taskListIcons = {
     'myDay': myDay,

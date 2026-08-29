@@ -22,6 +22,7 @@ import 'package:focus_my_time/features/update/presentation/widgets/update_dialog
 import 'package:focus_my_time/features/update/services/update_service.dart';
 import 'package:focus_my_time/features/settings/presentation/widgets/archived_items_dialog.dart';
 import 'package:focus_my_time/features/settings/services/web_backup_service.dart';
+import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -62,6 +63,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _obscurePassword = true;
   bool _autoArchiveEnabled = false;
   late TextEditingController _autoArchiveKeepController;
+  String _startupTaskListView = TaskViewPreferences.startupViewMyDay;
+  bool _privacyConfigured = false;
+  bool _privacyUnlocked = false;
+  bool _privacyLockOnBackground = true;
 
   // 同步服务器登录表单的 FocusNode，用于精确控制 Tab 跳转顺序
   late FocusNode _syncUrlFocusNode;
@@ -132,9 +137,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _loadPermissions();
     _loadCalendarStatus();
     _loadTaskbarSettings();
+    _loadStartupTaskListView();
+    _loadPrivacyState();
     _apiKeyController = TextEditingController(
       text: DeepSeekApiClient.apiKey ?? '',
     );
+  }
+
+  Future<void> _loadPrivacyState() async {
+    try {
+      final crypto = MemoCryptoService.instance;
+      final configured = await crypto.isConfigured;
+      if (!mounted) return;
+      setState(() {
+        _privacyConfigured = configured;
+        _privacyUnlocked = crypto.isUnlocked;
+        _privacyLockOnBackground = crypto.lockOnBackground;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('读取隐私备忘录设置失败: $e', isError: true);
+    }
   }
 
   Future<void> _loadCalendarStatus() async {
@@ -152,6 +175,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _autoArchiveEnabled = autoArchive == 'true';
       _autoArchiveKeepController.text = keepCount ?? '3';
     });
+  }
+
+  Future<void> _loadStartupTaskListView() async {
+    try {
+      final value = await AppDatabase.getSetting(
+        TaskViewPreferences.startupViewSettingKey,
+      );
+      if (!mounted) return;
+      setState(() {
+        _startupTaskListView =
+            value == TaskViewPreferences.startupViewLastViewed
+            ? TaskViewPreferences.startupViewLastViewed
+            : TaskViewPreferences.startupViewMyDay;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showSnackBar('读取启动清单设置失败: $e', isError: true);
+        }
+      });
+    }
+  }
+
+  Future<void> _saveStartupTaskListView(String value) async {
+    try {
+      await AppDatabase.setSetting(
+        TaskViewPreferences.startupViewSettingKey,
+        value,
+      );
+      if (!mounted) return;
+      setState(() => _startupTaskListView = value);
+      _showSnackBar('启动默认清单已更新');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('保存启动清单设置失败: $e', isError: true);
+    }
   }
 
   Future<void> _saveApiKey() async {
@@ -481,6 +541,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   _buildTimeZoneSetting(timeZoneMode, isDark),
                   const SizedBox(height: 12),
                   _buildSelectSetting(
+                    label: '打开程序后显示',
+                    value: _startupTaskListView,
+                    options: const [
+                      {
+                        'value': TaskViewPreferences.startupViewMyDay,
+                        'label': '我的一天',
+                      },
+                      {
+                        'value': TaskViewPreferences.startupViewLastViewed,
+                        'label': '上次停留的清单',
+                      },
+                    ],
+                    onChanged: _saveStartupTaskListView,
+                    isDark: isDark,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildSelectSetting(
                     label: '主题配色',
                     value: themeScheme.id,
                     options: AppTheme.schemes
@@ -551,6 +628,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                   const SizedBox(height: 16),
                   _buildTaskbarSettings(isDark),
+
+                  const SizedBox(height: 24),
+
+                  // Privacy Memo Section
+                  _buildSectionTitle('🔒 隐私备忘录', isDark),
+                  const SizedBox(height: 12),
+                  _buildPrivacySettings(isDark),
 
                   const SizedBox(height: 24),
 
@@ -742,6 +826,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     _buildSyncWarningBanner(SyncService.syncWarning),
                     const SizedBox(height: 12),
                   ],
+                  if (_isLoggedIn && !SyncService.serverSupportsMemoSync) ...[
+                    _buildSyncWarningBanner(
+                      '当前服务器版本不支持备忘录同步，备忘录数据仅保存在本机；服务器升级后重新登录将自动恢复同步。',
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   // 使用 FocusTraversalGroup 隔离整个同步区域的焦点
                   FocusTraversalGroup(
                     child: Column(
@@ -836,7 +926,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   if (_isLoggedIn && _lastSyncTime != null) ...[
                     const SizedBox(height: 12),
                     Text(
-                      '上次同步：${AppTime.formatDateTimeFromMilliseconds(_lastSyncTime!)}',
+                      // 0 表示本机还没有成功同步过，直接显示时间会变成 1970 年
+                      _lastSyncTime! > 0
+                          ? '上次同步：${AppTime.formatDateTimeFromMilliseconds(_lastSyncTime!)}'
+                          : '上次同步：尚未完成过同步',
                       style: TextStyle(
                         fontSize: 12,
                         color: context.appColors.textSecondary,
@@ -1301,6 +1394,325 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     ); // End of Container
   } // End of build
+
+  Widget _buildPrivacySettings(bool isDark) {
+    final crypto = MemoCryptoService.instance;
+    if (!_privacyConfigured) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 2, bottom: 8),
+            child: Text(
+              '为私密备忘录设置独立的隐私密码。内容在本机加密，密码和密钥不会同步到服务器。',
+              style: TextStyle(
+                fontSize: 11,
+                color: context.appColors.textSecondary,
+              ),
+            ),
+          ),
+          _buildButtonRow([
+            _SettingButton(
+              label: '设置隐私密码',
+              onPressed: _showSetupPrivacyDialog,
+              isPrimary: true,
+              isDark: isDark,
+            ),
+          ]),
+        ],
+      );
+    }
+    return Column(
+      children: [
+        _buildButtonRow([
+          _SettingButton(
+            label: _privacyUnlocked ? '锁定隐私内容' : '解锁隐私内容',
+            onPressed: () async {
+              if (_privacyUnlocked) {
+                crypto.lock();
+                if (!mounted) return;
+                setState(() => _privacyUnlocked = false);
+                _showSnackBar('隐私内容已锁定');
+                return;
+              }
+              await _showUnlockPrivacyDialog();
+            },
+            isPrimary: true,
+            isDark: isDark,
+          ),
+          _SettingButton(
+            label: '修改隐私密码',
+            onPressed: _privacyUnlocked ? _showChangePasswordDialog : null,
+            isPrimary: false,
+            isDark: isDark,
+          ),
+        ]),
+        const SizedBox(height: 12),
+        _buildSelectSetting(
+          label: '无操作自动锁定',
+          value: crypto.autoLockDuration.inMinutes.toString(),
+          options: const [
+            {'value': '5', 'label': '5 分钟'},
+            {'value': '15', 'label': '15 分钟'},
+            {'value': '30', 'label': '30 分钟'},
+            {'value': '60', 'label': '1 小时'},
+            {'value': '240', 'label': '4 小时'},
+            {'value': '480', 'label': '8 小时'},
+          ],
+          onChanged: (value) async {
+            try {
+              final minutes = int.parse(value);
+              crypto.setAutoLockDuration(Duration(minutes: minutes));
+              await AppDatabase.setSetting(
+                'memoAutoLockMinutes',
+                value,
+              );
+              _showSnackBar('自动锁定时间已更新');
+            } catch (e) {
+              _showSnackBar('自动锁定设置保存失败: $e', isError: true);
+            }
+          },
+          isDark: isDark,
+        ),
+        const SizedBox(height: 12),
+        _buildSwitchSetting(
+          label: '进入后台立即锁定',
+          value: _privacyLockOnBackground,
+          onChanged: (value) async {
+            try {
+              crypto.setLockOnBackground(value);
+              await AppDatabase.setSetting(
+                'memoLockOnBackground',
+                value.toString(),
+              );
+              setState(() => _privacyLockOnBackground = value);
+              _showSnackBar(value ? '切后台将立即锁定' : '切后台不再立即锁定');
+            } catch (e) {
+              _showSnackBar('后台锁定设置保存失败: $e', isError: true);
+            }
+          },
+          isDark: isDark,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showSetupPrivacyDialog() async {
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    var obscure = true;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('设置隐私密码'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: passwordController,
+                obscureText: obscure,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: '隐私密码（至少 8 个字符）',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmController,
+                obscureText: obscure,
+                onSubmitted: (_) =>
+                    Navigator.of(dialogContext).pop(true),
+                decoration: const InputDecoration(labelText: '确认密码'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('下一步'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final password = passwordController.text;
+    if (password.length < 8) {
+      _showSnackBar('隐私密码至少需要 8 个字符', isError: true);
+      return;
+    }
+    if (password != confirmController.text) {
+      _showSnackBar('两次输入的密码不一致', isError: true);
+      return;
+    }
+    try {
+      final recoveryKey = await MemoCryptoService.instance.setupPassword(
+        password,
+      );
+      if (!mounted) return;
+      setState(() => _privacyConfigured = true);
+      await _showRecoveryKeyDialog(recoveryKey);
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('隐私密码设置失败: $e', isError: true);
+    }
+  }
+
+  Future<void> _showRecoveryKeyDialog(String recoveryKey) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('请保存恢复密钥'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '这是唯一一次展示恢复密钥。忘记隐私密码时，只能用它解锁。请复制并妥善保管：',
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: context.appColors.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                recoveryKey,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: recoveryKey));
+              if (dialogContext.mounted) {
+                ScaffoldMessenger.of(
+                  dialogContext,
+                ).showSnackBar(const SnackBar(content: Text('恢复密钥已复制')));
+              }
+            },
+            child: const Text('复制'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('我已保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showUnlockPrivacyDialog() async {
+    final passwordController = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('解锁隐私备忘录'),
+        content: TextField(
+          controller: passwordController,
+          obscureText: true,
+          autofocus: true,
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+          decoration: const InputDecoration(labelText: '隐私密码'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(passwordController.text),
+            child: const Text('解锁'),
+          ),
+        ],
+      ),
+    );
+    if (password == null || password.isEmpty || !mounted) return;
+    final ok = await MemoCryptoService.instance.unlockWithPassword(password);
+    if (!mounted) return;
+    setState(() => _privacyUnlocked = ok);
+    _showSnackBar(ok ? '隐私内容已解锁' : '隐私密码不正确', isError: !ok);
+  }
+
+  Future<void> _showChangePasswordDialog() async {
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('修改隐私密码'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: currentController,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '当前隐私密码'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: newController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: '新密码（至少 8 个字符）'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: confirmController,
+              obscureText: true,
+              onSubmitted: (_) => Navigator.of(dialogContext).pop(true),
+              decoration: const InputDecoration(labelText: '确认新密码'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('确认修改'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    if (newController.text.length < 8) {
+      _showSnackBar('隐私密码至少需要 8 个字符', isError: true);
+      return;
+    }
+    if (newController.text != confirmController.text) {
+      _showSnackBar('两次输入的新密码不一致', isError: true);
+      return;
+    }
+    try {
+      await MemoCryptoService.instance.changePassword(
+        currentPassword: currentController.text,
+        newPassword: newController.text,
+      );
+      if (!mounted) return;
+      _showSnackBar('隐私密码已修改，恢复密钥保持不变');
+    } catch (e) {
+      if (!mounted) return;
+      _showSnackBar('隐私密码修改失败: $e', isError: true);
+    }
+  }
 
   Widget _buildSectionTitle(String title, bool isDark) {
     return Text(

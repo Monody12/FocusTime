@@ -51,6 +51,21 @@ export function initDatabase(): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_sync_log_user_time ON sync_log(user_id, sync_time);
+
+    CREATE TABLE IF NOT EXISTS object_shares (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      object_key TEXT NOT NULL,
+      token_hash TEXT UNIQUE NOT NULL,
+      expires_at INTEGER,
+      password_hash TEXT,
+      revoked INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_object_shares_token ON object_shares(token_hash, revoked);
+    CREATE INDEX IF NOT EXISTS idx_object_shares_user ON object_shares(user_id, created_at);
   `)
 
   const columns = db.prepare('PRAGMA table_info(sync_records)').all() as Array<{ name: string }>
