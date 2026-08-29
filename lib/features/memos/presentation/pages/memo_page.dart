@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -5,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/core/theme/app_icons.dart';
+import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/data/database/memo_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/memos/providers/memo_provider.dart';
@@ -25,12 +27,59 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   String? _selectedId;
   bool _preview = false;
   bool _showTrash = false;
+  bool _searchVisible = false;
+  String? _selectedFolderId;
+  List<Map<String, dynamic>> _folders = const [];
   List<Map<String, dynamic>>? _trashItems;
+
+  static const _manageFoldersAction = '__manage_folders__';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFolders();
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFolders() async {
+    final folders = await ref.read(memoProvider.notifier).loadFolders();
+    if (!mounted) return;
+    setState(() => _folders = folders);
+  }
+
+  void _applyMemoFilter() {
+    ref
+        .read(memoProvider.notifier)
+        .refresh(query: _searchController.text, folderId: _selectedFolderId);
+  }
+
+  int _folderDepth(String? folderId) {
+    var depth = 0;
+    var current = folderId;
+    while (current != null) {
+      final parent = _folders
+          .where((f) => f['id'] == current)
+          .firstOrNull?['parentId'] as String?;
+      if (parent == null || depth > 20) break;
+      current = parent;
+      depth++;
+    }
+    return depth;
+  }
+
+  String get _currentFolderName {
+    if (_selectedFolderId == null) return '全部备忘录';
+    for (final folder in _folders) {
+      if (folder['id'] == _selectedFolderId) {
+        return folder['name'] as String? ?? '未命名文件夹';
+      }
+    }
+    return '已删除的文件夹';
   }
 
   @override
@@ -45,6 +94,19 @@ class _MemoPageState extends ConsumerState<MemoPage> {
             children: [
               Text('备忘录', style: Theme.of(context).textTheme.headlineSmall),
               const Spacer(),
+              IconButton(
+                tooltip: _searchVisible ? '收起搜索' : '搜索备忘录',
+                onPressed: () {
+                  setState(() {
+                    _searchVisible = !_searchVisible;
+                    if (!_searchVisible) {
+                      _searchController.clear();
+                      _applyMemoFilter();
+                    }
+                  });
+                },
+                icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
+              ),
               IconButton(
                 tooltip: crypto.isUnlocked ? '锁定隐私内容' : '解锁隐私内容',
                 onPressed: () => _toggleVault(),
@@ -66,20 +128,47 @@ class _MemoPageState extends ConsumerState<MemoPage> {
             ],
           ),
         ),
-        if (!_showTrash)
+        if (!_showTrash) ...[
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) =>
-                  ref.read(memoProvider.notifier).refresh(query: value),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: '搜索备忘录（解锁后可搜索隐私内容）',
-                isDense: true,
-              ),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Row(
+              children: [
+                _buildFolderSelector(),
+                const SizedBox(width: 8),
+                IconButton(
+                  tooltip: '新建文件夹',
+                  onPressed: () => _showCreateFolderDialog(),
+                  icon: const Icon(Icons.create_new_folder_outlined),
+                ),
+              ],
             ),
           ),
+          if (_searchVisible)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                onChanged: (value) => _applyMemoFilter(),
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: '搜索备忘录（解锁后可搜索隐私内容）',
+                  isDense: true,
+                  suffixIcon: IconButton(
+                    tooltip: '收起搜索',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      setState(() {
+                        _searchVisible = false;
+                        _searchController.clear();
+                      });
+                      _applyMemoFilter();
+                    },
+                  ),
+                ),
+              ),
+            ),
+        ],
         const SizedBox(height: 8),
         Expanded(
           child: memos.when(
@@ -118,6 +207,274 @@ class _MemoPageState extends ConsumerState<MemoPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFolderSelector() {
+    return PopupMenuButton<String>(
+      tooltip: '选择文件夹',
+      onSelected: (value) {
+        if (value == _manageFoldersAction) {
+          _showManageFoldersDialog();
+          return;
+        }
+        setState(() => _selectedFolderId = value.isEmpty ? null : value);
+        _applyMemoFilter();
+      },
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: '',
+          child: Row(
+            children: [
+              Icon(Icons.notes, size: 18),
+              SizedBox(width: 8),
+              Text('全部备忘录'),
+            ],
+          ),
+        ),
+        for (final folder in _folders)
+          PopupMenuItem(
+            value: folder['id'] as String,
+            child: Text(
+              '${'　' * _folderDepth(folder['parentId'] as String?)}${folder['name'] ?? ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        const PopupMenuDivider(),
+        const PopupMenuItem(
+          value: _manageFoldersAction,
+          child: Row(
+            children: [
+              Icon(Icons.drive_file_rename_outline, size: 18),
+              SizedBox(width: 8),
+              Text('管理文件夹'),
+            ],
+          ),
+        ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: context.appColors.border),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.folder_outlined, size: 16),
+            const SizedBox(width: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 160),
+              child: Text(
+                _currentFolderName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCreateFolderDialog() async {
+    final nameController = TextEditingController();
+    String? parentId;
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('新建文件夹'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  onSubmitted: (value) =>
+                      Navigator.of(dialogContext).pop(true),
+                  decoration: const InputDecoration(labelText: '文件夹名称'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  initialValue: parentId,
+                  decoration: const InputDecoration(labelText: '上级文件夹'),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('不放入文件夹')),
+                    for (final folder in _folders)
+                      DropdownMenuItem(
+                        value: folder['id'] as String,
+                        child: Text(
+                          '${'　' * _folderDepth(folder['parentId'] as String?)}${folder['name'] ?? ''}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) => setDialogState(() => parentId = value),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('创建'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (created != true || !mounted) return;
+    final name = nameController.text.trim();
+    if (name.isEmpty) return;
+    try {
+      final folder = await ref
+          .read(memoProvider.notifier)
+          .createFolder(name, parentId: parentId);
+      await _loadFolders();
+      if (!mounted) return;
+      setState(() => _selectedFolderId = folder['id'] as String);
+      _applyMemoFilter();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('文件夹创建失败：$error')));
+    }
+  }
+
+  Future<void> _showManageFoldersDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('管理文件夹'),
+          content: SizedBox(
+            width: 380,
+            height: 380,
+            child: _folders.isEmpty
+                ? const Center(child: Text('还没有文件夹'))
+                : ListView.builder(
+                    itemCount: _folders.length,
+                    itemBuilder: (context, index) {
+                      final folder = _folders[index];
+                      final depth = _folderDepth(folder['parentId'] as String?);
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Padding(
+                          padding: EdgeInsets.only(left: depth * 16.0),
+                          child: Text(
+                            folder['name'] ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        leading: const Icon(Icons.folder_outlined, size: 18),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (action) async {
+                            final id = folder['id'] as String;
+                            final name = folder['name'] as String? ?? '';
+                            if (action == 'rename') {
+                              final newName = await _askText(
+                                dialogContext,
+                                '重命名文件夹',
+                                '文件夹名称',
+                                initialText: name,
+                              );
+                              if (newName == null || newName.trim().isEmpty) {
+                                return;
+                              }
+                              try {
+                                await ref
+                                    .read(memoProvider.notifier)
+                                    .renameFolder(id, newName.trim());
+                              } catch (error) {
+                                if (dialogContext.mounted) {
+                                  ScaffoldMessenger.of(dialogContext)
+                                      .showSnackBar(
+                                    SnackBar(content: Text('重命名失败：$error')),
+                                  );
+                                }
+                                return;
+                              }
+                            } else if (action == 'delete') {
+                              final confirmed = await showDialog<bool>(
+                                context: dialogContext,
+                                builder: (confirmContext) => AlertDialog(
+                                  title: const Text('删除文件夹'),
+                                  content: Text(
+                                    '将删除文件夹“$name”。其中的备忘录会保留，之后可在“全部备忘录”中查看。',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(confirmContext, false),
+                                      child: const Text('取消'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.pop(confirmContext, true),
+                                      child: const Text('删除'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed != true) return;
+                              await ref
+                                  .read(memoProvider.notifier)
+                                  .deleteFolder(id);
+                              if (mounted && _selectedFolderId == id) {
+                                setState(() => _selectedFolderId = null);
+                                _applyMemoFilter();
+                              }
+                            }
+                            final folders = await ref
+                                .read(memoProvider.notifier)
+                                .loadFolders();
+                            setDialogState(() => _folders = folders);
+                            if (mounted) setState(() => _folders = folders);
+                          },
+                          itemBuilder: (context) => const [
+                            PopupMenuItem(
+                              value: 'rename',
+                              child: Text('重命名'),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text('删除'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                _showCreateFolderDialog();
+              },
+              icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+              label: const Text('新建文件夹'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -239,6 +596,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     }
     setState(() {});
     ref.invalidate(memoProvider);
+    _applyMemoFilter();
     // 解锁后立即清理上传队列中的私密附件。
     try {
       final failure = await MemoImageService.instance.flushUploadQueue();
@@ -412,9 +770,10 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   Future<String?> _askText(
     BuildContext dialogContext,
     String title,
-    String label,
-  ) async {
-    final controller = TextEditingController();
+    String label, {
+    String? initialText,
+  }) async {
+    final controller = TextEditingController(text: initialText);
     final result = await showDialog<String>(
       context: dialogContext,
       builder: (context) => AlertDialog(
@@ -500,13 +859,53 @@ class _MemoEditor extends ConsumerStatefulWidget {
 class _MemoEditorState extends ConsumerState<_MemoEditor> {
   final _titleController = TextEditingController();
   final _bodyController = TextEditingController();
+  final _editorScrollController = ScrollController();
+  final _previewScrollController = ScrollController();
+  final _previewText = ValueNotifier<String>('');
+  Timer? _previewDebounce;
+  bool _syncingScroll = false;
   bool _loaded = false;
   bool _saving = false;
 
   @override
+  void initState() {
+    super.initState();
+    _bodyController.addListener(_schedulePreviewUpdate);
+    _editorScrollController.addListener(() => _syncScroll(fromEditor: true));
+    _previewScrollController.addListener(() => _syncScroll(fromEditor: false));
+  }
+
+  /// 输入防抖后刷新预览面板，避免每次按键都重新解析 Markdown。
+  void _schedulePreviewUpdate() {
+    _previewDebounce?.cancel();
+    _previewDebounce = Timer(const Duration(milliseconds: 150), () {
+      _previewText.value = _bodyController.text;
+    });
+  }
+
+  /// 分屏模式下按滚动比例双向同步编辑区和预览区。
+  void _syncScroll({required bool fromEditor}) {
+    if (_syncingScroll) return;
+    final source = fromEditor ? _editorScrollController : _previewScrollController;
+    final target = fromEditor ? _previewScrollController : _editorScrollController;
+    if (!source.hasClients || !target.hasClients) return;
+    final sourceMax = source.position.maxScrollExtent;
+    final targetMax = target.position.maxScrollExtent;
+    if (sourceMax <= 0 || targetMax <= 0) return;
+    _syncingScroll = true;
+    target.jumpTo((source.offset / sourceMax * targetMax).clamp(0.0, targetMax));
+    _syncingScroll = false;
+  }
+
+  @override
   void dispose() {
+    _previewDebounce?.cancel();
+    _bodyController.removeListener(_schedulePreviewUpdate);
     _titleController.dispose();
     _bodyController.dispose();
+    _editorScrollController.dispose();
+    _previewScrollController.dispose();
+    _previewText.dispose();
     super.dispose();
   }
 
@@ -545,6 +944,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
       }
       _titleController.text = title;
       _bodyController.text = body;
+      _previewText.value = body;
     }
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
@@ -591,22 +991,50 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: widget.preview
-                ? SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    child: MarkdownPreview(data: _bodyController.text),
-                  )
-                : TextField(
-                    controller: _bodyController,
-                    expands: true,
-                    maxLines: null,
-                    minLines: null,
-                    textAlignVertical: TextAlignVertical.top,
-                    decoration: const InputDecoration(
-                      hintText: '使用 Markdown 编写内容，支持表格、任务列表和图片',
-                      border: InputBorder.none,
-                    ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                const wideBreakpoint = 1000.0;
+                final wide = constraints.maxWidth >= wideBreakpoint;
+                final editorPane = TextField(
+                  controller: _bodyController,
+                  scrollController: _editorScrollController,
+                  expands: true,
+                  maxLines: null,
+                  minLines: null,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: const InputDecoration(
+                    hintText: '使用 Markdown 编写内容，支持表格、任务列表和图片',
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.all(16),
                   ),
+                );
+                if (!widget.preview) return editorPane;
+                // 宽屏进入 Typora 风格分屏：左侧编辑、右侧实时预览、滚动同步；
+                // 窄屏保持整屏切换预览。
+                final previewPane = ValueListenableBuilder<String>(
+                  valueListenable: _previewText,
+                  builder: (context, text, _) => SingleChildScrollView(
+                    controller: _previewScrollController,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 16,
+                      horizontal: 16,
+                    ),
+                    child: MarkdownPreview(data: text),
+                  ),
+                );
+                if (wide) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: editorPane),
+                      const VerticalDivider(width: 1),
+                      Expanded(child: previewPane),
+                    ],
+                  );
+                }
+                return previewPane;
+              },
+            ),
           ),
         ],
       ),

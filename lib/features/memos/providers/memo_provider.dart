@@ -153,6 +153,15 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
   Future<Map<String, dynamic>> createFolder(String name, {String? parentId}) =>
       MemoDatabase.createFolder(name, parentId: parentId);
 
+  Future<void> renameFolder(String id, String name) =>
+      MemoDatabase.updateFolder(id, name: name);
+
+  /// 仅软删除文件夹本身；其中的备忘录保留，之后在“全部备忘录”可见。
+  Future<void> deleteFolder(String id) async {
+    await MemoDatabase.deleteFolder(id);
+    await refresh();
+  }
+
   Future<List<Map<String, dynamic>>> loadVersions(String memoId) =>
       MemoDatabase.getVersions(memoId);
 
