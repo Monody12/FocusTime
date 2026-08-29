@@ -1,6 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 
+TaskItem _task({
+  required String id,
+  required String title,
+  int sortOrder = 0,
+  int createdAt = 0,
+  int updatedAt = 0,
+  String? dueDate,
+  String? dueTime,
+}) {
+  return TaskItem(
+    id: id,
+    listId: 'list-1',
+    title: title,
+    completed: false,
+    dueDate: dueDate,
+    dueTime: dueTime,
+    sortOrder: sortOrder,
+    isMyDay: false,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
+}
+
 void main() {
   group('TaskList', () {
     test('creates with correct values', () {
@@ -271,6 +294,132 @@ void main() {
       final state = TaskState(lists: [taskList]);
       final updated = state.copyWith(currentViewType: 'all-tasks');
       expect(updated.lists, [taskList]);
+    });
+  });
+
+  group('任务排序', () {
+    final tasks = [
+      _task(
+        id: 'b',
+        title: 'Beta',
+        sortOrder: 0,
+        createdAt: 30,
+        updatedAt: 10,
+        dueDate: '2026-08-22',
+        dueTime: '10:00',
+      ),
+      _task(
+        id: 'a',
+        title: 'alpha',
+        sortOrder: 2,
+        createdAt: 10,
+        updatedAt: 30,
+        dueDate: '2026-08-22',
+        dueTime: '09:00',
+      ),
+      _task(
+        id: 'c',
+        title: 'Charlie',
+        sortOrder: 1,
+        createdAt: 20,
+        updatedAt: 20,
+      ),
+    ];
+
+    test('手动、创建时间和修改时间排序方向正确', () {
+      expect(sortTaskItems(tasks, TaskSortMode.manual).map((task) => task.id), [
+        'b',
+        'c',
+        'a',
+      ]);
+      expect(
+        sortTaskItems(
+          tasks,
+          TaskSortMode.createdAscending,
+        ).map((task) => task.id),
+        ['a', 'c', 'b'],
+      );
+      expect(
+        sortTaskItems(
+          tasks,
+          TaskSortMode.createdDescending,
+        ).map((task) => task.id),
+        ['b', 'c', 'a'],
+      );
+      expect(
+        sortTaskItems(
+          tasks,
+          TaskSortMode.updatedAscending,
+        ).map((task) => task.id),
+        ['b', 'c', 'a'],
+      );
+      expect(
+        sortTaskItems(
+          tasks,
+          TaskSortMode.updatedDescending,
+        ).map((task) => task.id),
+        ['a', 'c', 'b'],
+      );
+    });
+
+    test('任务名称排序忽略大小写', () {
+      expect(
+        sortTaskItems(
+          tasks,
+          TaskSortMode.titleAscending,
+        ).map((task) => task.id),
+        ['a', 'b', 'c'],
+      );
+      expect(
+        sortTaskItems(
+          tasks,
+          TaskSortMode.titleDescending,
+        ).map((task) => task.id),
+        ['c', 'b', 'a'],
+      );
+    });
+
+    test('截止日期排序在两个方向都把无日期任务放在最后', () {
+      expect(
+        sortTaskItems(
+          tasks,
+          TaskSortMode.dueDateAscending,
+        ).map((task) => task.id),
+        ['a', 'b', 'c'],
+      );
+      expect(
+        sortTaskItems(
+          tasks,
+          TaskSortMode.dueDateDescending,
+        ).map((task) => task.id),
+        ['b', 'a', 'c'],
+      );
+    });
+  });
+
+  group('启动清单恢复', () {
+    final active = TaskList(
+      id: 'active',
+      name: '有效清单',
+      isSystem: false,
+      sortOrder: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    );
+    final archived = TaskList(
+      id: 'archived',
+      name: '已归档清单',
+      isSystem: false,
+      sortOrder: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      archived: true,
+    );
+
+    test('只恢复仍然有效的上次清单', () {
+      expect(resolveLastViewedTaskList([active, archived], 'active'), active);
+      expect(resolveLastViewedTaskList([active, archived], 'archived'), isNull);
+      expect(resolveLastViewedTaskList([active, archived], 'missing'), isNull);
     });
   });
 }

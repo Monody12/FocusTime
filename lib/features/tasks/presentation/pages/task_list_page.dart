@@ -5,6 +5,20 @@ import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/tasks/presentation/widgets/task_item.dart';
 
+extension on TaskSortMode {
+  String get label => switch (this) {
+    TaskSortMode.manual => '手动排序',
+    TaskSortMode.createdAscending => '创建时间（升序）',
+    TaskSortMode.createdDescending => '创建时间（降序）',
+    TaskSortMode.updatedAscending => '最后修改时间（升序）',
+    TaskSortMode.updatedDescending => '最后修改时间（降序）',
+    TaskSortMode.titleAscending => '任务名称（升序）',
+    TaskSortMode.titleDescending => '任务名称（降序）',
+    TaskSortMode.dueDateAscending => '截止日期（升序）',
+    TaskSortMode.dueDateDescending => '截止日期（降序）',
+  };
+}
+
 class TaskListView extends ConsumerStatefulWidget {
   const TaskListView({super.key});
 
@@ -14,6 +28,7 @@ class TaskListView extends ConsumerStatefulWidget {
 
 class _TaskListViewState extends ConsumerState<TaskListView> {
   final _newTaskController = TextEditingController();
+  final Set<String> _expandedCompletedListIds = {};
 
   @override
   void dispose() {
@@ -27,8 +42,17 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
     final taskNotifier = ref.read(taskProvider.notifier);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final incompleteTasks = taskState.tasks.where((t) => !t.completed).toList();
-    final completedTasks = taskState.tasks.where((t) => t.completed).toList();
+    final incompleteTasks = sortTaskItems(
+      taskState.tasks.where((task) => !task.completed),
+      taskState.sortMode,
+    );
+    final completedTasks = sortTaskItems(
+      taskState.tasks.where((task) => task.completed),
+      taskState.sortMode,
+    );
+    final completedExpanded = _expandedCompletedListIds.contains(
+      taskState.currentListId,
+    );
 
     String listName;
     if (taskState.currentViewType == 'my-day') {
@@ -49,21 +73,51 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
           padding: const EdgeInsets.fromLTRB(22, 20, 22, 14),
           child: Row(
             children: [
-              Text(
-                listName,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: context.appColors.text,
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        listName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: context.appColors.text,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${incompleteTasks.length} 个未完成',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: context.appColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Text(
-                '${incompleteTasks.length} 个未完成',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: context.appColors.textSecondary,
+              const SizedBox(width: 8),
+              PopupMenuButton<TaskSortMode>(
+                tooltip: '排序：${taskState.sortMode.label}',
+                initialValue: taskState.sortMode,
+                onSelected: taskNotifier.setSortMode,
+                icon: AppIcon(
+                  AppIcons.sort,
+                  size: AppIconSizes.action,
+                  color: context.appColors.text,
                 ),
+                itemBuilder: (context) => TaskSortMode.values
+                    .map(
+                      (mode) => CheckedPopupMenuItem<TaskSortMode>(
+                        value: mode,
+                        checked: mode == taskState.sortMode,
+                        child: Text(mode.label),
+                      ),
+                    )
+                    .toList(),
               ),
             ],
           ),
@@ -149,13 +203,21 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                               physics: const NeverScrollableScrollPhysics(),
                               // 由 TaskItemWidget 内的 ReorderableDragStartListener 接管拖拽
                               buildDefaultDragHandles: false,
-                              onReorderItem: (oldIndex, newIndex) {
+                              onReorderItem: (oldIndex, newIndex) async {
                                 final taskIds = incompleteTasks
                                     .map((t) => t.id)
                                     .toList();
                                 final item = taskIds.removeAt(oldIndex);
                                 taskIds.insert(newIndex, item);
-                                taskNotifier.reorderTasks(taskIds);
+                                try {
+                                  await taskNotifier.reorderTasks(taskIds);
+                                  taskNotifier.setSortMode(TaskSortMode.manual);
+                                } catch (_) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('任务排序失败，请重试')),
+                                  );
+                                }
                               },
                               children: [
                                 for (int i = 0; i < incompleteTasks.length; i++)
@@ -178,38 +240,63 @@ class _TaskListViewState extends ConsumerState<TaskListView> {
                             // Completed tasks
                             if (completedTasks.isNotEmpty) ...[
                               const SizedBox(height: 8),
-                              Padding(
+                              InkWell(
                                 key: const ValueKey('completed_header'),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      '已完成 (${completedTasks.length})',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
+                                onTap: () {
+                                  setState(() {
+                                    if (completedExpanded) {
+                                      _expandedCompletedListIds.remove(
+                                        taskState.currentListId,
+                                      );
+                                    } else {
+                                      _expandedCompletedListIds.add(
+                                        taskState.currentListId,
+                                      );
+                                    }
+                                  });
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      AppIcon(
+                                        completedExpanded
+                                            ? AppIcons.expandLess
+                                            : AppIcons.expandMore,
+                                        size: AppIconSizes.compact,
                                         color: context.appColors.textSecondary,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '已完成 (${completedTasks.length})',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                          color:
+                                              context.appColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                              for (int i = 0; i < completedTasks.length; i++)
-                                TaskItemWidget(
-                                  key: ValueKey(completedTasks[i].id),
-                                  task: completedTasks[i],
-                                  isSelected:
-                                      taskState.selectedTaskId ==
-                                      completedTasks[i].id,
-                                  onTap: () {
-                                    taskNotifier.setSelectedTask(
-                                      completedTasks[i].id,
-                                    );
-                                  },
-                                ),
+                              if (completedExpanded)
+                                for (int i = 0; i < completedTasks.length; i++)
+                                  TaskItemWidget(
+                                    key: ValueKey(completedTasks[i].id),
+                                    task: completedTasks[i],
+                                    isSelected:
+                                        taskState.selectedTaskId ==
+                                        completedTasks[i].id,
+                                    onTap: () {
+                                      taskNotifier.setSelectedTask(
+                                        completedTasks[i].id,
+                                      );
+                                    },
+                                  ),
                             ],
                           ],
                         ),

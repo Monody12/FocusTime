@@ -36,6 +36,8 @@ migrate_working_dir/
 # Node.js build and dependency artifacts
 /server/node_modules/
 /server/dist/
+# Server runtime data (SQLite database, uploaded objects, logs)
+/server/data/
 
 # Symbolication related
 app.*.symbols

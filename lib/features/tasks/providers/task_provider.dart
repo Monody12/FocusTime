@@ -7,6 +7,26 @@ import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/core/utils/recurrence_utils.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+enum TaskSortMode {
+  manual,
+  createdAscending,
+  createdDescending,
+  updatedAscending,
+  updatedDescending,
+  titleAscending,
+  titleDescending,
+  dueDateAscending,
+  dueDateDescending,
+}
+
+class TaskViewPreferences {
+  static const startupViewSettingKey = 'startupTaskListView';
+  static const startupViewMyDay = 'myDay';
+  static const startupViewLastViewed = 'lastViewed';
+  static const lastViewedListKey = 'lastViewedTaskListId';
+}
 
 class TaskList {
   final String id;
@@ -163,6 +183,68 @@ class TaskItem {
   );
 }
 
+List<TaskItem> sortTaskItems(Iterable<TaskItem> tasks, TaskSortMode sortMode) {
+  final sorted = tasks.toList();
+  sorted.sort((a, b) {
+    var comparison = switch (sortMode) {
+      TaskSortMode.manual => a.sortOrder.compareTo(b.sortOrder),
+      TaskSortMode.createdAscending => a.createdAt.compareTo(b.createdAt),
+      TaskSortMode.createdDescending => b.createdAt.compareTo(a.createdAt),
+      TaskSortMode.updatedAscending => a.updatedAt.compareTo(b.updatedAt),
+      TaskSortMode.updatedDescending => b.updatedAt.compareTo(a.updatedAt),
+      TaskSortMode.titleAscending => a.title.toLowerCase().compareTo(
+        b.title.toLowerCase(),
+      ),
+      TaskSortMode.titleDescending => b.title.toLowerCase().compareTo(
+        a.title.toLowerCase(),
+      ),
+      TaskSortMode.dueDateAscending => _compareDueDates(a, b, ascending: true),
+      TaskSortMode.dueDateDescending => _compareDueDates(
+        a,
+        b,
+        ascending: false,
+      ),
+    };
+    if (comparison != 0) return comparison;
+
+    comparison = a.sortOrder.compareTo(b.sortOrder);
+    if (comparison != 0) return comparison;
+    comparison = a.createdAt.compareTo(b.createdAt);
+    if (comparison != 0) return comparison;
+    return a.id.compareTo(b.id);
+  });
+  return sorted;
+}
+
+int _compareDueDates(TaskItem a, TaskItem b, {required bool ascending}) {
+  final aDate = a.dueDate;
+  final bDate = b.dueDate;
+  if (aDate == null && bDate == null) return 0;
+  if (aDate == null) return 1;
+  if (bDate == null) return -1;
+
+  var comparison = aDate.compareTo(bDate);
+  if (!ascending) comparison = -comparison;
+  if (comparison != 0) return comparison;
+
+  final aTime = a.dueTime;
+  final bTime = b.dueTime;
+  if (aTime == null && bTime == null) return 0;
+  if (aTime == null) return 1;
+  if (bTime == null) return -1;
+  comparison = aTime.compareTo(bTime);
+  return ascending ? comparison : -comparison;
+}
+
+TaskList? resolveLastViewedTaskList(
+  Iterable<TaskList> lists,
+  String? lastViewedListId,
+) {
+  return lists
+      .where((list) => list.id == lastViewedListId && !list.archived)
+      .firstOrNull;
+}
+
 class TaskState {
   final List<TaskList> lists;
   final List<TaskItem> tasks;
@@ -170,6 +252,7 @@ class TaskState {
   final String currentViewType; // 'my-day', 'all-tasks', 'custom'
   final String? selectedTaskId;
   final bool isLoading;
+  final TaskSortMode sortMode;
 
   TaskState({
     this.lists = const [],
@@ -178,6 +261,7 @@ class TaskState {
     this.currentViewType = 'my-day',
     this.selectedTaskId,
     this.isLoading = false,
+    this.sortMode = TaskSortMode.manual,
   });
 
   TaskState copyWith({
@@ -187,6 +271,7 @@ class TaskState {
     String? currentViewType,
     String? selectedTaskId,
     bool? isLoading,
+    TaskSortMode? sortMode,
     bool clearSelectedTask = false,
   }) => TaskState(
     lists: lists ?? this.lists,
@@ -197,6 +282,7 @@ class TaskState {
         ? null
         : (selectedTaskId ?? this.selectedTaskId),
     isLoading: isLoading ?? this.isLoading,
+    sortMode: sortMode ?? this.sortMode,
   );
 }
 
@@ -208,11 +294,50 @@ class TaskNotifier extends StateNotifier<TaskState> {
   TaskNotifier() : super(TaskState()) {
     _syncCompletedListener = _handleExternalSyncCompleted;
     SyncService.addSyncCompletedListener(_syncCompletedListener);
-    loadLists();
-    loadTasks().then((_) async {
-      // 从数据库加载所有有提醒的未完成任务（不受当前视图过滤限制），确保每个提醒都被恢复
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    state = state.copyWith(isLoading: true);
+    try {
+      await loadLists();
+      await _restoreStartupList();
+      await loadTasks(showLoading: false);
+    } catch (e, stackTrace) {
+      dev.log('[TaskNotifier] 初始化任务清单失败', error: e, stackTrace: stackTrace);
+      if (mounted) state = state.copyWith(isLoading: false);
+    }
+
+    try {
+      // 使用完整数据集恢复提醒，不受当前视图过滤限制。
       await _refreshRemindersAndCalendarFromDatabase();
-    });
+    } catch (e, stackTrace) {
+      dev.log('[TaskNotifier] 初始化提醒失败', error: e, stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _restoreStartupList() async {
+    final startupView = await AppDatabase.getSetting(
+      TaskViewPreferences.startupViewSettingKey,
+    );
+    if (startupView != TaskViewPreferences.startupViewLastViewed) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final lastViewedListId = prefs.getString(
+      TaskViewPreferences.lastViewedListKey,
+    );
+    final lastViewedList = resolveLastViewedTaskList(
+      state.lists,
+      lastViewedListId,
+    );
+    if (lastViewedList == null) return;
+
+    state = state.copyWith(
+      currentListId: lastViewedList.id,
+      currentViewType: _viewTypeForList(lastViewedList),
+    );
   }
 
   @override
@@ -314,6 +439,22 @@ class TaskNotifier extends StateNotifier<TaskState> {
   Future<void> setCurrentList(String listId, String viewType) async {
     state = state.copyWith(currentListId: listId, currentViewType: viewType);
     await loadTasks();
+  }
+
+  void setSortMode(TaskSortMode sortMode) {
+    if (state.sortMode == sortMode) return;
+    state = state.copyWith(sortMode: sortMode);
+  }
+
+  Future<void> persistLastViewedList(String listId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = await prefs.setString(
+      TaskViewPreferences.lastViewedListKey,
+      listId,
+    );
+    if (!saved) {
+      throw StateError('保存上次停留清单失败');
+    }
   }
 
   void setSelectedTask(String? taskId) {
@@ -1011,7 +1152,8 @@ class TaskNotifier extends StateNotifier<TaskState> {
 
   Future<void> reorderTasks(List<String> taskIds) async {
     // 1. 乐观更新：立即在内存中更新任务顺序，避免 UI 抖动
-    final tasks = [...state.tasks];
+    final previousTasks = state.tasks;
+    final tasks = [...previousTasks];
     final idToIndex = {for (int i = 0; i < taskIds.length; i++) taskIds[i]: i};
 
     // 只重新对传入的任务进行排序，保持其他任务（如已完成）的相对位置
@@ -1027,10 +1169,15 @@ class TaskNotifier extends StateNotifier<TaskState> {
     state = state.copyWith(tasks: tasks);
 
     // 2. 异步更新数据库
-    await AppDatabase.reorderTasks(taskIds);
-    // 3. 静默加载最新状态（不触发 loading 状态）
-    await loadTasks(showLoading: false);
-    _triggerSync();
+    try {
+      await AppDatabase.reorderTasks(taskIds);
+      // 3. 静默加载最新状态（不触发 loading 状态）
+      await loadTasks(showLoading: false);
+      _triggerSync();
+    } catch (_) {
+      if (mounted) state = state.copyWith(tasks: previousTasks);
+      rethrow;
+    }
   }
 
   Future<void> reorderLists(List<String> listIds, {int offset = 0}) async {
