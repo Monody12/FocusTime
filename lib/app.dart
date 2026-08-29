@@ -263,7 +263,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                       // AI Assistant button
                       TextButton.icon(
                         onPressed: () => setState(() {
-                          _showMemos = true;
+                          _showMemos = !_showMemos;
                           _showCalendar = false;
                           _showSettings = false;
                         }),
@@ -325,7 +325,11 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                           children: [
                             Expanded(
                               child: _showMemos
-                                  ? const MemoPage()
+                                  ? MemoPage(
+                                      onClose: () => setState(
+                                        () => _showMemos = false,
+                                      ),
+                                    )
                                   : _showCalendar
                                   ? CalendarPage(
                                       onTaskSelected: (taskId) {

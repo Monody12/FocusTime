@@ -16,7 +16,9 @@ import 'package:focus_my_time/features/memos/services/memo_image_service.dart';
 import 'package:focus_my_time/features/memos/presentation/widgets/markdown_preview.dart';
 
 class MemoPage extends ConsumerStatefulWidget {
-  const MemoPage({super.key});
+  const MemoPage({super.key, required this.onClose});
+
+  final VoidCallback onClose;
 
   @override
   ConsumerState<MemoPage> createState() => _MemoPageState();
@@ -124,6 +126,11 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                 tooltip: '新建备忘录',
                 onPressed: () => _createMemo(context),
                 icon: const Icon(AppIcons.add),
+              ),
+              IconButton(
+                tooltip: '返回任务界面',
+                onPressed: widget.onClose,
+                icon: const Icon(Icons.close),
               ),
             ],
           ),
