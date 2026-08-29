@@ -88,6 +88,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   Widget build(BuildContext context) {
     final memos = ref.watch(memoProvider);
     final crypto = MemoCryptoService.instance;
+    final isMobile = MediaQuery.sizeOf(context).width < 800;
     return Column(
       children: [
         Padding(
@@ -183,6 +184,8 @@ class _MemoPageState extends ConsumerState<MemoPage> {
             error: (error, _) => Center(child: Text('加载失败：$error')),
             data: (items) => _showTrash
                 ? _buildTrashList(_trashItems ?? const [])
+                : isMobile
+                ? _buildMobileMemoPane(items)
                 : Row(
                     children: [
                       SizedBox(
@@ -482,6 +485,31 @@ class _MemoPageState extends ConsumerState<MemoPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// 移动端单栏导航：未选中时全屏列表，选中后全屏编辑器。
+  Widget _buildMobileMemoPane(List<Map<String, dynamic>> items) {
+    if (_selectedId == null) {
+      if (items.isEmpty) {
+        return const Center(child: Text('还没有备忘录，点右上角 + 新建'));
+      }
+      return ListView.builder(
+        itemCount: items.length,
+        itemBuilder: (context, index) => _buildMemoTile(items[index]),
+      );
+    }
+    return _MemoEditor(
+      key: ValueKey(_selectedId),
+      memoId: _selectedId!,
+      preview: _preview,
+      isMobile: true,
+      onBack: () => setState(() => _selectedId = null),
+      onPreviewChanged: (value) => setState(() => _preview = value),
+      onTrash: () {
+        setState(() => _selectedId = null);
+        ref.read(memoProvider.notifier).refresh();
+      },
     );
   }
 
@@ -852,12 +880,16 @@ class _MemoEditor extends ConsumerStatefulWidget {
     required this.preview,
     required this.onPreviewChanged,
     required this.onTrash,
+    this.isMobile = false,
+    this.onBack,
   });
 
   final String memoId;
   final bool preview;
   final ValueChanged<bool> onPreviewChanged;
   final VoidCallback onTrash;
+  final bool isMobile;
+  final VoidCallback? onBack;
 
   @override
   ConsumerState<_MemoEditor> createState() => _MemoEditorState();
@@ -1084,6 +1116,12 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
         children: [
           Row(
             children: [
+              if (widget.isMobile)
+                IconButton(
+                  tooltip: '返回备忘录列表',
+                  onPressed: widget.onBack,
+                  icon: const Icon(Icons.arrow_back),
+                ),
               Expanded(
                 child: TextField(
                   controller: _titleController,
@@ -1094,18 +1132,20 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
               ),
-              IconButton(
-                tooltip: '插入图片',
-                onPressed: _insertImage,
-                icon: const Icon(Icons.image_outlined),
-              ),
               _buildAutoSaveStatus(),
               const SizedBox(width: 4),
-              IconButton(
-                tooltip: '附件管理',
-                onPressed: _showAttachmentsDialog,
-                icon: const Icon(Icons.attach_file),
-              ),
+              if (!widget.isMobile)
+                IconButton(
+                  tooltip: '插入图片',
+                  onPressed: _insertImage,
+                  icon: const Icon(Icons.image_outlined),
+                ),
+              if (!widget.isMobile)
+                IconButton(
+                  tooltip: '附件管理',
+                  onPressed: _showAttachmentsDialog,
+                  icon: const Icon(Icons.attach_file),
+                ),
               IconButton(
                 tooltip: '更多操作',
                 onPressed: () => _showMoreMenu(memo),
@@ -1185,6 +1225,34 @@ class _MemoEditorState extends ConsumerState<_MemoEditor> {
       builder: (dialogContext) => SimpleDialog(
         title: const Text('更多操作'),
         children: [
+          if (widget.isMobile) ...[
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _insertImage();
+              },
+              child: const Row(
+                children: [
+                  Icon(Icons.image_outlined, size: 18),
+                  SizedBox(width: 8),
+                  Text('插入图片'),
+                ],
+              ),
+            ),
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showAttachmentsDialog();
+              },
+              child: const Row(
+                children: [
+                  Icon(Icons.attach_file, size: 18),
+                  SizedBox(width: 8),
+                  Text('附件管理'),
+                ],
+              ),
+            ),
+          ],
           SimpleDialogOption(
             onPressed: () => _applyUpdate(pinned: !pinned, pop: dialogContext),
             child: Row(

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- API 27+：虚拟键图标亮度跟随主题（浅色主题用深色图标，深色主题用浅色图标） -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">#F4F8F7</item>
+        <item name="android:navigationBarColor">#F4F8F7</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

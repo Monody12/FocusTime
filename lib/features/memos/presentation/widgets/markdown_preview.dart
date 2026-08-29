@@ -25,6 +25,7 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
   final _linkRecognizers = <TapGestureRecognizer>[];
   String? _parsedData;
   List<Widget>? _parsedBlocks;
+  bool _narrowLayout = false;
 
   void _disposeRecognizers() {
     for (final recognizer in _linkRecognizers) {
@@ -55,6 +56,8 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
   @override
   Widget build(BuildContext context) {
     // 解析依赖主题色，必须在 build 中进行；按 data 缓存避免重复解析。
+    // 窄屏（手机）下调整排版：正文字号加大、表格横向滚动。
+    _narrowLayout = MediaQuery.sizeOf(context).width < 600;
     if (_parsedBlocks == null || _parsedData != widget.data) {
       _disposeRecognizers();
       _parsedData = widget.data;
@@ -101,7 +104,10 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
             margin: const EdgeInsets.only(bottom: 8),
             child: Text.rich(
               _buildInline(node.children, null),
-              style: const TextStyle(height: 1.5),
+              style: TextStyle(
+                height: 1.55,
+                fontSize: _narrowLayout ? 15 : null,
+              ),
             ),
           ),
         ];
@@ -326,6 +332,7 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
       }
     }
     if (rows.isEmpty) return const SizedBox.shrink();
+    // 窄屏（手机）表格列宽按内容计算并横向滚动，避免列被挤压成不可读。
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -333,7 +340,19 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
         borderRadius: BorderRadius.circular(8),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Table(border: TableBorder.all(color: context.appColors.border), children: rows),
+      child: _narrowLayout
+          ? SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Table(
+                border: TableBorder.all(color: context.appColors.border),
+                defaultColumnWidth: const IntrinsicColumnWidth(),
+                children: rows,
+              ),
+            )
+          : Table(
+              border: TableBorder.all(color: context.appColors.border),
+              children: rows,
+            ),
     );
   }
 

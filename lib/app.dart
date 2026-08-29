@@ -147,7 +147,62 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
       }
     });
 
-    Widget mainContent = Scaffold(
+    /// 移动端抽屉底部功能入口：顶栏精简后，备忘录/AI/同步/主题切换统一收在这里。
+  Widget buildMobileDrawerActions(ThemeNotifier themeNotifier) {
+    final entries = <(String, IconData, VoidCallback)>[
+      (
+        '备忘录',
+        AppIcons.memo,
+        () => setState(() {
+          _showMemos = !_showMemos;
+          _showCalendar = false;
+          _showSettings = false;
+        }),
+      ),
+      (
+        'AI 助手',
+        AppIcons.ai,
+        () => setState(() {
+          _showAiChat = true;
+          _showMemos = false;
+        }),
+      ),
+      ('立即同步', AppIcons.reset, () => _syncNow()),
+      (
+        '切换主题',
+        AppIcons.lightMode,
+        () => themeNotifier.toggleTheme(),
+      ),
+    ];
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (label, icon, onTap) in entries)
+            ListTile(
+              dense: true,
+              leading: Icon(icon, size: 20, color: context.appColors.text),
+              title: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: context.appColors.text,
+                ),
+              ),
+              onTap: () {
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+                onTap();
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget mainContent = Scaffold(
       key: _scaffoldKey, // For drawer access
       backgroundColor: context.appColors.background,
       drawer: isMobile
@@ -162,15 +217,23 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                 ),
               ),
               clipBehavior: Clip.antiAlias,
-              child: Sidebar(
-                topPadding: topInset + 10,
-                showRightBorder: false,
-                onListChanged: () {
-                  ref.read(taskProvider.notifier).setSelectedTask(null);
-                  if (Navigator.of(context).canPop()) {
-                    Navigator.of(context).pop();
-                  }
-                },
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Sidebar(
+                      topPadding: topInset + 10,
+                      showRightBorder: false,
+                      onListChanged: () {
+                        ref.read(taskProvider.notifier).setSelectedTask(null);
+                        if (Navigator.of(context).canPop()) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  buildMobileDrawerActions(themeNotifier),
+                ],
               ),
             )
           : null,
@@ -239,54 +302,59 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                           );
                         },
                       ),
-                      // Theme toggle
-                      IconButton(
-                        icon: Icon(
-                          isDark ? AppIcons.lightMode : AppIcons.darkMode,
-                          size: AppIconSizes.nav,
+                      // Theme toggle（移动端收进抽屉）
+                      if (!isMobile)
+                        IconButton(
+                          icon: Icon(
+                            isDark ? AppIcons.lightMode : AppIcons.darkMode,
+                            size: AppIconSizes.nav,
+                          ),
+                          onPressed: () => themeNotifier.toggleTheme(),
+                          tooltip: '切换主题',
+                          color: context.appColors.text,
                         ),
-                        onPressed: () => themeNotifier.toggleTheme(),
-                        tooltip: '切换主题',
-                        color: context.appColors.text,
-                      ),
                       const SizedBox(width: 4),
-                      IconButton(
-                        icon: const Icon(
-                          AppIcons.reset,
-                          size: AppIconSizes.nav,
+                      // 移动端顶栏只保留 设置（其余入口收进抽屉，避免溢出）；
+                      // 桌面端保持完整按钮排。
+                      if (!isMobile) ...[
+                        IconButton(
+                          icon: const Icon(
+                            AppIcons.reset,
+                            size: AppIconSizes.nav,
+                          ),
+                          onPressed: () => _syncNow(),
+                          tooltip: '同步',
+                          color: context.appColors.text,
                         ),
-                        onPressed: () => _syncNow(),
-                        tooltip: '同步',
-                        color: context.appColors.text,
-                      ),
-                      const SizedBox(width: 4),
-                      // AI Assistant button
-                      TextButton.icon(
-                        onPressed: () => setState(() {
-                          _showMemos = !_showMemos;
-                          _showCalendar = false;
-                          _showSettings = false;
-                        }),
-                        icon: const Icon(AppIcons.memo, size: AppIconSizes.nav),
-                        label: isMobile ? const Text('') : const Text('备忘录'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: context.appColors.text,
-                          minimumSize: Size.zero,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        const SizedBox(width: 4),
+                        // AI Assistant button
+                        TextButton.icon(
+                          onPressed: () => setState(() {
+                            _showMemos = !_showMemos;
+                            _showCalendar = false;
+                            _showSettings = false;
+                          }),
+                          icon: const Icon(AppIcons.memo, size: AppIconSizes.nav),
+                          label: const Text('备忘录'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: context.appColors.text,
+                            minimumSize: Size.zero,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      TextButton.icon(
-                        onPressed: () => setState(() => _showAiChat = true),
-                        icon: const Icon(AppIcons.ai, size: AppIconSizes.nav),
-                        label: isMobile ? const Text('') : const Text('AI'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: context.appColors.text,
-                          minimumSize: Size.zero,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        const SizedBox(width: 4),
+                        TextButton.icon(
+                          onPressed: () => setState(() => _showAiChat = true),
+                          icon: const Icon(AppIcons.ai, size: AppIconSizes.nav),
+                          label: const Text('AI'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: context.appColors.text,
+                            minimumSize: Size.zero,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
+                        const SizedBox(width: 4),
+                      ],
                       // Settings button
                       TextButton.icon(
                         onPressed: () => setState(() => _showSettings = true),
@@ -341,13 +409,15 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                   : _buildMainContent(isDark, isMobile),
                             ),
                             // Footer
-                            Container(
-                              padding: EdgeInsets.fromLTRB(
-                                isMobile ? 14 : 16,
-                                isMobile ? 10 : 8,
-                                isMobile ? 14 : 16,
-                                bottomInset + (isMobile ? 14 : 8),
-                              ),
+                            // 移动端备忘录页隐藏专注/日历条，把空间留给内容。
+                            if (!(isMobile && _showMemos))
+                              Container(
+                                padding: EdgeInsets.fromLTRB(
+                                  isMobile ? 14 : 16,
+                                  isMobile ? 10 : 8,
+                                  isMobile ? 14 : 16,
+                                  bottomInset + (isMobile ? 14 : 8),
+                                ),
                               decoration: BoxDecoration(
                                 color: context.appColors.background,
                                 border: Border(
