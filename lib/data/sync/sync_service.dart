@@ -20,6 +20,10 @@ class SyncService {
   static String _realPassword = ''; // 真实的密码明文缓存
   static int _lastSyncTime = 0; // 本地成功同步时间，用于筛选本机待上传变更
   static int _lastServerSyncCursor = 0; // 服务端权威变更游标，用于拉取远端增量
+  static int _memoLastSyncTime = 0; // 备忘录独立水位线：旧服务器降级期间不前进
+  // 服务器是否支持备忘录同步（/api/health 返回 memoSync 标志）。
+  // 旧版服务器没有备忘录表，会把备忘录负载当作无效数据表拒绝。
+  static bool _serverSupportsMemoSync = true;
   static String? _lastSyncError;
   static bool _syncing = false; // 防止并发同步
   static bool _syncRequested = false; // 同步过程中如有新请求，结束后补跑一次
@@ -104,6 +108,16 @@ class SyncService {
       _lastServerSyncCursor = _lastSyncTime;
     }
 
+    final memoSync = await AppDatabase.getSetting('memoLastSyncTime');
+    if (memoSync != null) _memoLastSyncTime = int.tryParse(memoSync) ?? 0;
+
+    final supportsMemo = await AppDatabase.getSetting(
+      'serverSupportsMemoSync',
+    );
+    if (supportsMemo != null) {
+      _serverSupportsMemoSync = supportsMemo == 'true';
+    }
+
     if (_token.isEmpty && _username.isNotEmpty) {
       _setSyncWarning('同步登录已失效，请在设置中重新登录');
     }
@@ -111,6 +125,12 @@ class SyncService {
     // 数据恢复检测：如果 DB 被意外清空但 lastSyncTime 非零，
     // 重置为 0 以触发全量同步从服务器恢复数据
     await _recoverIfDataLost();
+
+    // 之前探测到旧服务器而缓存了“不支持备忘录”的结论；
+    // 服务器升级后会在启动时重新探测并自动恢复备忘录同步。
+    if (_token.isNotEmpty && !_serverSupportsMemoSync) {
+      unawaited(_probeServerCapabilities());
+    }
   }
 
   /// 检测到数据库被清空时自动重置 lastSyncTime，确保下次同步从服务器全量拉取
@@ -141,6 +161,9 @@ class SyncService {
   static String get realPassword => _realPassword;
   static int get lastSyncTime => _lastSyncTime;
   static int get lastServerSyncCursor => _lastServerSyncCursor;
+
+  /// 当前服务器是否支持备忘录同步。登录后会探测 /api/health 并持久化。
+  static bool get serverSupportsMemoSync => _serverSupportsMemoSync;
   static String? get lastSyncError => _lastSyncError;
   static ValueListenable<String> get syncWarningListenable =>
       _syncWarningNotifier;
@@ -212,6 +235,7 @@ class SyncService {
     _userId = userId;
     await AppDatabase.setSetting('syncToken', token);
     await AppDatabase.setSetting('syncUserId', userId);
+    await _probeServerCapabilities();
 
     // 如果提供了用户名，说明是登录或注册成功，保存用户名和虚拟密码
     if (username != null) {
@@ -371,12 +395,41 @@ class SyncService {
   /// 检查当前是否已登录（通过判断是否有 Token）
   static bool get isLoggedIn => _token.isNotEmpty;
 
+  /// 探测服务器是否支持备忘录同步。探测失败时保持当前结论，
+  /// 后续同步遇 400「无效的数据表」仍会自动降级重试。
+  static Future<void> _probeServerCapabilities() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_serverUrl/api/health'))
+          .timeout(const Duration(seconds: 8));
+      final data = _decodeResponseObject(response.body);
+      if (response.statusCode == 200 && data != null) {
+        _serverSupportsMemoSync = data['memoSync'] == true;
+        await AppDatabase.setSetting(
+          'serverSupportsMemoSync',
+          _serverSupportsMemoSync ? 'true' : 'false',
+        );
+      }
+    } catch (_) {
+      // 网络异常时保持已缓存的结论，避免在弱网下反复探测。
+    }
+  }
+
   /// 更新本地记录的上次同步时间
   static Future<void> updateLastSyncTime({
     int? serverCursor,
     int? localSyncTime,
   }) async {
     _lastSyncTime = localSyncTime ?? DateTime.now().millisecondsSinceEpoch;
+    // 备忘录水位线只在服务器真正支持备忘录同步时推进，
+    // 否则降级期间的本地备忘录变更永远无法在升级后补传。
+    if (_serverSupportsMemoSync) {
+      _memoLastSyncTime = _lastSyncTime;
+      await AppDatabase.setSetting(
+        'memoLastSyncTime',
+        _memoLastSyncTime.toString(),
+      );
+    }
     if (serverCursor != null && serverCursor > _lastServerSyncCursor) {
       _lastServerSyncCursor = serverCursor;
       await AppDatabase.setSetting(
@@ -393,9 +446,11 @@ class SyncService {
   static Future<void> resetCursorsAfterRestore() async {
     _lastSyncTime = 0;
     _lastServerSyncCursor = 0;
+    _memoLastSyncTime = 0;
     _lastSyncError = null;
     await AppDatabase.setSetting('lastSyncTime', '0');
     await AppDatabase.setSetting('lastServerSyncCursor', '0');
+    await AppDatabase.setSetting('memoLastSyncTime', '0');
   }
 
   /// 执行完整同步流程：上传本地变更 -> 下载远程变更
@@ -545,6 +600,25 @@ class SyncService {
     stopAutoSync();
   }
 
+  /// 服务器 400 响应是否因为不认识备忘录相关的同步表。
+  static bool _looksLikeUnsupportedMemoTable(String responseBody) {
+    final memoTableNames = [
+      'memo_folders',
+      'memo_tags',
+      'memos',
+      'memo_tag_links',
+      'memo_versions',
+      'memo_attachments',
+      'memo_shares',
+      'privacy_vault',
+    ];
+    return memoTableNames.any(responseBody.contains) &&
+        (responseBody.contains('无效的数据表') ||
+            responseBody.contains('不支持的') ||
+            responseBody.contains('unknown table') ||
+            responseBody.contains('no such table'));
+  }
+
   static Future<void> _notifySyncCompleted() async {
     for (final listener in List<FutureOr<void> Function()>.from(
       _syncCompletedListeners,
@@ -558,9 +632,16 @@ class SyncService {
   }
 
   static Future<({bool success, bool? tokenExpired, int? serverLastSync})>
-  _syncToServer({bool allowAutoLogin = true}) async {
+  _syncToServer({bool allowAutoLogin = true, bool retryWithoutMemo = true}) async {
     try {
-      final payload = await AppDatabase.getSyncPayload(_lastSyncTime);
+      final payload = await AppDatabase.getSyncPayload(
+        _lastSyncTime,
+        memoLastSyncTime: _memoLastSyncTime,
+      );
+      if (!_serverSupportsMemoSync) {
+        payload.removeWhere((table, _) => table.startsWith('memo_'));
+        payload.remove('privacy_vault');
+      }
 
       final response = await http
           .post(
@@ -578,9 +659,21 @@ class SyncService {
 
       if (response.statusCode == 401) {
         if (allowAutoLogin && await _tryAutoLogin()) {
-          return _syncToServer(allowAutoLogin: false);
+          return _syncToServer(
+            allowAutoLogin: false,
+            retryWithoutMemo: retryWithoutMemo,
+          );
         }
         return (success: false, tokenExpired: true, serverLastSync: null);
+      }
+
+      if (response.statusCode == 400 &&
+          retryWithoutMemo &&
+          _looksLikeUnsupportedMemoTable(response.body)) {
+        // 服务器是旧版本，不认识备忘录表：记住该结论并去掉备忘录负载重试。
+        _serverSupportsMemoSync = false;
+        await AppDatabase.setSetting('serverSupportsMemoSync', 'false');
+        return _syncToServer(allowAutoLogin: allowAutoLogin, retryWithoutMemo: false);
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -608,8 +701,27 @@ class SyncService {
   _downloadFromServer(
     int syncTimeForDownload, {
     bool allowAutoLogin = true,
+    bool retryWithoutMemo = true,
   }) async {
     try {
+      final requestTables = <String, List<String>>{
+        'lists': const [],
+        'tasks': const [],
+        'sessions': const [],
+        'task_recurrence_completions': const [],
+        'settings': const [],
+        if (_serverSupportsMemoSync) ...const {
+          'memo_folders': <String>[],
+          'memo_tags': <String>[],
+          'memos': <String>[],
+          'memo_tag_links': <String>[],
+          'memo_versions': <String>[],
+          'memo_attachments': <String>[],
+          'memo_shares': <String>[],
+          'privacy_vault': <String>[],
+        },
+      };
+
       final response = await http
           .post(
             Uri.parse('$_serverUrl/api/sync'),
@@ -619,13 +731,7 @@ class SyncService {
             },
             body: jsonEncode({
               'lastSyncTime': syncTimeForDownload,
-              'tables': {
-                'lists': [],
-                'tasks': [],
-                'sessions': [],
-                'task_recurrence_completions': [],
-                'settings': [],
-              },
+              'tables': requestTables,
             }),
           )
           .timeout(const Duration(seconds: 30));
@@ -635,9 +741,22 @@ class SyncService {
           return _downloadFromServer(
             syncTimeForDownload,
             allowAutoLogin: false,
+            retryWithoutMemo: retryWithoutMemo,
           );
         }
         return (success: false, tokenExpired: true, serverLastSync: null);
+      }
+
+      if (response.statusCode == 400 &&
+          retryWithoutMemo &&
+          _looksLikeUnsupportedMemoTable(response.body)) {
+        _serverSupportsMemoSync = false;
+        await AppDatabase.setSetting('serverSupportsMemoSync', 'false');
+        return _downloadFromServer(
+          syncTimeForDownload,
+          allowAutoLogin: allowAutoLogin,
+          retryWithoutMemo: false,
+        );
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
