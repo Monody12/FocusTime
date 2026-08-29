@@ -449,7 +449,7 @@ void main() {
     await AppDatabase.deleteList(newListId);
   });
 
-  test('Schema 12 升级到 13 时会恢复本机已有的错误归档任务', () async {
+  test('Schema 12 升级到最新版本时会恢复本机已有的错误归档任务', () async {
     final oldList = await AppDatabase.createList('迁移旧清单');
     final newList = await AppDatabase.createList('迁移目标清单');
     final oldListId = oldList['id'] as String;
@@ -499,7 +499,7 @@ void main() {
     await AppDatabase.close();
 
     final upgradedDb = await AppDatabase.database;
-    expect(await upgradedDb.getVersion(), 13);
+    expect(await upgradedDb.getVersion(), 14);
     final repairedTask = await AppDatabase.getTaskById(taskId);
     expect(repairedTask, isNotNull);
     expect(repairedTask!['listId'], newListId);
