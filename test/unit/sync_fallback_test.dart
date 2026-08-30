@@ -15,6 +15,10 @@ void main() {
   late int port;
   // 每次收到 /api/sync 请求时记录负载包含的表
   final syncRequests = <Set<String>>[];
+  // 记录每个 /api/sync 请求携带的 lastSyncTime（上传与下载各记一次）
+  final downloadLastSyncTimes = <int?>[];
+  // 新版服务器模式下额外下发的备忘录记录（模拟存留在服务端的历史数据）
+  List<Map<String, dynamic>> servedMemoRecords = [];
   bool serverSupportsMemo = false;
 
   setUpAll(() async {
@@ -58,6 +62,7 @@ void main() {
             .map((key) => key.toString())
             .toSet();
         syncRequests.add(tables);
+        downloadLastSyncTimes.add(decoded['lastSyncTime'] as int?);
         if (!serverSupportsMemo &&
             tables.any((t) => t.startsWith('memo_') || t == 'privacy_vault')) {
           await respond(400, {'error': '无效的数据表: memos'});
@@ -66,7 +71,10 @@ void main() {
         await respond(200, {
           'success': true,
           'serverLastSync': DateTime.now().millisecondsSinceEpoch,
-          'tables': const <String, dynamic>{},
+          'tables': <String, dynamic>{
+            if (serverSupportsMemo && servedMemoRecords.isNotEmpty)
+              'memos': servedMemoRecords,
+          },
         });
         return;
       }
@@ -151,5 +159,58 @@ void main() {
     final lastUpload = await MemoDatabase.getMemo(memo['id'] as String);
     expect(lastUpload, isNotNull);
     expect(syncRequests, isNotEmpty);
+  });
+
+  test('备忘录独立下载游标：共享游标越过历史后仍能补拉旧备忘录', () async {
+    serverSupportsMemo = true;
+    servedMemoRecords = [
+      {
+        'id': 'memo-window-gap-test',
+        // 服务端创建时间早于客户端共享游标：增量拉取按共享游标会永久错过
+        'updatedAt': DateTime.now().millisecondsSinceEpoch - 60 * 60 * 1000,
+        'deleted': false,
+        'data': {
+          'id': 'memo-window-gap-test',
+          'folderId': null,
+          'title': '窗口期备忘录',
+          'bodyMd': '降级窗口期内容',
+          'isPrivate': false,
+          'pinned': false,
+          'archived': false,
+          'aiAllowed': false,
+          'createdAt': DateTime.now().millisecondsSinceEpoch - 60 * 60 * 1000,
+        },
+      },
+    ];
+    // 模拟"v1.7.4 探测先自愈标志、升级后重置逻辑无触发时机"的存量客户端：
+    // 共享游标已推进，而备忘录独立下载游标停留在 0
+    await AppDatabase.setSetting('memoServerSyncCursor', '0');
+    await SyncService.init();
+    expect(SyncService.lastServerSyncCursor, greaterThan(0));
+
+    final syncResult = await SyncService.fullSync();
+    expect(syncResult.success, isTrue);
+    // 下载请求必须回退到缺口起点（min(共享游标, 备忘录游标) = 0）；
+    // 同批请求里上传在前、下载在后，取最后一次即下载请求
+    expect(downloadLastSyncTimes.last, 0);
+    // 游标之前的旧备忘录被拉回本地
+    final memos = await MemoDatabase.getMemos();
+    expect(memos.map((m) => m['title']), contains('窗口期备忘录'));
+    // 补拉完成后备忘录下载游标推进
+    final memoCursor = await AppDatabase.getSetting('memoServerSyncCursor');
+    expect(int.parse(memoCursor!), greaterThan(0));
+    servedMemoRecords = [];
+  });
+
+  test('备忘录独立下载游标：降级期间不推进', () async {
+    serverSupportsMemo = false;
+    servedMemoRecords = [];
+    final cursorBefore = await AppDatabase.getSetting('memoServerSyncCursor');
+    final syncResult = await SyncService.fullSync();
+    expect(syncResult.success, isTrue);
+    // 降级期间备忘录表被剔除，备忘录下载游标必须停在原位，
+    // 保证恢复后 min() 请求能从缺口起点补拉
+    final cursorAfter = await AppDatabase.getSetting('memoServerSyncCursor');
+    expect(cursorAfter, cursorBefore);
   });
 }

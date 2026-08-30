@@ -21,6 +21,9 @@ class SyncService {
   static int _lastSyncTime = 0; // 本地成功同步时间，用于筛选本机待上传变更
   static int _lastServerSyncCursor = 0; // 服务端权威变更游标，用于拉取远端增量
   static int _memoLastSyncTime = 0; // 备忘录独立水位线：旧服务器降级期间不前进
+  // 备忘录独立下载游标：下载请求取它与共享游标的较小值，被降级/漏拉窗口
+  // 跳过的备忘录变更会在窗口结束后自动补拉，不依赖能力标志的切换时机。
+  static int _memoServerSyncCursor = 0;
   // 服务器是否支持备忘录同步（/api/health 返回 memoSync 标志）。
   // 旧版服务器没有备忘录表，会把备忘录负载当作无效数据表拒绝。
   static bool _serverSupportsMemoSync = true;
@@ -111,6 +114,16 @@ class SyncService {
     final memoSync = await AppDatabase.getSetting('memoLastSyncTime');
     if (memoSync != null) _memoLastSyncTime = int.tryParse(memoSync) ?? 0;
 
+    // 老版本升级后该键缺失，按 0 处理：首次下载用 min(共享游标, 0) 做一次
+    // 全量补拉，修复"v1.7.4 探测先把标志自愈为 true、升级后重置逻辑再无
+    // 触发时机"的客户端，共享游标已越过备忘录历史导致的漏拉。
+    final memoServerCursor = await AppDatabase.getSetting(
+      'memoServerSyncCursor',
+    );
+    if (memoServerCursor != null) {
+      _memoServerSyncCursor = int.tryParse(memoServerCursor) ?? 0;
+    }
+
     final supportsMemo = await AppDatabase.getSetting(
       'serverSupportsMemoSync',
     );
@@ -164,6 +177,7 @@ class SyncService {
 
   /// 当前服务器是否支持备忘录同步。登录后会探测 /api/health 并持久化。
   static bool get serverSupportsMemoSync => _serverSupportsMemoSync;
+  static int get memoServerSyncCursor => _memoServerSyncCursor;
   static String? get lastSyncError => _lastSyncError;
   static ValueListenable<String> get syncWarningListenable =>
       _syncWarningNotifier;
@@ -427,8 +441,10 @@ class SyncService {
   static Future<void> _resetCursorsForMemoCatchUp() async {
     _lastServerSyncCursor = 0;
     _memoLastSyncTime = 0;
+    _memoServerSyncCursor = 0;
     await AppDatabase.setSetting('lastServerSyncCursor', '0');
     await AppDatabase.setSetting('memoLastSyncTime', '0');
+    await AppDatabase.setSetting('memoServerSyncCursor', '0');
   }
 
   /// 更新本地记录的上次同步时间
@@ -453,6 +469,17 @@ class SyncService {
         _lastServerSyncCursor.toString(),
       );
     }
+    // 备忘录下载游标只在支持备忘录同步时推进：降级期间停在上次成功拉取
+    // 备忘录的位置，后续请求用 min(共享游标, 该游标) 补拉窗口期缺口。
+    if (_serverSupportsMemoSync &&
+        serverCursor != null &&
+        serverCursor > _memoServerSyncCursor) {
+      _memoServerSyncCursor = serverCursor;
+      await AppDatabase.setSetting(
+        'memoServerSyncCursor',
+        _memoServerSyncCursor.toString(),
+      );
+    }
     await AppDatabase.setSetting('lastSyncTime', _lastSyncTime.toString());
   }
 
@@ -463,10 +490,12 @@ class SyncService {
     _lastSyncTime = 0;
     _lastServerSyncCursor = 0;
     _memoLastSyncTime = 0;
+    _memoServerSyncCursor = 0;
     _lastSyncError = null;
     await AppDatabase.setSetting('lastSyncTime', '0');
     await AppDatabase.setSetting('lastServerSyncCursor', '0');
     await AppDatabase.setSetting('memoLastSyncTime', '0');
+    await AppDatabase.setSetting('memoServerSyncCursor', '0');
   }
 
   /// 执行完整同步流程：上传本地变更 -> 下载远程变更
@@ -514,7 +543,12 @@ class SyncService {
 
       // Download remote changes using the server-side cursor. Local dirty
       // records still use _lastSyncTime because those timestamps are local.
-      final downloadResult = await _downloadFromServer(_lastServerSyncCursor);
+      // 下载请求取共享游标与备忘录独立游标的较小值：备忘录被降级跳过的
+      // 窗口期里备忘录游标停在原点，窗口结束后请求自动回退到缺口起点。
+      final downloadCursor = _lastServerSyncCursor <= _memoServerSyncCursor
+          ? _lastServerSyncCursor
+          : _memoServerSyncCursor;
+      final downloadResult = await _downloadFromServer(downloadCursor);
       if (!downloadResult.success) {
         if (downloadResult.tokenExpired == true) {
           _setLastSyncError(syncWarning.isNotEmpty ? syncWarning : '登录已过期');
