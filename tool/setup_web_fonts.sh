@@ -22,7 +22,7 @@ paths_file="$(mktemp)"
 trap 'rm -f "$paths_file"' EXIT
 
 perl -0777 -ne '
-  while (/NotoFont\(\s*\x27(?:Noto Color Emoji|Noto Sans Symbols 2|Noto Sans SC|Noto Sans JP) \d+\x27,\s*\x27([^\x27]+\.woff2)\x27/g) {
+  while (/NotoFont\(\s*\x27[^\x27]+\x27,\s*\x27([^\x27]+\.woff2)\x27/g) {
     print "$1\n";
   }
 ' "$fallback_data" > "$paths_file"
@@ -30,7 +30,7 @@ echo "roboto/v32/KFOmCnqEu92Fr1Me4GZLCzYlKw.woff2" >> "$paths_file"
 sort -u -o "$paths_file" "$paths_file"
 
 font_count="$(wc -l < "$paths_file")"
-if (( font_count < 230 )); then
+if (( font_count < 500 )); then
   echo "Flutter 字体清单解析异常，仅找到 $font_count 个文件" >&2
   exit 1
 fi
