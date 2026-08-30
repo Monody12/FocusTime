@@ -42,10 +42,10 @@ flutter build web --release \
 `web/sqflite_sw.js`。这两个文件必须随静态产物一起部署，其中 Wasm 文件需
 以 `application/wasm` MIME 类型返回。
 
-`tool/setup_web_fonts.sh` 会把 Flutter 引擎当前版本所需的简体中文、日文汉字、
-常用符号和彩色表情回退字体下载到 `web/font-fallback/`。英文系统环境输入中文时，
-Flutter 可能选择 Noto Sans JP，因此该字体也必须随包部署。Release 和生产部署脚本
-都会在 Web 构建前执行字体清单准备与数量校验。构建时使用
+`tool/setup_web_fonts.sh` 会解析 Flutter 引擎当前版本的完整 `NotoFont` 清单，
+把简繁中文、日韩文字、符号、表情和其他脚本的回退分片下载到
+`web/font-fallback/`。Release 和生产部署脚本都会在 Web 构建前执行字体清单准备与
+数量校验。构建时使用
 `--no-web-resources-cdn`，并由启动脚本将字体回退指向站点本地目录，生产运行不
 依赖 Google CDN。`assets/fonts/FocusNotoSansSC-UI.ttf` 是应用界面常用字形的
 内置子集，用于避免冷启动首帧出现缺字方框；完整字库仍负责用户输入等动态文本。
@@ -95,8 +95,8 @@ Web 应用需要以下规则：
 ## 浏览器行为
 
 浏览器数据保存在 WebAssembly SQLite/IndexedDB 中，设置页提供 JSON 备份导入
-导出。系统日历和关闭页面后的系统通知只在原生端可用；页面保持打开时，提醒会
-使用应用内铃声。
+导出。页面保持打开时，任务提醒会请求浏览器系统通知权限，同时显示可关闭的页内
+提醒并单次播放应用内提示音；页面关闭后的可靠后台提醒仍只在原生端可用。
 
 Web SQLite 当前使用无 Worker 模式以兼容无法可靠启动 SharedWorker 的浏览器。
 应用启动页会通过 Web Locks API 独占数据库，同一浏览器配置一次只允许一个标签
