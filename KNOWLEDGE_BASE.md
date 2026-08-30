@@ -1283,4 +1283,24 @@ Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提�
 - 新增用户可见文案 = 新增字形需求。字体子集是派生产物，凡是涉及新界面的发布都应重新生成子集（脚本已可在 Windows 直接运行，成本已降到一条命令）。
 - 浏览器字体回退行为差异会让"缺字"只在部分浏览器暴露：Chrome 的宽松回退掩盖了问题，Firefox 是字体完整性的最佳检测器。
 
+## 38. 发版部署三连阻塞：镜像失联、gh 仓库推断与 node ABI
+
+**问题现象**：v1.7.5 生产部署时 `deploy_production.sh` 连续在三处失败：gh 报 Release 不存在（实际已创建）、报本地 tag 不存在（已随代码推送）、SQLite 备份步骤 better-sqlite3 报 DLOPEN 失败（模块文件完好，pm2 下的生产服务运行正常）。
+
+**根因**：
+1. 服务器 git remote 用的 gitclone.com 镜像失联（curl 可达 github.com 但 git 智能协议被阻断）；换成 ghfast 代理 URL 后，`gh release view` 又无法从代理 URL 推断出 GitHub 仓库；
+2. 服务器只 fetch 了 master 分支，没有取 tag；
+3. 生产 better-sqlite3 是随 pm2 所用 nvm node 22 编译的原生模块（ABI 127），而非交互 PATH 里的系统 node 是 20（ABI 115）。better-sqlite3 惰性加载原生绑定，`require()` 成功不代表模块可用，必须真正 `new Database()` 才会暴露 ABI 错误。
+
+**方案**：
+1. 服务器 origin 切换为可用的 GitHub 代理；部署脚本从 origin URL 显式提取 owner/repo 传给 `gh --repo`（先剥离 `.git` 再取末两段——正则贪婪匹配会把 `.git` 吞进仓库名）；
+2. 服务器补 `git fetch origin tag <tag>`；
+3. 备份步骤在 pm2 的 node_interpreter、nvm、PATH 候选中按"能否实际 `new Database(':memory:')`"自动选择 node；
+4. 运行时一致性检查从 `server` 整目录细化为实际上线的子路径，tag 之后的 test/tool 修复不再阻塞部署。
+
+**教训**：
+- 部署机的 git remote、gh 认证、node 大版本是三个独立的易碎点；前置检查的报错文案要能区分"网络/环境问题"与"资源确实不存在"。
+- 依赖原生模块的脚本步骤不要直接用 PATH 里的 node，要以"运行 pm2 的那个 node"为准。
+- 代码与 Release 的一致性校验范围应精确到上线产物；把测试/工具目录也算进去，会让紧急修复无法先于下一次发版上线。
+
 *最后更新日期：2026-08-30*
