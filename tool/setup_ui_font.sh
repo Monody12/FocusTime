@@ -40,7 +40,11 @@ printf '%s  %s\n' "$font_sha256" "$source_font" | sha256sum --check --status
 printf '%s  %s\n' "$license_sha256" "$source_license" | sha256sum --check --status
 
 python3 -m venv "$temp_dir/venv"
-"$temp_dir/venv/bin/pip" install --quiet --disable-pip-version-check \
+venv_python="$temp_dir/venv/bin/python"
+if [[ ! -f "$venv_python" ]]; then
+  venv_python="$temp_dir/venv/Scripts/python.exe"
+fi
+"$venv_python" -m pip install --quiet --disable-pip-version-check \
   'fonttools==4.60.2'
 
 character_file="$temp_dir/ui-characters.txt"
@@ -54,7 +58,7 @@ rg --no-heading --no-filename --text \
     ' > "$character_file"
 
 output_font="$temp_dir/FocusNotoSansSC-UI.ttf"
-"$temp_dir/venv/bin/python" -m fontTools.subset "$source_font" \
+"$venv_python" -m fontTools.subset "$source_font" \
   --output-file="$output_font" \
   --text-file="$character_file" \
   --unicodes='U+0000-00FF,U+2000-206F,U+3000-303F' \
@@ -70,8 +74,8 @@ output_font="$temp_dir/FocusNotoSansSC-UI.ttf"
   --name-languages='*' \
   --no-hinting
 
-install -d -m 755 assets/fonts
-install -m 644 "$output_font" assets/fonts/FocusNotoSansSC-UI.ttf
-install -m 644 "$source_license" assets/fonts/OFL-1.1.txt
+mkdir -p assets/fonts
+cp -f "$output_font" assets/fonts/FocusNotoSansSC-UI.ttf
+cp -f "$source_license" assets/fonts/OFL-1.1.txt
 
 echo "Generated assets/fonts/FocusNotoSansSC-UI.ttf"
