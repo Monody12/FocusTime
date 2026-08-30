@@ -24,6 +24,7 @@ import 'package:focus_my_time/features/update/services/update_service.dart';
 import 'package:focus_my_time/features/update/presentation/widgets/update_dialog.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
 import 'package:focus_my_time/features/memos/presentation/pages/memo_page.dart';
+import 'package:focus_my_time/core/services/timer_notification_service.dart';
 
 class FocusMyTimeApp extends ConsumerStatefulWidget {
   const FocusMyTimeApp({super.key});
@@ -148,61 +149,54 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
     });
 
     /// 移动端抽屉底部功能入口：顶栏精简后，备忘录/AI/同步/主题切换统一收在这里。
-  Widget buildMobileDrawerActions(ThemeNotifier themeNotifier) {
-    final entries = <(String, IconData, VoidCallback)>[
-      (
-        '备忘录',
-        AppIcons.memo,
-        () => setState(() {
-          _showMemos = !_showMemos;
-          _showCalendar = false;
-          _showSettings = false;
-        }),
-      ),
-      (
-        'AI 助手',
-        AppIcons.ai,
-        () => setState(() {
-          _showAiChat = true;
-          _showMemos = false;
-        }),
-      ),
-      ('立即同步', AppIcons.reset, () => _syncNow()),
-      (
-        '切换主题',
-        AppIcons.lightMode,
-        () => themeNotifier.toggleTheme(),
-      ),
-    ];
-    return SafeArea(
-      top: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (label, icon, onTap) in entries)
-            ListTile(
-              dense: true,
-              leading: Icon(icon, size: 20, color: context.appColors.text),
-              title: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: context.appColors.text,
+    Widget buildMobileDrawerActions(ThemeNotifier themeNotifier) {
+      final entries = <(String, IconData, VoidCallback)>[
+        (
+          '备忘录',
+          AppIcons.memo,
+          () => setState(() {
+            _showMemos = !_showMemos;
+            _showCalendar = false;
+            _showSettings = false;
+          }),
+        ),
+        (
+          'AI 助手',
+          AppIcons.ai,
+          () => setState(() {
+            _showAiChat = true;
+            _showMemos = false;
+          }),
+        ),
+        ('立即同步', AppIcons.reset, () => _syncNow()),
+        ('切换主题', AppIcons.lightMode, () => themeNotifier.toggleTheme()),
+      ];
+      return SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (label, icon, onTap) in entries)
+              ListTile(
+                dense: true,
+                leading: Icon(icon, size: 20, color: context.appColors.text),
+                title: Text(
+                  label,
+                  style: TextStyle(fontSize: 14, color: context.appColors.text),
                 ),
+                onTap: () {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                  onTap();
+                },
               ),
-              onTap: () {
-                if (Navigator.of(context).canPop()) {
-                  Navigator.of(context).pop();
-                }
-                onTap();
-              },
-            ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
+    }
 
-  Widget mainContent = Scaffold(
+    Widget mainContent = Scaffold(
       key: _scaffoldKey, // For drawer access
       backgroundColor: context.appColors.background,
       drawer: isMobile
@@ -334,7 +328,10 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                             _showCalendar = false;
                             _showSettings = false;
                           }),
-                          icon: const Icon(AppIcons.memo, size: AppIconSizes.nav),
+                          icon: const Icon(
+                            AppIcons.memo,
+                            size: AppIconSizes.nav,
+                          ),
                           label: const Text('备忘录'),
                           style: TextButton.styleFrom(
                             foregroundColor: context.appColors.text,
@@ -394,9 +391,8 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                             Expanded(
                               child: _showMemos
                                   ? MemoPage(
-                                      onClose: () => setState(
-                                        () => _showMemos = false,
-                                      ),
+                                      onClose: () =>
+                                          setState(() => _showMemos = false),
                                     )
                                   : _showCalendar
                                   ? CalendarPage(
@@ -418,132 +414,137 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                                   isMobile ? 14 : 16,
                                   bottomInset + (isMobile ? 14 : 8),
                                 ),
-                              decoration: BoxDecoration(
-                                color: context.appColors.background,
-                                border: Border(
-                                  top: BorderSide(
-                                    color: context.appColors.border,
+                                decoration: BoxDecoration(
+                                  color: context.appColors.background,
+                                  border: Border(
+                                    top: BorderSide(
+                                      color: context.appColors.border,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: Row(
-                                children: [
-                                  if (_showNoTaskToast)
-                                    Flexible(
-                                      child: Text(
-                                        '⚠ 请先选择一个任务',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          color:
-                                              context.appColors.textSecondary,
+                                child: Row(
+                                  children: [
+                                    if (_showNoTaskToast)
+                                      Flexible(
+                                        child: Text(
+                                          '⚠ 请先选择一个任务',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color:
+                                                context.appColors.textSecondary,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
+                                      )
+                                    else
+                                      Flexible(
+                                        child: Consumer(
+                                          builder: (context, ref, child) {
+                                            final timerState = ref.watch(
+                                              timerProvider,
+                                            );
+                                            final taskState = ref.watch(
+                                              taskProvider,
+                                            );
+                                            return _buildFocusButton(
+                                              timerState,
+                                              timerNotifier,
+                                              taskState,
+                                              isDark,
+                                              isMobile,
+                                            );
+                                          },
+                                        ),
                                       ),
-                                    )
-                                  else
-                                    Flexible(
-                                      child: Consumer(
-                                        builder: (context, ref, child) {
-                                          final timerState = ref.watch(
-                                            timerProvider,
-                                          );
-                                          final taskState = ref.watch(
-                                            taskProvider,
-                                          );
-                                          return _buildFocusButton(
-                                            timerState,
-                                            timerNotifier,
-                                            taskState,
-                                            isDark,
-                                            isMobile,
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  const SizedBox(width: 8),
-                                  OutlinedButton(
-                                    onPressed: () {
-                                      final showCalendar = !_showCalendar;
-                                      setState(() {
-                                        _showCalendar = showCalendar;
-                                        _calendarTaskId = null;
+                                    const SizedBox(width: 8),
+                                    OutlinedButton(
+                                      onPressed: () {
+                                        final showCalendar = !_showCalendar;
+                                        setState(() {
+                                          _showCalendar = showCalendar;
+                                          _calendarTaskId = null;
+                                          if (showCalendar) {
+                                            _showSettings = false;
+                                          }
+                                        });
                                         if (showCalendar) {
-                                          _showSettings = false;
+                                          ref
+                                              .read(taskProvider.notifier)
+                                              .setSelectedTask(null);
                                         }
-                                      });
-                                      if (showCalendar) {
-                                        ref
-                                            .read(taskProvider.notifier)
-                                            .setSelectedTask(null);
-                                      }
-                                    },
-                                    style: OutlinedButton.styleFrom(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: isMobile ? 8 : 16,
-                                        vertical: 10,
-                                      ),
-                                      side: BorderSide(
-                                        color: context.appColors.border,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        AppIcon(
-                                          AppIcons.calendar,
-                                          size: AppIconSizes.compact,
-                                          semanticLabel: isMobile ? '日历' : null,
-                                          color: _showCalendar
-                                              ? context
-                                                    .appColors
-                                                    .accentSecondary
-                                              : context.appColors.text,
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: isMobile ? 8 : 16,
+                                          vertical: 10,
                                         ),
-                                        if (!isMobile) ...[
-                                          const SizedBox(
-                                            width: AppIconSpacing.compactGap,
+                                        side: BorderSide(
+                                          color: context.appColors.border,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            6,
                                           ),
-                                          Text(
-                                            '日历',
-                                            style: TextStyle(
-                                              color: _showCalendar
-                                                  ? context
-                                                        .appColors
-                                                        .accentSecondary
-                                                  : context.appColors.text,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          AppIcon(
+                                            AppIcons.calendar,
+                                            size: AppIconSizes.compact,
+                                            semanticLabel: isMobile
+                                                ? '日历'
+                                                : null,
+                                            color: _showCalendar
+                                                ? context
+                                                      .appColors
+                                                      .accentSecondary
+                                                : context.appColors.text,
+                                          ),
+                                          if (!isMobile) ...[
+                                            const SizedBox(
+                                              width: AppIconSpacing.compactGap,
                                             ),
-                                          ),
+                                            Text(
+                                              '日历',
+                                              style: TextStyle(
+                                                color: _showCalendar
+                                                    ? context
+                                                          .appColors
+                                                          .accentSecondary
+                                                    : context.appColors.text,
+                                              ),
+                                            ),
+                                          ],
                                         ],
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                  if (!isMobile) ...[
-                                    const SizedBox(width: 12),
-                                    ref
-                                        .watch(packageInfoProvider)
-                                        .when(
-                                          data: (info) => Text(
-                                            'v${info.version}',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: isDark
-                                                  ? AppColors.darkTextSecondary
-                                                  : AppColors
-                                                        .lightTextSecondary,
+                                    if (!isMobile) ...[
+                                      const SizedBox(width: 12),
+                                      ref
+                                          .watch(packageInfoProvider)
+                                          .when(
+                                            data: (info) => Text(
+                                              'v${info.version}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: isDark
+                                                    ? AppColors
+                                                          .darkTextSecondary
+                                                    : AppColors
+                                                          .lightTextSecondary,
+                                              ),
                                             ),
+                                            loading: () =>
+                                                const SizedBox.shrink(),
+                                            error: (_, __) =>
+                                                const SizedBox.shrink(),
                                           ),
-                                          loading: () =>
-                                              const SizedBox.shrink(),
-                                          error: (_, __) =>
-                                              const SizedBox.shrink(),
-                                        ),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),
@@ -640,6 +641,32 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                 ),
               ),
             ),
+          ValueListenableBuilder<WebReminder?>(
+            valueListenable: TimerNotificationService.webReminder,
+            builder: (context, reminder, _) {
+              if (reminder == null) return const SizedBox.shrink();
+              return Positioned(
+                top: topInset + 68,
+                left: isMobile ? 12 : 240,
+                right: 12,
+                child: Material(
+                  elevation: 6,
+                  borderRadius: BorderRadius.circular(8),
+                  color: context.appColors.surfaceElevated,
+                  child: ListTile(
+                    leading: const Icon(Icons.notifications_active_outlined),
+                    title: Text(reminder.title),
+                    subtitle: Text(reminder.body),
+                    trailing: const IconButton(
+                      tooltip: '关闭提醒',
+                      icon: Icon(Icons.close),
+                      onPressed: TimerNotificationService.dismissWebReminder,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

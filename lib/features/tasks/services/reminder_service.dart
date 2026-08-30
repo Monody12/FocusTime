@@ -184,8 +184,7 @@ class ReminderService {
     }
 
     if (PlatformInfo.isWeb) {
-      // 浏览器端提醒在页面运行期间由 Dart Timer 和应用内铃声提供。
-      return true;
+      return TimerNotificationService.requestWebPermission();
     }
 
     return PlatformInfo.isWindows;
@@ -724,7 +723,7 @@ class ReminderService {
         body: task.title,
         soundEnabled: true,
         phase: 'focus',
-        duration: 'long',
+        duration: 'short',
       );
     });
     dev.log('[ReminderService] Web 提醒已加入页面内调度: ${task.title}');
@@ -849,7 +848,7 @@ class ReminderService {
         body: '浏览器页面运行期间会播放铃声。',
         soundEnabled: true,
         phase: 'focus',
-        duration: 'long',
+        duration: 'short',
       );
       return;
     }

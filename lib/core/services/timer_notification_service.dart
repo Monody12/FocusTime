@@ -1,9 +1,12 @@
 import 'dart:developer' as dev;
+import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:windows_notification/windows_notification.dart';
 import 'package:windows_notification/notification_message.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:focus_my_time/core/platform/platform_info.dart';
+import 'package:focus_my_time/core/services/web_notification_stub.dart'
+    if (dart.library.js_interop) 'package:focus_my_time/core/services/web_notification_web.dart';
 
 /// 计时器铃声与系统通知服务
 /// 职责：
@@ -21,6 +24,8 @@ class TimerNotificationService {
       FlutterLocalNotificationsPlugin();
 
   static bool _initialized = false;
+
+  static final ValueNotifier<WebReminder?> webReminder = ValueNotifier(null);
 
   // 外部监听通知动作的回调
   static Function(String)? _onAction;
@@ -133,7 +138,7 @@ class TimerNotificationService {
 
     // 1. 响铃处理
     if (!PlatformInfo.isWindows && soundEnabled) {
-      final bool loop = duration != 'short';
+      final bool loop = !PlatformInfo.isWeb && duration != 'short';
       await _playAlarmSound(loop: loop);
     }
 
@@ -153,7 +158,17 @@ class TimerNotificationService {
         phase: phase,
         soundEnabled: soundEnabled,
       );
+    } else if (PlatformInfo.isWeb) {
+      await showWebNotification(title, body);
+      webReminder.value = WebReminder(title: title, body: body);
     }
+  }
+
+  static Future<bool> requestWebPermission() =>
+      requestWebNotificationPermission();
+
+  static void dismissWebReminder() {
+    webReminder.value = null;
   }
 
   static Future<void> _sendLocalNotification({
@@ -332,4 +347,11 @@ class TimerNotificationService {
   static Future<void> dispose() async {
     await _audioPlayer.dispose();
   }
+}
+
+class WebReminder {
+  const WebReminder({required this.title, required this.body});
+
+  final String title;
+  final String body;
 }

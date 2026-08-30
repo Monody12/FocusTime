@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
+import 'package:focus_my_time/core/platform/platform_info.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/core/utils/recurrence_utils.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
@@ -779,6 +780,9 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage>
   }
 
   Future<void> _showReminderPresets(TaskItem task) async {
+    if (PlatformInfo.isWeb) {
+      await ReminderService.requestNotificationPermission();
+    }
     final hasAny = await ReminderService.hasAnyReminderPermission();
     if (!hasAny) {
       if (mounted) _showPermissionDialog();
