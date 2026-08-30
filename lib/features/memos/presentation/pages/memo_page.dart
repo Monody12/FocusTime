@@ -36,6 +36,9 @@ class MemoPage extends ConsumerStatefulWidget {
 
 class _MemoPageState extends ConsumerState<MemoPage> {
   final _searchController = TextEditingController();
+  final _folderFilterKey = GlobalKey();
+  final _tagFilterKey = GlobalKey();
+  final _sortFilterKey = GlobalKey();
   Timer? _searchDebounce;
   String? _selectedId;
   _MemoViewMode _viewMode = _MemoViewMode.read;
@@ -514,57 +517,58 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   }
 
   Widget _buildFolderSelector() {
-    return Builder(
-      builder: (buttonContext) => _buildFilterChip(
-        icon: Icons.folder_outlined,
-        label: _currentFolderName,
-        tooltip: '文件夹筛选：$_currentFolderName',
-        maxLabelWidth: 160,
-        onPressed: () async {
-          final value = await _showAnchoredMenu<String>(
-            anchorContext: buttonContext,
-            items: [
-              const PopupMenuItem(
-                value: '',
-                child: Row(
-                  children: [
-                    Icon(Icons.notes, size: 18),
-                    SizedBox(width: 8),
-                    Text('全部备忘录'),
-                  ],
+    return _buildFilterChip(
+      key: _folderFilterKey,
+      icon: Icons.folder_outlined,
+      label: _currentFolderName,
+      tooltip: '文件夹筛选：$_currentFolderName',
+      maxLabelWidth: 160,
+      onPressed: () async {
+        final buttonContext = _folderFilterKey.currentContext;
+        if (buttonContext == null) return;
+        final value = await _showAnchoredMenu<String>(
+          anchorContext: buttonContext,
+          items: [
+            const PopupMenuItem(
+              value: '',
+              child: Row(
+                children: [
+                  Icon(Icons.notes, size: 18),
+                  SizedBox(width: 8),
+                  Text('全部备忘录'),
+                ],
+              ),
+            ),
+            for (final folder in _folders)
+              PopupMenuItem(
+                value: folder['id'] as String,
+                child: Text(
+                  '${'　' * _folderDepth(folder['parentId'] as String?)}${folder['name'] ?? ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              for (final folder in _folders)
-                PopupMenuItem(
-                  value: folder['id'] as String,
-                  child: Text(
-                    '${'　' * _folderDepth(folder['parentId'] as String?)}${folder['name'] ?? ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: _manageFoldersAction,
-                child: Row(
-                  children: [
-                    Icon(Icons.drive_file_rename_outline, size: 18),
-                    SizedBox(width: 8),
-                    Text('管理文件夹'),
-                  ],
-                ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: _manageFoldersAction,
+              child: Row(
+                children: [
+                  Icon(Icons.drive_file_rename_outline, size: 18),
+                  SizedBox(width: 8),
+                  Text('管理文件夹'),
+                ],
               ),
-            ],
-          );
-          if (!mounted || value == null) return;
-          if (value == _manageFoldersAction) {
-            _showManageFoldersDialog();
-            return;
-          }
-          setState(() => _selectedFolderId = value.isEmpty ? null : value);
-          _applyMemoFilter();
-        },
-      ),
+            ),
+          ],
+        );
+        if (!mounted || value == null) return;
+        if (value == _manageFoldersAction) {
+          _showManageFoldersDialog();
+          return;
+        }
+        setState(() => _selectedFolderId = value.isEmpty ? null : value);
+        _applyMemoFilter();
+      },
     );
   }
 
@@ -576,63 +580,65 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                   .firstOrNull?['name']
                   ?.toString() ??
               '已删除标签';
-    return Builder(
-      builder: (buttonContext) => _buildFilterChip(
-        icon: Icons.label_outline,
-        label: selectedName,
-        tooltip: '标签筛选：$selectedName',
-        onPressed: () async {
-          final value = await _showAnchoredMenu<String>(
-            anchorContext: buttonContext,
-            items: [
-              const PopupMenuItem(value: '', child: Text('全部标签')),
-              for (final tag in _tags)
-                PopupMenuItem(
-                  value: tag['id'] as String,
-                  child: Text(
-                    tag['name'] as String? ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+    return _buildFilterChip(
+      key: _tagFilterKey,
+      icon: Icons.label_outline,
+      label: selectedName,
+      tooltip: '标签筛选：$selectedName',
+      onPressed: () async {
+        final buttonContext = _tagFilterKey.currentContext;
+        if (buttonContext == null) return;
+        final value = await _showAnchoredMenu<String>(
+          anchorContext: buttonContext,
+          items: [
+            const PopupMenuItem(value: '', child: Text('全部标签')),
+            for (final tag in _tags)
+              PopupMenuItem(
+                value: tag['id'] as String,
+                child: Text(
+                  tag['name'] as String? ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-            ],
-          );
-          if (!mounted || value == null) return;
-          setState(() => _selectedTagId = value.isEmpty ? null : value);
-          _applyMemoFilter();
-        },
-      ),
+              ),
+          ],
+        );
+        if (!mounted || value == null) return;
+        setState(() => _selectedTagId = value.isEmpty ? null : value);
+        _applyMemoFilter();
+      },
     );
   }
 
   Widget _buildSortSelector() {
-    return Builder(
-      builder: (buttonContext) => _buildFilterChip(
-        icon: Icons.sort,
-        label: _sortLabel(_sort),
-        tooltip: '排序方式：${_sortLabel(_sort)}',
-        onPressed: () async {
-          final value = await _showAnchoredMenu<MemoSortOption>(
-            anchorContext: buttonContext,
-            items: [
-              for (final option in MemoSortOption.values)
-                PopupMenuItem(value: option, child: Text(_sortLabel(option))),
-            ],
-          );
-          if (!mounted || value == null) return;
-          setState(() => _sort = value);
-          _applyMemoFilter();
-          try {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('memo_sort', value.storageValue);
-          } catch (error) {
-            if (!mounted) return;
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('保存排序设置失败：$error')));
-          }
-        },
-      ),
+    return _buildFilterChip(
+      key: _sortFilterKey,
+      icon: Icons.sort,
+      label: _sortLabel(_sort),
+      tooltip: '排序方式：${_sortLabel(_sort)}',
+      onPressed: () async {
+        final buttonContext = _sortFilterKey.currentContext;
+        if (buttonContext == null) return;
+        final value = await _showAnchoredMenu<MemoSortOption>(
+          anchorContext: buttonContext,
+          items: [
+            for (final option in MemoSortOption.values)
+              PopupMenuItem(value: option, child: Text(_sortLabel(option))),
+          ],
+        );
+        if (!mounted || value == null) return;
+        setState(() => _sort = value);
+        _applyMemoFilter();
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('memo_sort', value.storageValue);
+        } catch (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('保存排序设置失败：$error')));
+        }
+      },
     );
   }
 
@@ -660,6 +666,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   }
 
   Widget _buildFilterChip({
+    required Key key,
     required IconData icon,
     required String label,
     required String tooltip,
@@ -667,6 +674,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     double maxLabelWidth = 140,
   }) {
     return Semantics(
+      key: key,
       button: true,
       label: tooltip,
       onTap: onPressed,
