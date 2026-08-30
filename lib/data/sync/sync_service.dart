@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:focus_my_time/data/database/app_database.dart';
 
+enum SyncActivity { idle, syncing, success, error }
+
 class SyncService {
   // 默认服务器地址
   static const _defaultServerUrl = String.fromEnvironment(
@@ -35,6 +37,8 @@ class SyncService {
   static Timer? _autoSyncTimer;
   static final ValueNotifier<String> _syncWarningNotifier =
       ValueNotifier<String>('');
+  static final ValueNotifier<SyncActivity> _syncActivityNotifier =
+      ValueNotifier<SyncActivity>(SyncActivity.idle);
   static final Set<FutureOr<void> Function()> _syncCompletedListeners = {};
 
   static const String _encryptionKey = 'FocusMyTimeSecretKey!';
@@ -124,9 +128,7 @@ class SyncService {
       _memoServerSyncCursor = int.tryParse(memoServerCursor) ?? 0;
     }
 
-    final supportsMemo = await AppDatabase.getSetting(
-      'serverSupportsMemoSync',
-    );
+    final supportsMemo = await AppDatabase.getSetting('serverSupportsMemoSync');
     if (supportsMemo != null) {
       _serverSupportsMemoSync = supportsMemo == 'true';
     }
@@ -178,7 +180,10 @@ class SyncService {
   /// 当前服务器是否支持备忘录同步。登录后会探测 /api/health 并持久化。
   static bool get serverSupportsMemoSync => _serverSupportsMemoSync;
   static int get memoServerSyncCursor => _memoServerSyncCursor;
+  static int get memoLastSyncTime => _memoLastSyncTime;
   static String? get lastSyncError => _lastSyncError;
+  static ValueListenable<SyncActivity> get syncActivityListenable =>
+      _syncActivityNotifier;
   static ValueListenable<String> get syncWarningListenable =>
       _syncWarningNotifier;
   static String get syncWarning => _syncWarningNotifier.value;
@@ -505,6 +510,7 @@ class SyncService {
     _setLastSyncError(null);
     if (!isLoggedIn) {
       _setLastSyncError('未登录或登录已失效');
+      _syncActivityNotifier.value = SyncActivity.error;
       return (success: false, tokenExpired: false);
     }
 
@@ -518,6 +524,7 @@ class SyncService {
     }
 
     _syncing = true;
+    _syncActivityNotifier.value = SyncActivity.syncing;
     final completer = Completer<({bool success, bool tokenExpired})>();
     _activeSyncCompleter = completer;
     var syncResult = (success: false, tokenExpired: false);
@@ -580,6 +587,9 @@ class SyncService {
       }
       _activeSyncCompleter = null;
       _syncing = false;
+      _syncActivityNotifier.value = syncResult.success
+          ? SyncActivity.success
+          : SyncActivity.error;
       if (_syncRequested) {
         _scheduleQueuedSync(Duration.zero);
       }
@@ -687,7 +697,10 @@ class SyncService {
   }
 
   static Future<({bool success, bool? tokenExpired, int? serverLastSync})>
-  _syncToServer({bool allowAutoLogin = true, bool retryWithoutMemo = true}) async {
+  _syncToServer({
+    bool allowAutoLogin = true,
+    bool retryWithoutMemo = true,
+  }) async {
     try {
       final payload = await AppDatabase.getSyncPayload(
         _lastSyncTime,
@@ -728,7 +741,10 @@ class SyncService {
         // 服务器是旧版本，不认识备忘录表：记住该结论并去掉备忘录负载重试。
         _serverSupportsMemoSync = false;
         await AppDatabase.setSetting('serverSupportsMemoSync', 'false');
-        return _syncToServer(allowAutoLogin: allowAutoLogin, retryWithoutMemo: false);
+        return _syncToServer(
+          allowAutoLogin: allowAutoLogin,
+          retryWithoutMemo: false,
+        );
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {

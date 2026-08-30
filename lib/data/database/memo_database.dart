@@ -2,6 +2,33 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 
+enum MemoSortOption {
+  updatedDesc,
+  updatedAsc,
+  titleAsc,
+  titleDesc,
+  createdDesc,
+  createdAsc;
+
+  String get storageValue => name;
+
+  String get orderBySql => switch (this) {
+    MemoSortOption.updatedDesc => 'm.updated_at DESC',
+    MemoSortOption.updatedAsc => 'm.updated_at ASC',
+    MemoSortOption.titleAsc => 'm.title COLLATE NOCASE ASC',
+    MemoSortOption.titleDesc => 'm.title COLLATE NOCASE DESC',
+    MemoSortOption.createdDesc => 'm.created_at DESC',
+    MemoSortOption.createdAsc => 'm.created_at ASC',
+  };
+
+  static MemoSortOption fromStorage(String? value) {
+    return MemoSortOption.values.firstWhere(
+      (option) => option.storageValue == value,
+      orElse: () => MemoSortOption.updatedDesc,
+    );
+  }
+}
+
 /// Local persistence for the memo feature.
 ///
 /// Memo tables intentionally live beside the task tables in AppDatabase, but
@@ -342,8 +369,10 @@ class MemoDatabase {
     }
     final duplicate = await db.query(
       'memo_folders',
-      where: 'deleted = 0 AND parent_id IS ? AND name = ? COLLATE NOCASE',
-      whereArgs: [parentId, trimmed],
+      where: parentId == null
+          ? 'deleted = 0 AND parent_id IS NULL AND name = ? COLLATE NOCASE'
+          : 'deleted = 0 AND parent_id = ? AND name = ? COLLATE NOCASE',
+      whereArgs: parentId == null ? [trimmed] : [parentId, trimmed],
       limit: 1,
     );
     if (duplicate.isNotEmpty) throw const FormatException('同级文件夹名称已存在');
@@ -484,8 +513,11 @@ class MemoDatabase {
   static Future<List<Map<String, dynamic>>> getMemos({
     String? folderId,
     String? query,
+    String? tagId,
     bool includeArchived = false,
+    bool onlyArchived = false,
     bool includeDeleted = false,
+    MemoSortOption sort = MemoSortOption.updatedDesc,
   }) async {
     final db = await _db;
     final conditions = <String>[];
@@ -493,26 +525,66 @@ class MemoDatabase {
     if (!includeDeleted) {
       conditions.add('m.deleted = 0');
     }
-    if (!includeArchived) conditions.add('m.archived = 0');
+    if (onlyArchived) {
+      conditions.add('m.archived = 1');
+    } else if (!includeArchived) {
+      conditions.add('m.archived = 0');
+    }
     if (folderId != null) {
       conditions.add('m.folder_id = ?');
       args.add(folderId);
     }
     if (query != null && query.trim().isNotEmpty) {
-      conditions.add('(m.title LIKE ? OR m.body_md LIKE ?)');
+      conditions.add('''
+        (m.title LIKE ? OR m.body_md LIKE ? OR EXISTS (
+          SELECT 1
+          FROM memo_tag_links search_link
+          JOIN memo_tags search_tag ON search_tag.id = search_link.tag_id
+          WHERE search_link.memo_id = m.id
+            AND search_link.deleted = 0
+            AND search_tag.deleted = 0
+            AND search_tag.name LIKE ?
+        ))
+      ''');
       final pattern = '%${query.trim()}%';
-      args.addAll([pattern, pattern]);
+      args.addAll([pattern, pattern, pattern]);
+    }
+    if (tagId != null) {
+      conditions.add('''
+        EXISTS (
+          SELECT 1
+          FROM memo_tag_links filter_link
+          WHERE filter_link.memo_id = m.id
+            AND filter_link.tag_id = ?
+            AND filter_link.deleted = 0
+        )
+      ''');
+      args.add(tagId);
     }
     final rows = await db.rawQuery('''
-      SELECT m.*, f.name AS folder_name
+      SELECT m.*, f.name AS folder_name,
+        (
+          SELECT GROUP_CONCAT(tag.name, '|||')
+          FROM memo_tag_links tag_link
+          JOIN memo_tags tag ON tag.id = tag_link.tag_id
+          WHERE tag_link.memo_id = m.id
+            AND tag_link.deleted = 0
+            AND tag.deleted = 0
+        ) AS tag_names
       FROM memos m
       LEFT JOIN memo_folders f ON f.id = m.folder_id AND f.deleted = 0
       ${conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}'}
-      ORDER BY m.pinned DESC, m.updated_at DESC
+      ORDER BY m.pinned DESC, ${sort.orderBySql}
     ''', args);
     return rows.map((row) {
       final mapped = _mapRow('memos', row);
       mapped['folderName'] = row['folder_name'];
+      mapped['tagNames'] =
+          (row['tag_names'] as String?)
+              ?.split('|||')
+              .where((name) => name.isNotEmpty)
+              .toList() ??
+          const <String>[];
       return mapped;
     }).toList();
   }
@@ -740,6 +812,21 @@ class MemoDatabase {
     return rows.map((row) => _mapRow('memo_versions', row)).toList();
   }
 
+  static Future<Map<String, dynamic>?> getLatestVersion(
+    String memoId, {
+    required String source,
+  }) async {
+    final db = await _db;
+    final rows = await db.query(
+      'memo_versions',
+      where: 'memo_id = ? AND source = ? AND deleted = 0',
+      whereArgs: [memoId, source],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : _mapRow('memo_versions', rows.first);
+  }
+
   static Future<void> pruneVersions(
     String memoId, {
     String source = 'manual',
@@ -752,7 +839,9 @@ class MemoDatabase {
       whereArgs: [memoId, source],
       orderBy: 'pinned DESC, version_number DESC',
     );
-    final limit = source == 'auto' ? 10 : maxHistoryVersions;
+    final limit = source == 'auto' || source == 'conflict'
+        ? 10
+        : maxHistoryVersions;
     if (rows.length <= limit) return;
     final keep = rows.take(limit).map((row) => row['id']).toSet();
     final now = _now();
@@ -1012,6 +1101,11 @@ class MemoDatabase {
           final row = _unmapRow(table, {...data, 'id': id});
           row['updated_at'] = remoteUpdatedAt;
           row['deleted'] = 0;
+          if (table == 'memos' &&
+              localRows.isNotEmpty &&
+              _memoContentDiffers(localRows.first, row)) {
+            await _createConflictVersion(txn, localRows.first);
+          }
           await txn.insert(
             table,
             row,
@@ -1020,6 +1114,63 @@ class MemoDatabase {
         }
       }
     });
+  }
+
+  static bool _memoContentDiffers(
+    Map<String, Object?> local,
+    Map<String, Object?> remote,
+  ) {
+    const contentFields = <String>[
+      'title',
+      'body_md',
+      'encrypted_payload',
+      'is_private',
+      'encrypt_title',
+    ];
+    return contentFields.any((field) => local[field] != remote[field]);
+  }
+
+  static Future<void> _createConflictVersion(
+    Transaction txn,
+    Map<String, Object?> local,
+  ) async {
+    final memoId = local['id'] as String;
+    final current = await txn.rawQuery(
+      'SELECT COALESCE(MAX(version_number), 0) AS value FROM memo_versions WHERE memo_id = ?',
+      [memoId],
+    );
+    final versionNumber = ((current.first['value'] as num?)?.toInt() ?? 0) + 1;
+    final now = _now();
+    await txn.insert('memo_versions', {
+      'id': _id('memo-version'),
+      'memo_id': memoId,
+      'version_number': versionNumber,
+      'title': local['title'],
+      'body_md': local['body_md'],
+      'encrypted_payload': local['encrypted_payload'],
+      'is_private': local['is_private'] ?? 0,
+      'pinned': local['pinned'] ?? 0,
+      'source': 'conflict',
+      'created_at': now,
+      'updated_at': now,
+      'deleted': 0,
+    });
+
+    final conflicts = await txn.query(
+      'memo_versions',
+      columns: ['id'],
+      where: 'memo_id = ? AND source = ? AND deleted = 0',
+      whereArgs: [memoId, 'conflict'],
+      orderBy: 'version_number DESC',
+    );
+    for (final row in conflicts.skip(10)) {
+      await txn.update(
+        'memo_versions',
+        {'deleted': 1, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
   }
 
   static Map<String, dynamic> _tombstoneRow(

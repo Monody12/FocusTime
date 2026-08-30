@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:highlight/highlight.dart' as hl;
 import 'package:markdown/markdown.dart' as md;
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/features/memos/services/memo_image_service.dart';
@@ -24,6 +25,8 @@ class MarkdownPreview extends StatefulWidget {
 class _MarkdownPreviewState extends State<MarkdownPreview> {
   final _linkRecognizers = <TapGestureRecognizer>[];
   String? _parsedData;
+  Brightness? _parsedBrightness;
+  bool? _parsedNarrowLayout;
   List<Widget>? _parsedBlocks;
   bool _narrowLayout = false;
 
@@ -58,9 +61,15 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
     // 解析依赖主题色，必须在 build 中进行；按 data 缓存避免重复解析。
     // 窄屏（手机）下调整排版：正文字号加大、表格横向滚动。
     _narrowLayout = MediaQuery.sizeOf(context).width < 600;
-    if (_parsedBlocks == null || _parsedData != widget.data) {
+    final brightness = Theme.of(context).brightness;
+    if (_parsedBlocks == null ||
+        _parsedData != widget.data ||
+        _parsedBrightness != brightness ||
+        _parsedNarrowLayout != _narrowLayout) {
       _disposeRecognizers();
       _parsedData = widget.data;
+      _parsedBrightness = brightness;
+      _parsedNarrowLayout = _narrowLayout;
       _parsedBlocks = _parseBlocks();
     }
     return Column(
@@ -140,6 +149,9 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
           code is md.Element ? code.textContent : node.textContent,
         );
         final highlighted = _highlightSpans(context, codeText, code);
+        final baseColor = Theme.of(context).brightness == Brightness.dark
+            ? const Color(0xFFABB2BF)
+            : const Color(0xFF383A42);
         return [
           Container(
             width: double.infinity,
@@ -157,9 +169,10 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
                       codeText.endsWith('\n')
                           ? codeText.substring(0, codeText.length - 1)
                           : codeText,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         fontSize: 13,
+                        color: baseColor,
                       ),
                     ),
             ),
@@ -236,15 +249,13 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
       }
     }
 
-    const baseColor = Color(0xFFABB2BF);
-    walk(result.nodes, const TextStyle(color: baseColor));
+    final baseColor = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFABB2BF)
+        : const Color(0xFF383A42);
+    walk(result.nodes, TextStyle(color: baseColor));
     if (spans.isEmpty) return null;
     return TextSpan(
-      style: const TextStyle(
-        fontFamily: 'monospace',
-        fontSize: 13,
-        color: baseColor,
-      ),
+      style: TextStyle(fontFamily: 'monospace', fontSize: 13, color: baseColor),
       children: spans,
     );
   }
@@ -461,15 +472,25 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
   }
 }
 
-/// 打开外部链接。当前依赖集没有 url_launcher，先复制到剪贴板兜底，
-/// 后续接入启动器后改为直接打开浏览器。
 Future<void> openExternalLink(BuildContext context, String href) async {
   if (href.isEmpty || href.startsWith('memo-attachment://')) return;
+  final uri = Uri.tryParse(href);
+  final supported =
+      uri != null &&
+      uri.hasScheme &&
+      const {'http', 'https', 'mailto'}.contains(uri.scheme.toLowerCase());
+  try {
+    if (supported && await launchUrl(uri, mode: LaunchMode.platformDefault)) {
+      return;
+    }
+  } catch (_) {
+    // 启动器不可用时复制链接，用户仍可手动打开。
+  }
   await Clipboard.setData(ClipboardData(text: href));
   if (!context.mounted) return;
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(const SnackBar(content: Text('链接已复制到剪贴板')));
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(supported ? '无法直接打开，链接已复制' : '链接已复制到剪贴板')),
+  );
 }
 
 /// 代码高亮配色（按 highlight.js 的 className 分组）。

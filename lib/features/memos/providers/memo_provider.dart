@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/data/database/memo_database.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
 
 final memoProvider =
@@ -9,32 +10,75 @@ final memoProvider =
 
 class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
   final _crypto = MemoCryptoService.instance;
+  String? _query;
+  String? _folderId;
+  String? _tagId;
+  bool _onlyArchived = false;
+  MemoSortOption _sort = MemoSortOption.updatedDesc;
+  int _requestRevision = 0;
 
   @override
-  Future<List<Map<String, dynamic>>> build() => MemoDatabase.getMemos();
+  Future<List<Map<String, dynamic>>> build() async {
+    SyncService.addSyncCompletedListener(_onSyncCompleted);
+    ref.onDispose(
+      () => SyncService.removeSyncCompletedListener(_onSyncCompleted),
+    );
+    return _loadCurrentView();
+  }
 
-  Future<void> refresh({String? query, String? folderId}) async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
-      final hasPrivateSearch =
-          query != null && query.trim().isNotEmpty && _crypto.isUnlocked;
-      final rows = await MemoDatabase.getMemos(
-        query: hasPrivateSearch ? null : query,
-        folderId: folderId,
-      );
-      if (!hasPrivateSearch) return rows;
-      final needle = query.trim().toLowerCase();
-      return rows.where((memo) {
-        final title = memo['title'] as String? ?? '';
-        final body = memo['bodyMd'] as String? ?? '';
-        final privateMemo = _decodePrivateMemo(memo);
-        final searchable =
-            '$title $body '
-                    '${privateMemo?.title ?? ''} ${privateMemo?.bodyMd ?? ''}'
-                .toLowerCase();
-        return searchable.contains(needle);
-      }).toList();
-    });
+  Future<void> refresh({
+    String? query,
+    String? folderId,
+    String? tagId,
+    bool onlyArchived = false,
+    MemoSortOption sort = MemoSortOption.updatedDesc,
+  }) async {
+    _query = query;
+    _folderId = folderId;
+    _tagId = tagId;
+    _onlyArchived = onlyArchived;
+    _sort = sort;
+    await reloadCurrentView();
+  }
+
+  Future<void> reloadCurrentView() async {
+    final revision = ++_requestRevision;
+    try {
+      final rows = await _loadCurrentView();
+      if (revision == _requestRevision) state = AsyncData(rows);
+    } catch (error, stackTrace) {
+      if (revision == _requestRevision) {
+        state = AsyncError(error, stackTrace);
+      }
+    }
+  }
+
+  Future<void> _onSyncCompleted() => reloadCurrentView();
+
+  Future<List<Map<String, dynamic>>> _loadCurrentView() async {
+    final query = _query;
+    final hasPrivateSearch =
+        query != null && query.trim().isNotEmpty && _crypto.isUnlocked;
+    final rows = await MemoDatabase.getMemos(
+      query: hasPrivateSearch ? null : query,
+      folderId: _folderId,
+      tagId: _tagId,
+      onlyArchived: _onlyArchived,
+      sort: _sort,
+    );
+    if (!hasPrivateSearch) return rows;
+    final needle = query.trim().toLowerCase();
+    return rows.where((memo) {
+      final title = memo['title'] as String? ?? '';
+      final body = memo['bodyMd'] as String? ?? '';
+      final tags = (memo['tagNames'] as List?)?.join(' ') ?? '';
+      final privateMemo = _decodePrivateMemo(memo);
+      final searchable =
+          '$title $body $tags '
+                  '${privateMemo?.title ?? ''} ${privateMemo?.bodyMd ?? ''}'
+              .toLowerCase();
+      return searchable.contains(needle);
+    }).toList();
   }
 
   Future<Map<String, dynamic>> create({
@@ -61,7 +105,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
       encryptedPayload: encryptedPayload,
       aiAllowed: aiAllowed,
     );
-    await refresh();
+    await reloadCurrentView();
     return memo;
   }
 
@@ -126,7 +170,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
       );
     }
     await MemoDatabase.updateMemo(id, updates);
-    await refresh();
+    await reloadCurrentView();
   }
 
   Future<List<Map<String, dynamic>>> loadTrash() => MemoDatabase.getMemos(
@@ -136,18 +180,23 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
 
   Future<void> restore(String id) async {
     await MemoDatabase.restoreMemo(id);
-    await refresh();
+    await reloadCurrentView();
+  }
+
+  Future<void> unarchive(String id) async {
+    await MemoDatabase.updateMemo(id, {'archived': false});
+    await reloadCurrentView();
   }
 
   /// 从回收站物理删除备忘录及其版本历史和标签关系。
   Future<void> purge(String id) async {
     await MemoDatabase.purgeMemo(id);
-    await refresh();
+    await reloadCurrentView();
   }
 
   Future<void> setTags(String memoId, List<String> tagIds) async {
     await MemoDatabase.setMemoTags(memoId, tagIds);
-    await refresh();
+    await reloadCurrentView();
   }
 
   Future<Map<String, dynamic>> createTag(String name) =>
@@ -167,7 +216,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
   /// 仅软删除文件夹本身；其中的备忘录保留，之后在“全部备忘录”可见。
   Future<void> deleteFolder(String id) async {
     await MemoDatabase.deleteFolder(id);
-    await refresh();
+    await reloadCurrentView();
   }
 
   Future<List<Map<String, dynamic>>> loadVersions(String memoId) =>
