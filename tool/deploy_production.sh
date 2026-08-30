@@ -65,7 +65,7 @@ release_tag="v$app_version"
 [[ "$readme_version" == "$app_version" ]] || fail "README version $readme_version does not match $app_version"
 
 # origin 可能是 ghfast 之类的下载代理 URL，gh 无法从中推断仓库，显式提取
-gh_repo="${GH_REPO:-$(git remote get-url origin | sed -n 's#.*/\([A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*\)\(\.git\)\?$#\1#p')}"
+gh_repo="${GH_REPO:-$(git remote get-url origin | sed -n -e 's#\.git$##' -e 's#.*/\([A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*\)$#\1#p')}"
 [[ -n "$gh_repo" ]] || fail "Cannot determine GitHub repository from origin remote"
 
 gh release view "$release_tag" --repo "$gh_repo" --json tagName --jq '.tagName' 2>/dev/null |
