@@ -7,6 +7,25 @@ import {
 
 let lastIssuedServerTime = 0
 
+// 设备本地状态键：曾被旧版客户端当普通设置上传，把某台设备缓存的
+// 'false' 能力标志下发到所有设备，导致备忘录同步被整体剔除。
+// 服务端拒绝摄入这些键，并在启动时清掉历史污染记录，旧客户端未升级也能自愈。
+export const DEVICE_LOCAL_SETTING_KEYS = [
+  'serverSupportsMemoSync',
+  'memoLastSyncTime',
+  'memoServerSyncCursor'
+] as const
+
+export function purgeDeviceLocalSettingRecords(): number {
+  const placeholders = DEVICE_LOCAL_SETTING_KEYS.map(() => '?').join(', ')
+  const info = db
+    .prepare(
+      `DELETE FROM sync_records WHERE table_name = 'settings' AND record_id IN (${placeholders})`
+    )
+    .run(...DEVICE_LOCAL_SETTING_KEYS)
+  return info.changes
+}
+
 const TASK_SYNC_FIELDS = [
   'listId',
   'title',
@@ -240,6 +259,9 @@ function applyClientSettingsRecords(userId: string, records: SyncRecord[]): numb
 
   let count = 0
   for (const record of records) {
+    if ((DEVICE_LOCAL_SETTING_KEYS as readonly string[]).includes(record.id)) {
+      continue
+    }
     stmt.run(
       userId,
       record.id,

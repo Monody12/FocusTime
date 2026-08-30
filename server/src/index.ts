@@ -3,7 +3,10 @@ import cors from 'cors'
 import { db, initDatabase } from './db/schema'
 import authRoutes from './auth/routes'
 import syncRoutes from './sync/routes'
-import { repairAllMisappliedTaskArchives } from './sync/algorithm'
+import {
+  purgeDeviceLocalSettingRecords,
+  repairAllMisappliedTaskArchives
+} from './sync/algorithm'
 import storageRoutes, { publicStorageRouter } from './storage/routes'
 
 const PORT = Number.parseInt(process.env.PORT || '6677', 10)
@@ -65,6 +68,10 @@ function authRateLimit(
 
 // Initialize database
 initDatabase()
+const purgedSettings = purgeDeviceLocalSettingRecords()
+if (purgedSettings > 0) {
+  console.log(`Purged ${purgedSettings} device-local setting sync record(s)`)
+}
 const repairedTasks = repairAllMisappliedTaskArchives()
 if (repairedTasks > 0) {
   console.log(`Repaired ${repairedTasks} task archive sync record(s)`)
