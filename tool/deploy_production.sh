@@ -72,7 +72,8 @@ gh release view "$release_tag" --repo "$gh_repo" --json tagName --jq '.tagName' 
   grep -Fxq "$release_tag" || fail "GitHub Release $release_tag does not exist"
 git rev-parse --verify "$release_tag^{}" >/dev/null 2>&1 || fail "Local tag $release_tag does not exist"
 
-runtime_paths=(assets lib pubspec.lock pubspec.yaml server web)
+# 仅校验真正上线运行的文件；server/test 与 tool 的后续修复不阻塞部署
+runtime_paths=(assets lib pubspec.lock pubspec.yaml server/src server/package.json server/package-lock.json server/tsconfig.json server/ecosystem.config.js web)
 git diff --quiet "$release_tag" -- "${runtime_paths[@]}" ||
   fail "Runtime files differ from $release_tag; create a new release before deploying"
 
