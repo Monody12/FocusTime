@@ -64,7 +64,11 @@ release_tag="v$app_version"
 [[ "$installer_version" == "$app_version" ]] || fail "Installer version $installer_version does not match $app_version"
 [[ "$readme_version" == "$app_version" ]] || fail "README version $readme_version does not match $app_version"
 
-gh release view "$release_tag" --json tagName --jq '.tagName' 2>/dev/null |
+# origin 可能是 ghfast 之类的下载代理 URL，gh 无法从中推断仓库，显式提取
+gh_repo="${GH_REPO:-$(git remote get-url origin | sed -n 's#.*/\([A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*\)\(\.git\)\?$#\1#p')}"
+[[ -n "$gh_repo" ]] || fail "Cannot determine GitHub repository from origin remote"
+
+gh release view "$release_tag" --repo "$gh_repo" --json tagName --jq '.tagName' 2>/dev/null |
   grep -Fxq "$release_tag" || fail "GitHub Release $release_tag does not exist"
 git rev-parse --verify "$release_tag^{}" >/dev/null 2>&1 || fail "Local tag $release_tag does not exist"
 
