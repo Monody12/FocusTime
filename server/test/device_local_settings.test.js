@@ -1,6 +1,10 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { db } = require('../dist/db/schema')
+const { db, initDatabase } = require('../dist/db/schema')
+
+// 测试可能在空数据库环境运行（如生产部署机），先确保表结构存在
+initDatabase()
+
 const {
   applyClientTables,
   purgeDeviceLocalSettingRecords,
