@@ -397,6 +397,9 @@ class SyncService {
 
   /// 探测服务器是否支持备忘录同步。探测失败时保持当前结论，
   /// 后续同步遇 400「无效的数据表」仍会自动降级重试。
+  ///
+  /// 从 false 恢复为 true 时重置共享下载游标：备忘录被降级跳过的窗口期里，
+  /// 共享游标已越过服务器上的备忘录变更，不重置会导致那些变更永远拉不到。
   static Future<void> _probeServerCapabilities() async {
     try {
       final response = await http
@@ -404,7 +407,11 @@ class SyncService {
           .timeout(const Duration(seconds: 8));
       final data = _decodeResponseObject(response.body);
       if (response.statusCode == 200 && data != null) {
-        _serverSupportsMemoSync = data['memoSync'] == true;
+        final supportsMemo = data['memoSync'] == true;
+        if (supportsMemo && !_serverSupportsMemoSync) {
+          await _resetCursorsForMemoCatchUp();
+        }
+        _serverSupportsMemoSync = supportsMemo;
         await AppDatabase.setSetting(
           'serverSupportsMemoSync',
           _serverSupportsMemoSync ? 'true' : 'false',
@@ -413,6 +420,15 @@ class SyncService {
     } catch (_) {
       // 网络异常时保持已缓存的结论，避免在弱网下反复探测。
     }
+  }
+
+  /// 备忘录同步恢复时的游标重置：清零共享下载游标做一次全量补拉，
+  /// LWW 合并保证重复下载的旧记录不会覆盖新数据。
+  static Future<void> _resetCursorsForMemoCatchUp() async {
+    _lastServerSyncCursor = 0;
+    _memoLastSyncTime = 0;
+    await AppDatabase.setSetting('lastServerSyncCursor', '0');
+    await AppDatabase.setSetting('memoLastSyncTime', '0');
   }
 
   /// 更新本地记录的上次同步时间
@@ -477,6 +493,11 @@ class SyncService {
     _activeSyncCompleter = completer;
     var syncResult = (success: false, tokenExpired: false);
     try {
+      // 缓存为“不支持备忘录”时先探测一次：服务器升级后可自动恢复同步。
+      // 探测内部会把 false→true 的恢复转化为游标重置补拉。
+      if (!_serverSupportsMemoSync) {
+        await _probeServerCapabilities();
+      }
       final localSyncCutoff = DateTime.now().millisecondsSinceEpoch;
       // Upload local changes
       final uploadResult = await _syncToServer();

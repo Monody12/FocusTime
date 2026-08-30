@@ -2153,6 +2153,12 @@ class AppDatabase {
       'syncFakePassword',
       'syncRealPassword',
       'deepseekApiKey',
+      // 以下为设备本地状态，绝不能跨设备同步：
+      // serverSupportsMemoSync 曾被当作普通设置同步，把旧服务器时期缓存的
+      // 'false' 推给所有设备，导致备忘录上传/下载被整体剔除。
+      'serverSupportsMemoSync',
+      'memoLastSyncTime',
+      'memoServerSyncCursor',
     ];
     final settingsRecords = await db.query(
       'settings',
@@ -2488,6 +2494,10 @@ class AppDatabase {
       'syncFakePassword',
       'syncRealPassword',
       'deepseekApiKey',
+      // 设备本地状态不从服务器应用（历史污染值留在服务器，由各设备探测自愈）
+      'serverSupportsMemoSync',
+      'memoLastSyncTime',
+      'memoServerSyncCursor',
     };
     for (final item in records) {
       final data = item['data'] as Map<String, dynamic>;
