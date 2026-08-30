@@ -160,8 +160,24 @@ cp -a \
 
 server_db="$server_root/data/sync-server.db"
 if [[ -f "$server_db" ]]; then
+  # 生产 better-sqlite3 是随 pm2 的 node 大版本编译的原生模块；非交互 PATH 里
+  # 的 node 可能是旧大版本（ABI 不符，DLOPEN 失败），按实测加载结果选择 node
+  backup_node=""
+  for candidate in \
+    "$(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name == "focus-timer-sync") | .pm2_env.node_interpreter' | head -1)" \
+    /root/.nvm/versions/node/*/bin/node \
+    "$(command -v node)"; do
+    [[ -x "$candidate" ]] || continue
+    if BETTER_SQLITE3="$server_root/node_modules/better-sqlite3" "$candidate" \
+      -e 'const D = require(process.env.BETTER_SQLITE3); new D(":memory:").close()' >/dev/null 2>&1; then
+      backup_node="$candidate"
+      break
+    fi
+  done
+  [[ -n "$backup_node" ]] || fail "No Node.js runtime can load $server_root/node_modules/better-sqlite3"
+
   SERVER_ROOT="$server_root" SOURCE_DB="$server_db" BACKUP_DB="$backup_dir/sync-server.db" \
-    node <<'NODE'
+    "$backup_node" <<'NODE'
 const path = require('path')
 const Database = require(path.join(process.env.SERVER_ROOT, 'node_modules/better-sqlite3'))
 const database = new Database(process.env.SOURCE_DB, { readonly: true, fileMustExist: true })
