@@ -11,7 +11,7 @@ import 'package:focus_my_time/data/database/memo_database.dart';
 class AppDatabase {
   static Database? _database;
   static const _uuid = Uuid();
-  static const _schemaVersion = 14;
+  static const _schemaVersion = 15;
   static const Map<String, String> _taskSyncFields = {
     'listId': 'list_id',
     'title': 'title',
@@ -418,6 +418,7 @@ class AppDatabase {
         encrypted_payload TEXT,
         is_private INTEGER NOT NULL DEFAULT 0,
         pinned INTEGER NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT 'manual',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         deleted INTEGER NOT NULL DEFAULT 0,
@@ -495,6 +496,13 @@ class AppDatabase {
     int oldVersion,
     int newVersion,
   ) async {
+    if (oldVersion < 15) {
+      try {
+        await db.execute(
+          "ALTER TABLE memo_versions ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+        );
+      } catch (_) {}
+    }
     if (oldVersion < 2) {
       // 增加删除标记位以支持同步
       await db.execute(

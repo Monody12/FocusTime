@@ -198,9 +198,14 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
 
   /// 围栏代码块按语言做语法高亮；语言未知或解析失败时返回 null，
   /// 由调用方回退为纯文本等宽渲染。
-  TextSpan? _highlightSpans(BuildContext context, String codeText, md.Node? codeNode) {
-    final classAttr =
-        codeNode is md.Element ? codeNode.attributes['class'] ?? '' : '';
+  TextSpan? _highlightSpans(
+    BuildContext context,
+    String codeText,
+    md.Node? codeNode,
+  ) {
+    final classAttr = codeNode is md.Element
+        ? codeNode.attributes['class'] ?? ''
+        : '';
     if (!classAttr.startsWith('language-')) return null;
     final language = classAttr.substring('language-'.length).trim();
     if (language.isEmpty || language == 'text' || language == 'plain') {
@@ -231,10 +236,15 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
       }
     }
 
-    walk(result.nodes, null);
+    const baseColor = Color(0xFFABB2BF);
+    walk(result.nodes, const TextStyle(color: baseColor));
     if (spans.isEmpty) return null;
     return TextSpan(
-      style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+      style: const TextStyle(
+        fontFamily: 'monospace',
+        fontSize: 13,
+        color: baseColor,
+      ),
       children: spans,
     );
   }
@@ -302,8 +312,10 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
         final cells = <Widget>[];
         for (final cell in tr.children ?? const <md.Node>[]) {
           final cellElement = cell is md.Element ? cell : null;
-          final align = (cellElement?.attributes['style'] ?? '')
-              .contains('text-align:right')
+          final align =
+              (cellElement?.attributes['style'] ?? '').contains(
+                'text-align:right',
+              )
               ? TextAlign.right
               : TextAlign.left;
           cells.add(
@@ -322,9 +334,7 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
         rows.add(
           TableRow(
             decoration: isHead
-                ? BoxDecoration(
-                    color: context.appColors.surfaceElevated,
-                  )
+                ? BoxDecoration(color: context.appColors.surfaceElevated)
                 : null,
             children: cells,
           ),
@@ -408,8 +418,7 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
               style: (inherited ?? const TextStyle()).copyWith(
                 fontFamily: 'monospace',
                 fontSize: 13,
-                background: Paint()
-                  ..color = context.appColors.surfaceElevated,
+                background: Paint()..color = context.appColors.surfaceElevated,
               ),
             ),
           );
@@ -437,14 +446,18 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
             ),
           );
         case 'img':
-          spans.add(WidgetSpan(child: _MemoImage(href: node.attributes['src'] ?? '')));
+          spans.add(
+            WidgetSpan(child: _MemoImage(href: node.attributes['src'] ?? '')),
+          );
         case 'br':
           spans.add(const TextSpan(text: '\n'));
         default:
           spans.add(_buildInline(node.children, inherited));
       }
     }
-    return TextSpan(children: spans.isEmpty ? [TextSpan(text: '', style: inherited)] : spans);
+    return TextSpan(
+      children: spans.isEmpty ? [TextSpan(text: '', style: inherited)] : spans,
+    );
   }
 }
 

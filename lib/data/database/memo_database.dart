@@ -103,6 +103,7 @@ class MemoDatabase {
           'encryptedPayload': row['encrypted_payload'],
           'isPrivate': _asBool(row['is_private']),
           'pinned': _asBool(row['pinned']),
+          'source': row['source'] ?? 'manual',
           'createdAt': row['created_at'],
           'updatedAt': row['updated_at'],
           'deleted': _asBool(row['deleted']),
@@ -217,6 +218,7 @@ class MemoDatabase {
           'encrypted_payload': data['encryptedPayload'],
           'is_private': flag('isPrivate') ? 1 : 0,
           'pinned': flag('pinned') ? 1 : 0,
+          'source': data['source'] ?? 'manual',
           'created_at': data['createdAt'] ?? 0,
         };
       case 'memo_attachments':
@@ -650,11 +652,7 @@ class MemoDatabase {
     await db.transaction((txn) async {
       await txn.delete('memos', where: 'id = ?', whereArgs: [id]);
       await txn.delete('memo_versions', where: 'memo_id = ?', whereArgs: [id]);
-      await txn.delete(
-        'memo_tag_links',
-        where: 'memo_id = ?',
-        whereArgs: [id],
-      );
+      await txn.delete('memo_tag_links', where: 'memo_id = ?', whereArgs: [id]);
     });
   }
 
@@ -703,6 +701,7 @@ class MemoDatabase {
     String? encryptedPayload,
     bool isPrivate = false,
     bool pinned = false,
+    String source = 'manual',
   }) async {
     final db = await _db;
     final now = _now();
@@ -720,12 +719,13 @@ class MemoDatabase {
       'encrypted_payload': isPrivate ? encryptedPayload : null,
       'is_private': isPrivate ? 1 : 0,
       'pinned': pinned ? 1 : 0,
+      'source': source,
       'created_at': now,
       'updated_at': now,
       'deleted': 0,
     };
     await db.insert('memo_versions', row);
-    await pruneVersions(memoId);
+    await pruneVersions(memoId, source: source);
     return _mapRow('memo_versions', row);
   }
 
@@ -740,19 +740,23 @@ class MemoDatabase {
     return rows.map((row) => _mapRow('memo_versions', row)).toList();
   }
 
-  static Future<void> pruneVersions(String memoId) async {
+  static Future<void> pruneVersions(
+    String memoId, {
+    String source = 'manual',
+  }) async {
     final db = await _db;
     final rows = await db.query(
       'memo_versions',
       columns: ['id', 'pinned', 'version_number'],
-      where: 'memo_id = ? AND deleted = 0',
-      whereArgs: [memoId],
+      where: 'memo_id = ? AND deleted = 0 AND source = ?',
+      whereArgs: [memoId, source],
       orderBy: 'pinned DESC, version_number DESC',
     );
-    if (rows.length <= maxHistoryVersions) return;
-    final keep = rows.take(maxHistoryVersions).map((row) => row['id']).toSet();
+    final limit = source == 'auto' ? 10 : maxHistoryVersions;
+    if (rows.length <= limit) return;
+    final keep = rows.take(limit).map((row) => row['id']).toSet();
     final now = _now();
-    for (final row in rows.skip(maxHistoryVersions)) {
+    for (final row in rows.skip(limit)) {
       if (!keep.contains(row['id'])) {
         await db.update(
           'memo_versions',

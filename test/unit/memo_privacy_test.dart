@@ -42,8 +42,13 @@ void main() {
   }
 
   test('恢复密钥 Base32 编码解码往返且拒绝无效输入', () {
-    final key = Uint8List.fromList(List.generate(32, (i) => (i * 7 + 3) & 0xff));
-    final encoded = MemoCryptoService.encodeRecoveryKey(key, clearAfterEncode: false);
+    final key = Uint8List.fromList(
+      List.generate(32, (i) => (i * 7 + 3) & 0xff),
+    );
+    final encoded = MemoCryptoService.encodeRecoveryKey(
+      key,
+      clearAfterEncode: false,
+    );
     expect(encoded.length, 52);
     expect(encoded.contains(RegExp('[01]')), isFalse);
     final decoded = MemoCryptoService.decodeRecoveryKey(encoded);
@@ -82,7 +87,10 @@ void main() {
       await MemoCryptoService.instance.unlockWithPassword('wrong-password'),
       isFalse,
     );
-    expect(await MemoCryptoService.instance.unlockWithPassword(_password), isTrue);
+    expect(
+      await MemoCryptoService.instance.unlockWithPassword(_password),
+      isTrue,
+    );
     expect(
       await MemoCryptoService.instance.unlockWithPassword('short'),
       isFalse,
@@ -103,7 +111,10 @@ void main() {
 
     // 篡改密文后 GCM 校验必须失败
     expect(
-      () => crypto.decryptText(tamperEnvelope(envelope), associatedData: 'memo-1'),
+      () => crypto.decryptText(
+        tamperEnvelope(envelope),
+        associatedData: 'memo-1',
+      ),
       throwsFormatException,
     );
 
@@ -124,15 +135,15 @@ void main() {
     crypto.lock();
     expect(await crypto.unlockWithPassword(_password), isTrue);
     final envelope = crypto.encryptText('修改密码前正文');
-    await crypto.changePassword(currentPassword: _password, newPassword: _newPassword);
+    await crypto.changePassword(
+      currentPassword: _password,
+      newPassword: _newPassword,
+    );
 
     crypto.lock();
     expect(await crypto.unlockWithPassword(_password), isFalse);
     expect(await crypto.unlockWithPassword(_newPassword), isTrue);
-    expect(
-      MemoCryptoService.instance.decryptText(envelope),
-      '修改密码前正文',
-    );
+    expect(MemoCryptoService.instance.decryptText(envelope), '修改密码前正文');
 
     // 修改密码只重新包装主密钥，恢复密钥仍然有效
     crypto.lock();
@@ -152,12 +163,18 @@ void main() {
     await AppDatabase.setSetting('memoAutoLockMinutes', '30');
     await AppDatabase.setSetting('memoLockOnBackground', 'false');
     await MemoCryptoService.instance.loadPersistedSettings();
-    expect(MemoCryptoService.instance.autoLockDuration, const Duration(minutes: 30));
+    expect(
+      MemoCryptoService.instance.autoLockDuration,
+      const Duration(minutes: 30),
+    );
     expect(MemoCryptoService.instance.lockOnBackground, isFalse);
     await AppDatabase.setSetting('memoAutoLockMinutes', '60');
     await AppDatabase.setSetting('memoLockOnBackground', 'true');
     await MemoCryptoService.instance.loadPersistedSettings();
-    expect(MemoCryptoService.instance.autoLockDuration, const Duration(hours: 1));
+    expect(
+      MemoCryptoService.instance.autoLockDuration,
+      const Duration(hours: 1),
+    );
     expect(MemoCryptoService.instance.lockOnBackground, isTrue);
   });
 
@@ -167,7 +184,10 @@ void main() {
       bodyMd: '# 正文',
       isPrivate: false,
     );
-    expect((await MemoDatabase.getMemo(memo['id'] as String))!['title'], '软删除测试');
+    expect(
+      (await MemoDatabase.getMemo(memo['id'] as String))!['title'],
+      '软删除测试',
+    );
 
     await MemoDatabase.deleteMemo(memo['id'] as String);
     final raw = await (await AppDatabase.database).query(
@@ -202,13 +222,22 @@ void main() {
     );
 
     // 同一父级下 ASCII 大小写不同的名称视为重复
-    await MemoDatabase.createFolder('child-folder-$runSuffix', parentId: chain.first);
+    await MemoDatabase.createFolder(
+      'child-folder-$runSuffix',
+      parentId: chain.first,
+    );
     expect(
-      () => MemoDatabase.createFolder('child-folder-$runSuffix', parentId: chain.first),
+      () => MemoDatabase.createFolder(
+        'child-folder-$runSuffix',
+        parentId: chain.first,
+      ),
       throwsFormatException,
     );
     expect(
-      () => MemoDatabase.createFolder('CHILD-FOLDER-$runSuffix', parentId: chain.first),
+      () => MemoDatabase.createFolder(
+        'CHILD-FOLDER-$runSuffix',
+        parentId: chain.first,
+      ),
       throwsFormatException,
     );
 
@@ -230,8 +259,9 @@ void main() {
 
     // 移动到根目录需要显式清除父级
     await MemoDatabase.updateFolder(child, clearParent: true);
-    final moved = (await MemoDatabase.getAllFolders())
-        .firstWhere((f) => f['id'] == child);
+    final moved = (await MemoDatabase.getAllFolders()).firstWhere(
+      (f) => f['id'] == child,
+    );
     expect(moved['parentId'], isNull);
   });
 
@@ -264,9 +294,41 @@ void main() {
     expect(versions.last['bodyMd'], 'v6');
   });
 
+  test('自动版本独立保留 10 个且不挤占手动版本', () async {
+    final memo = await MemoDatabase.createMemo(title: '双池版本测试');
+    final memoId = memo['id'] as String;
+    for (var i = 1; i <= 12; i++) {
+      await MemoDatabase.createVersion(
+        memoId,
+        title: '自动版本',
+        bodyMd: 'auto-$i',
+        source: 'auto',
+      );
+    }
+    for (var i = 1; i <= 3; i++) {
+      await MemoDatabase.createVersion(
+        memoId,
+        title: '手动版本',
+        bodyMd: 'manual-$i',
+      );
+    }
+
+    final versions = await MemoDatabase.getVersions(memoId);
+    final automatic = versions.where((version) => version['source'] == 'auto');
+    final manual = versions.where((version) => version['source'] == 'manual');
+    expect(automatic.length, 10);
+    expect(automatic.first['bodyMd'], 'auto-12');
+    expect(automatic.last['bodyMd'], 'auto-3');
+    expect(manual.length, 3);
+  });
+
   test('回收站清理会物理删除备忘录、版本历史和标签关系', () async {
     final memo = await MemoDatabase.createMemo(title: '彻底删除测试-$runSuffix');
-    await MemoDatabase.createVersion(memo['id'] as String, title: 'x', bodyMd: 'y');
+    await MemoDatabase.createVersion(
+      memo['id'] as String,
+      title: 'x',
+      bodyMd: 'y',
+    );
     final tag = await MemoDatabase.createTag('清理标签-$runSuffix');
     await MemoDatabase.setMemoTags(memo['id'] as String, [tag['id'] as String]);
 
@@ -304,7 +366,8 @@ void main() {
       aiAllowed: false,
     );
     expect(
-      () => MemoAiGate.contentForAi(normal['id'] as String, userConfirmed: true),
+      () =>
+          MemoAiGate.contentForAi(normal['id'] as String, userConfirmed: true),
       throwsStateError,
     );
 

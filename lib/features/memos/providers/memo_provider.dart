@@ -76,6 +76,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
     bool? archived,
     bool? aiAllowed,
     bool snapshot = true,
+    String snapshotSource = 'manual',
   }) async {
     final current = await MemoDatabase.getMemo(id);
     if (current == null) return;
@@ -121,15 +122,17 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
         encryptedPayload: current['encryptedPayload'] as String?,
         isPrivate: current['isPrivate'] == true,
         pinned: current['pinned'] == true,
+        source: snapshotSource,
       );
     }
     await MemoDatabase.updateMemo(id, updates);
     await refresh();
   }
 
-  Future<List<Map<String, dynamic>>> loadTrash() =>
-      MemoDatabase.getMemos(includeDeleted: true, includeArchived: true)
-          .then((rows) => rows.where((m) => m['deleted'] == true).toList());
+  Future<List<Map<String, dynamic>>> loadTrash() => MemoDatabase.getMemos(
+    includeDeleted: true,
+    includeArchived: true,
+  ).then((rows) => rows.where((m) => m['deleted'] == true).toList());
 
   Future<void> restore(String id) async {
     await MemoDatabase.restoreMemo(id);
