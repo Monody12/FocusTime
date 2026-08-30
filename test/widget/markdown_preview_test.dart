@@ -3,9 +3,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:focus_my_time/features/memos/presentation/widgets/markdown_preview.dart';
 
 void main() {
-  Future<void> pumpPreview(WidgetTester tester, String data) async {
+  Future<void> pumpPreview(
+    WidgetTester tester,
+    String data, {
+    Brightness brightness = Brightness.light,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(brightness: brightness),
+        darkTheme: ThemeData(brightness: Brightness.dark),
+        themeMode: brightness == Brightness.dark
+            ? ThemeMode.dark
+            : ThemeMode.light,
         home: Scaffold(
           body: SingleChildScrollView(child: MarkdownPreview(data: data)),
         ),
@@ -40,10 +49,7 @@ void main() {
   });
 
   testWidgets('原始 HTML 按纯文本渲染，不执行标签', (tester) async {
-    await pumpPreview(
-      tester,
-      '<script>alert(1)</script>\n\n普通段落',
-    );
+    await pumpPreview(tester, '<script>alert(1)</script>\n\n普通段落');
     expect(find.text('<script>alert(1)</script>'), findsOneWidget);
     expect(find.text('普通段落'), findsOneWidget);
   });
@@ -53,15 +59,49 @@ void main() {
       tester,
       '‘’‘java\npublic static void main\n```\n\n正文里“单引号”不受影响',
     );
-    expect(find.textContaining('public static', findRichText: true), findsOneWidget);
+    expect(
+      find.textContaining('public static', findRichText: true),
+      findsOneWidget,
+    );
     expect(find.textContaining('“单引号”', findRichText: true), findsOneWidget);
   });
 
-  testWidgets('memo-attachment 图片引用走附件解析且缺失时优雅降级', (tester) async {
+  testWidgets('代码块在浅色和深色主题下都有明确的正文颜色', (tester) async {
     await pumpPreview(
       tester,
-      '![图片](memo-attachment://not-exists-id)',
+      '```dart\nfinal plainValue = 1;\n```',
+      brightness: Brightness.light,
     );
+    var richText = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .firstWhere(
+          (widget) => widget.text.toPlainText().contains('plainValue'),
+        );
+    expect((richText.text as TextSpan).style?.color, const Color(0xFF383A42));
+
+    await pumpPreview(
+      tester,
+      '```dart\nfinal plainValue = 1;\n```',
+      brightness: Brightness.dark,
+    );
+    richText = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .firstWhere(
+          (widget) => widget.text.toPlainText().contains('plainValue'),
+        );
+    expect((richText.text as TextSpan).style?.color, const Color(0xFFABB2BF));
+
+    await pumpPreview(
+      tester,
+      '```\nplain code\n```',
+      brightness: Brightness.dark,
+    );
+    final plainCode = tester.widget<Text>(find.text('plain code'));
+    expect(plainCode.style?.color, const Color(0xFFABB2BF));
+  });
+
+  testWidgets('memo-attachment 图片引用走附件解析且缺失时优雅降级', (tester) async {
+    await pumpPreview(tester, '![图片](memo-attachment://not-exists-id)');
     // 不存在的附件不应导致崩溃
     expect(tester.takeException(), isNull);
   });
@@ -70,9 +110,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(
-            child: MarkdownPreview(data: '# 第一版'),
-          ),
+          body: SingleChildScrollView(child: MarkdownPreview(data: '# 第一版')),
         ),
       ),
     );
@@ -82,9 +120,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(
-            child: MarkdownPreview(data: '# 第二版'),
-          ),
+          body: SingleChildScrollView(child: MarkdownPreview(data: '# 第二版')),
         ),
       ),
     );

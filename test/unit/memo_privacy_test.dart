@@ -279,6 +279,73 @@ void main() {
     expect(await MemoDatabase.getMemoTags(memo['id'] as String), isEmpty);
   });
 
+  test('备忘录列表支持排序、标签筛选和归档视图', () async {
+    final tag = await MemoDatabase.createTag('排序标签-$runSuffix');
+    final alpha = await MemoDatabase.createMemo(
+      title: 'Alpha-$runSuffix',
+      bodyMd: '较早修改',
+    );
+    final beta = await MemoDatabase.createMemo(
+      title: 'Beta-$runSuffix',
+      bodyMd: '较晚修改',
+    );
+    final archived = await MemoDatabase.createMemo(
+      title: 'Archived-$runSuffix',
+    );
+    await MemoDatabase.setMemoTags(alpha['id'] as String, [
+      tag['id'] as String,
+    ]);
+    await MemoDatabase.updateMemo(archived['id'] as String, {'archived': true});
+
+    final db = await AppDatabase.database;
+    await db.update(
+      'memos',
+      {'updated_at': 100},
+      where: 'id = ?',
+      whereArgs: [alpha['id']],
+    );
+    await db.update(
+      'memos',
+      {'updated_at': 200},
+      where: 'id = ?',
+      whereArgs: [beta['id']],
+    );
+
+    final byName = await MemoDatabase.getMemos(
+      query: runSuffix,
+      sort: MemoSortOption.titleAsc,
+    );
+    expect(byName.map((memo) => memo['title']), [
+      'Alpha-$runSuffix',
+      'Beta-$runSuffix',
+    ]);
+
+    final byUpdated = await MemoDatabase.getMemos(
+      query: runSuffix,
+      sort: MemoSortOption.updatedDesc,
+    );
+    expect(byUpdated.map((memo) => memo['title']), [
+      'Beta-$runSuffix',
+      'Alpha-$runSuffix',
+    ]);
+
+    final filtered = await MemoDatabase.getMemos(tagId: tag['id'] as String);
+    expect(filtered.map((memo) => memo['id']), contains(alpha['id']));
+    expect(
+      filtered.singleWhere((memo) => memo['id'] == alpha['id'])['tagNames'],
+      ['排序标签-$runSuffix'],
+    );
+    final searchedByTag = await MemoDatabase.getMemos(query: '排序标签');
+    expect(searchedByTag.map((memo) => memo['id']), contains(alpha['id']));
+
+    final archivedItems = await MemoDatabase.getMemos(onlyArchived: true);
+    expect(archivedItems.map((memo) => memo['id']), contains(archived['id']));
+    expect(
+      archivedItems.map((memo) => memo['id']),
+      isNot(contains(alpha['id'])),
+    );
+  });
+
   test('版本历史最多保留 20 个历史版本', () async {
     final memo = await MemoDatabase.createMemo(title: '版本测试', bodyMd: 'v0');
     for (var i = 1; i <= 25; i++) {
@@ -320,6 +387,50 @@ void main() {
     expect(automatic.first['bodyMd'], 'auto-12');
     expect(automatic.last['bodyMd'], 'auto-3');
     expect(manual.length, 3);
+    final latest = await MemoDatabase.getLatestVersion(memoId, source: 'auto');
+    expect(latest?['bodyMd'], 'auto-12');
+  });
+
+  test('远端正文覆盖本地前保留冲突版本且相同内容不重复保存', () async {
+    final memo = await MemoDatabase.createMemo(
+      title: '冲突前-$runSuffix',
+      bodyMd: '本地正文',
+    );
+    final memoId = memo['id'] as String;
+    final local = (await MemoDatabase.getMemo(memoId))!;
+    final remoteUpdatedAt = (local['updatedAt'] as int) + 1000;
+    final remoteRecord = {
+      'id': memoId,
+      'updatedAt': remoteUpdatedAt,
+      'deleted': false,
+      'data': {
+        ...local,
+        'title': '远端标题-$runSuffix',
+        'bodyMd': '远端正文',
+        'updatedAt': remoteUpdatedAt,
+      },
+    };
+
+    await MemoDatabase.applySyncChanges({
+      'memos': [remoteRecord],
+    });
+    final after = await MemoDatabase.getMemo(memoId);
+    expect(after?['title'], '远端标题-$runSuffix');
+    expect(after?['bodyMd'], '远端正文');
+    var conflicts = (await MemoDatabase.getVersions(
+      memoId,
+    )).where((version) => version['source'] == 'conflict').toList();
+    expect(conflicts, hasLength(1));
+    expect(conflicts.single['title'], '冲突前-$runSuffix');
+    expect(conflicts.single['bodyMd'], '本地正文');
+
+    await MemoDatabase.applySyncChanges({
+      'memos': [remoteRecord],
+    });
+    conflicts = (await MemoDatabase.getVersions(
+      memoId,
+    )).where((version) => version['source'] == 'conflict').toList();
+    expect(conflicts, hasLength(1));
   });
 
   test('回收站清理会物理删除备忘录、版本历史和标签关系', () async {
