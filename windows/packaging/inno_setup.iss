@@ -1,14 +1,19 @@
 [Setup]
 AppId={{E6F7C8A9-9B8D-4C7E-B3A2-1F4D5E6C7B8A}
 AppName=FocusMyTime
-AppVersion=1.8.1
+AppVersion=1.8.2
 AppPublisher=Monody12
 AppPublisherURL=https://github.com/Monody12/FocusTime
 DefaultDirName={autopf}\FocusMyTime
 DisableProgramGroupPage=yes
 ; We output the installer to the root of the project with a specific name
 OutputDir=..\..\
-OutputBaseFilename=FocusMyTime-Windows-Setup
+; CI passes /DInstallerBaseName="FocusMyTime-Windows-Setup-vX.Y.Z" so release
+; assets carry the version; local builds keep the legacy name.
+#ifndef InstallerBaseName
+#define InstallerBaseName "FocusMyTime-Windows-Setup"
+#endif
+OutputBaseFilename={#InstallerBaseName}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern

@@ -21,20 +21,17 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-            platform: windows
-            artifactName: FocusMyTime-Windows-Setup
-            artifactPath: FocusMyTime-Windows-Setup.exe
-          - os: ubuntu-latest
-            platform: android
-            artifactName: FocusMyTime-Android
-            artifactPath: FocusMyTime-Android.apk
-          - os: ubuntu-latest
-            platform: web
-            artifactName: FocusMyTime-Web
-            artifactPath: FocusMyTime-Web.zip
+    matrix:
+      include:
+        - os: windows-2022
+          platform: windows
+          artifactName: FocusMyTime-Windows-Setup
+        - os: ubuntu-latest
+          platform: android
+          artifactName: FocusMyTime-Android
+        - os: ubuntu-latest
+          platform: web
+          artifactName: FocusMyTime-Web
 
     steps:
       - name: Checkout repository
@@ -61,6 +58,8 @@ jobs:
               exit 1
             fi
           done
+
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -113,7 +112,7 @@ jobs:
       - name: Build Windows installer
         if: matrix.platform == 'windows'
         shell: pwsh
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\packaging\inno_setup.iss'
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DInstallerBaseName="FocusMyTime-Windows-Setup-$env:RELEASE_VERSION" windows\packaging\inno_setup.iss'
 
       - name: Build Android APK
         if: matrix.platform == 'android'
@@ -121,7 +120,7 @@ jobs:
 
       - name: Rename Android APK
         if: matrix.platform == 'android'
-        run: mv build/app/outputs/flutter-apk/app-release.apk FocusMyTime-Android.apk
+        run: mv build/app/outputs/flutter-apk/app-release.apk "FocusMyTime-Android-$RELEASE_VERSION.apk"
 
       - name: Build Web application
         if: matrix.platform == 'web'
@@ -134,13 +133,13 @@ jobs:
         shell: bash
         run: |
           cd build/web
-          zip -r ../../FocusMyTime-Web.zip .
+          zip -r "../../FocusMyTime-Web-$RELEASE_VERSION.zip" .
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifactName }}
-          path: ${{ matrix.artifactPath }}
+          path: FocusMyTime-*
           if-no-files-found: error
 
   release:
@@ -149,20 +148,61 @@ jobs:
     timeout-minutes: 15
     needs: build
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
 
+      - name: Generate release notes
+        env:
+          RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_VERSION"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1; then
+            range_base="$tag"
+            prev="$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)"
+          else
+            range_base="HEAD"
+            prev="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          fi
+          {
+            echo "## FocusMyTime $tag"
+            echo
+            echo "### 更新内容"
+            echo
+            if [ -n "$prev" ]; then
+              git log --no-merges --pretty=format:'- %s (%h)' "$prev..$range_base"
+            else
+              git log --no-merges --pretty=format:'- %s (%h)'
+            fi
+            echo
+            echo
+            if [ -n "$prev" ]; then
+              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$prev...$tag"
+            fi
+          } > release_notes.md
+          # 空正文会让用户看不到任何更新说明，直接失败而不是发布空 Release。
+          if [ ! -s release_notes.md ]; then
+            echo "release_notes.md is empty." >&2
+            exit 1
+          fi
+          cat release_notes.md
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.version || github.ref_name }}
           name: Release ${{ github.event.inputs.version || github.ref_name }}
+          body_path: release_notes.md
           files: release-assets/*
           fail_on_unmatched_files: true
-          generate_release_notes: true
           overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
