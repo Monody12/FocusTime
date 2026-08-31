@@ -86,11 +86,15 @@ class MemoImageService {
     if (isPrivate) {
       // 私密附件的文件名不落明文，用会话密钥加密保存。
       await MemoDatabase.updateAttachment(attachment['id'] as String, {
-        'encryptedPayload':
-            MemoCryptoService.instance.encryptBytes(utf8.encode(filename)),
+        'encryptedPayload': MemoCryptoService.instance.encryptBytes(
+          utf8.encode(filename),
+        ),
       });
     }
-    final file = await localFile(attachment['id'] as String, processed.mimeType);
+    final file = await localFile(
+      attachment['id'] as String,
+      processed.mimeType,
+    );
     await file.writeAsBytes(processed.bytes, flush: true);
     return attachment;
   }
@@ -168,7 +172,9 @@ class MemoImageService {
     if (decoded is! Map || decoded['encrypted'] != true) {
       throw const FormatException('私密附件格式无效');
     }
-    return MemoCryptoService.instance.decryptBytes(decoded['content'] as String);
+    return MemoCryptoService.instance.decryptBytes(
+      decoded['content'] as String,
+    );
   }
 
   /// 刷新上传队列。返回 null 表示全部成功或无网络会话，否则返回失败提示。
@@ -245,6 +251,11 @@ class MemoImageService {
     final attachment = await MemoDatabase.getAttachment(attachmentId);
     if (attachment == null) return;
     await _uploadAttachment(attachment);
+  }
+
+  Future<void> deleteLocalFile(String attachmentId, String mimeType) async {
+    final file = await localFile(attachmentId, mimeType);
+    if (file.existsSync()) await file.delete();
   }
 }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as dev;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -14,6 +15,7 @@ import 'package:focus_my_time/core/services/timer_notification_service.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
 import 'package:focus_my_time/features/calendar/services/calendar_service.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/data/sync/sync_service.dart';
 
 /// 任务提醒服务
 /// 职责：管理任务的定时提醒通知，支持 Android (系统级调度) 和 Windows (应用级调度)
@@ -34,6 +36,7 @@ class ReminderService {
   static bool _refreshPending = false; // 有等待中的 refreshAll 请求
 
   static Function(String)? _onAction;
+  static final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
   /// 设置通知动作监听器
   static void setActionListener(Function(String) listener) {
@@ -677,7 +680,7 @@ class ReminderService {
 
     // 使用 Timer 而非 Future.delayed：Timer 支持 cancel()，
     // 确保修改提醒时间后旧定时器的回调不会误触发
-    final timer = Timer(duration, () {
+    final timer = Timer(duration, () async {
       if (_winNotifier != null) {
         final message = NotificationMessage.fromCustomTemplate(
           task.id,
@@ -703,8 +706,7 @@ class ReminderService {
         _winNotifier!.showNotificationCustomTemplate(message, toastXml);
       }
       _windowsTimers.remove(task.id);
-      // 提醒已触发，清除数据库中的 reminder_at 防止死数据累积
-      AppDatabase.updateTask(task.id, {'reminderAt': null});
+      await _handleTriggeredReminder(task.id);
     });
 
     _windowsTimers[task.id] = timer;
@@ -725,9 +727,34 @@ class ReminderService {
         phase: 'focus',
         duration: 'short',
       );
+      await _handleTriggeredReminder(task.id);
     });
     dev.log('[ReminderService] Web 提醒已加入页面内调度: ${task.title}');
   }
+
+  static Future<void> _clearTriggeredReminder(String taskId) async {
+    await AppDatabase.updateTask(taskId, {'reminderAt': null});
+    SyncService.triggerBackgroundSync();
+  }
+
+  static Future<void> _handleTriggeredReminder(String taskId) async {
+    try {
+      await _clearTriggeredReminder(taskId);
+    } catch (error, stackTrace) {
+      dev.log(
+        '[ReminderService] 清理已触发提醒失败',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('提醒已触发，但状态更新失败，请稍后重试')),
+      );
+    }
+  }
+
+  @visibleForTesting
+  static Future<void> clearTriggeredReminderForTesting(String taskId) =>
+      _clearTriggeredReminder(taskId);
 
   /// 请求忽略电池优化 (Android 专用)
   static Future<void> requestIgnoreBatteryOptimizations() async {

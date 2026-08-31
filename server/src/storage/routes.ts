@@ -144,6 +144,9 @@ router.delete('/objects/:objectKey(*)', (req: AuthRequest, res: Response) => {
       return
     }
     deleteObject(objectKey)
+    db.prepare(
+      'UPDATE object_shares SET revoked = 1 WHERE object_key = ? AND user_id = ? AND revoked = 0',
+    ).run(objectKey, req.userId)
     res.json({ success: true })
   } catch (_) {
     res.status(404).json({ error: '附件不存在' })
@@ -151,4 +154,3 @@ router.delete('/objects/:objectKey(*)', (req: AuthRequest, res: Response) => {
 })
 
 export default router
-

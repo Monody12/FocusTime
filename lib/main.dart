@@ -42,6 +42,7 @@ void main() {
                 return MaterialApp(
                   title: 'FocusMyTime',
                   debugShowCheckedModeBanner: false,
+                  scaffoldMessengerKey: ReminderService.scaffoldMessengerKey,
                   theme: AppTheme.lightThemeFor(themeScheme),
                   darkTheme: AppTheme.darkThemeFor(themeScheme),
                   themeMode: themeMode,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,57 @@ import 'package:focus_my_time/features/update/presentation/widgets/update_dialog
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
 import 'package:focus_my_time/features/memos/presentation/pages/memo_page.dart';
 import 'package:focus_my_time/core/services/timer_notification_service.dart';
+
+class WebReminderOverlay extends StatelessWidget {
+  const WebReminderOverlay({
+    super.key,
+    required this.topInset,
+    required this.isMobile,
+    this.reminderListenable,
+    this.onDismiss,
+  });
+
+  final double topInset;
+  final bool isMobile;
+  final ValueListenable<WebReminder?>? reminderListenable;
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<WebReminder?>(
+      valueListenable:
+          reminderListenable ?? TimerNotificationService.webReminder,
+      builder: (context, reminder, _) {
+        // 必须始终返回 Positioned。Stack 出现零尺寸非定位子项会导致
+        // Positioned.fill 主体塌缩成 0x0（v1.7.7 全端白屏回归）。
+        return Positioned(
+          top: topInset + 68,
+          left: isMobile ? 12 : 240,
+          right: 12,
+          child: reminder == null
+              ? const SizedBox.shrink()
+              : Material(
+                  elevation: 6,
+                  borderRadius: BorderRadius.circular(8),
+                  color: context.appColors.surfaceElevated,
+                  child: ListTile(
+                    leading: const Icon(Icons.notifications_active_outlined),
+                    title: Text(reminder.title),
+                    subtitle: Text(reminder.body),
+                    trailing: IconButton(
+                      tooltip: '关闭提醒',
+                      icon: const Icon(Icons.close),
+                      onPressed:
+                          onDismiss ??
+                          TimerNotificationService.dismissWebReminder,
+                    ),
+                  ),
+                ),
+        );
+      },
+    );
+  }
+}
 
 class FocusMyTimeApp extends ConsumerStatefulWidget {
   const FocusMyTimeApp({super.key});
@@ -641,39 +693,7 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
                 ),
               ),
             ),
-          ValueListenableBuilder<WebReminder?>(
-            valueListenable: TimerNotificationService.webReminder,
-            builder: (context, reminder, _) {
-              // 必须始终返回 Positioned：Stack 一旦出现非定位子项就会按其
-              // 尺寸收缩，SizedBox.shrink() 会让整个应用主体塌缩成 0x0，
-              // 造成启动后全平台白屏（v1.7.7 回归）。
-              return Positioned(
-                top: topInset + 68,
-                left: isMobile ? 12 : 240,
-                right: 12,
-                child: reminder == null
-                    ? const SizedBox.shrink()
-                    : Material(
-                        elevation: 6,
-                        borderRadius: BorderRadius.circular(8),
-                        color: context.appColors.surfaceElevated,
-                        child: ListTile(
-                          leading: const Icon(
-                            Icons.notifications_active_outlined,
-                          ),
-                          title: Text(reminder.title),
-                          subtitle: Text(reminder.body),
-                          trailing: const IconButton(
-                            tooltip: '关闭提醒',
-                            icon: Icon(Icons.close),
-                            onPressed:
-                                TimerNotificationService.dismissWebReminder,
-                          ),
-                        ),
-                      ),
-              );
-            },
-          ),
+          WebReminderOverlay(topInset: topInset, isMobile: isMobile),
         ],
       ),
     );

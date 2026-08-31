@@ -97,4 +97,19 @@ class MemoAttachmentService {
       throw StateError('撤销分享失败');
     }
   }
+
+  Future<void> deleteObject(String objectKey) async {
+    if (!SyncService.isLoggedIn) throw StateError('请先登录同步服务');
+    final response = await http
+        .delete(
+          Uri.parse(
+            '${SyncService.serverUrl}/api/storage/objects/${Uri.encodeComponent(objectKey)}',
+          ),
+          headers: {'Authorization': 'Bearer ${SyncService.token}'},
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('远端附件删除失败');
+    }
+  }
 }
