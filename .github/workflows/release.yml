@@ -21,17 +21,17 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-    matrix:
-      include:
-        - os: windows-2022
-          platform: windows
-          artifactName: FocusMyTime-Windows-Setup
-        - os: ubuntu-latest
-          platform: android
-          artifactName: FocusMyTime-Android
-        - os: ubuntu-latest
-          platform: web
-          artifactName: FocusMyTime-Web
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows
+            artifactName: FocusMyTime-Windows-Setup
+          - os: ubuntu-latest
+            platform: android
+            artifactName: FocusMyTime-Android
+          - os: ubuntu-latest
+            platform: web
+            artifactName: FocusMyTime-Web
 
     steps:
       - name: Checkout repository
@@ -203,6 +203,5 @@ jobs:
           body_path: release_notes.md
           files: release-assets/*
           fail_on_unmatched_files: true
-          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
