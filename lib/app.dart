@@ -644,26 +644,33 @@ class _FocusMyTimeAppState extends ConsumerState<FocusMyTimeApp>
           ValueListenableBuilder<WebReminder?>(
             valueListenable: TimerNotificationService.webReminder,
             builder: (context, reminder, _) {
-              if (reminder == null) return const SizedBox.shrink();
+              // 必须始终返回 Positioned：Stack 一旦出现非定位子项就会按其
+              // 尺寸收缩，SizedBox.shrink() 会让整个应用主体塌缩成 0x0，
+              // 造成启动后全平台白屏（v1.7.7 回归）。
               return Positioned(
                 top: topInset + 68,
                 left: isMobile ? 12 : 240,
                 right: 12,
-                child: Material(
-                  elevation: 6,
-                  borderRadius: BorderRadius.circular(8),
-                  color: context.appColors.surfaceElevated,
-                  child: ListTile(
-                    leading: const Icon(Icons.notifications_active_outlined),
-                    title: Text(reminder.title),
-                    subtitle: Text(reminder.body),
-                    trailing: const IconButton(
-                      tooltip: '关闭提醒',
-                      icon: Icon(Icons.close),
-                      onPressed: TimerNotificationService.dismissWebReminder,
-                    ),
-                  ),
-                ),
+                child: reminder == null
+                    ? const SizedBox.shrink()
+                    : Material(
+                        elevation: 6,
+                        borderRadius: BorderRadius.circular(8),
+                        color: context.appColors.surfaceElevated,
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.notifications_active_outlined,
+                          ),
+                          title: Text(reminder.title),
+                          subtitle: Text(reminder.body),
+                          trailing: const IconButton(
+                            tooltip: '关闭提醒',
+                            icon: Icon(Icons.close),
+                            onPressed:
+                                TimerNotificationService.dismissWebReminder,
+                          ),
+                        ),
+                      ),
               );
             },
           ),
