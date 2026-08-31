@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/features/tasks/services/reminder_service.dart';
 
 void main() {
   // 初始化 FFI 数据库 Factory
@@ -29,6 +30,22 @@ void main() {
     expect(dbTask['reminderAt'], reminderTime, reason: '提醒时间戳应与设置值完全一致');
 
     // 清理测试数据
+    await AppDatabase.deleteTask(taskId);
+  });
+
+  test('提醒触发后清空 reminderAt 防止再次调度', () async {
+    final result = await AppDatabase.createTask(
+      listId: 'system-all-tasks',
+      title: '触发后清理测试',
+    );
+    final taskId = result['id'] as String;
+    await AppDatabase.updateTask(taskId, {
+      'reminderAt': DateTime.now().millisecondsSinceEpoch + 60000,
+    });
+
+    await ReminderService.clearTriggeredReminderForTesting(taskId);
+
+    expect((await AppDatabase.getTaskById(taskId))!['reminderAt'], isNull);
     await AppDatabase.deleteTask(taskId);
   });
 }

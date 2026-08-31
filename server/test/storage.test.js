@@ -175,6 +175,52 @@ test('shares support password, expiry and revocation with hashed tokens', async 
   assert.equal(foreignShare.status, 400)
 })
 
+test('deleting an object is idempotent and revokes all existing shares', async () => {
+  const alice = await register(`storagetest-delete-${Date.now()}`)
+  const upload = await fetch(`${BASE}/api/storage/upload`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${alice.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      filename: 'delete-me.txt',
+      mimeType: 'text/plain',
+      contentBase64: Buffer.from('delete me').toString('base64')
+    })
+  })
+  assert.equal(upload.status, 201)
+  const { objectKey } = await upload.json()
+
+  const share = await fetch(`${BASE}/api/storage/shares`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${alice.token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ objectKey })
+  })
+  assert.equal(share.status, 201)
+  const { token } = await share.json()
+
+  const remove = () => fetch(
+    `${BASE}/api/storage/objects/${encodeURIComponent(objectKey)}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${alice.token}` }
+    }
+  )
+  assert.equal((await remove()).status, 200)
+  assert.equal((await remove()).status, 200)
+
+  const download = await fetch(
+    `${BASE}/api/storage/download/${encodeURIComponent(objectKey)}`,
+    { headers: { Authorization: `Bearer ${alice.token}` } }
+  )
+  assert.equal(download.status, 404)
+  assert.equal((await fetch(`${BASE}/share/${token}`)).status, 404)
+})
+
 test('usage endpoint reports storage numbers', async () => {
   const alice = await register(`storagetest-e-${Date.now()}`)
   const res = await fetch(`${BASE}/api/storage/usage`, {

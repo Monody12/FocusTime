@@ -3,10 +3,13 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/database/memo_database.dart';
+import 'package:focus_my_time/features/memos/providers/memo_provider.dart';
 import 'package:focus_my_time/features/memos/services/memo_ai_gate.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
+import 'package:focus_my_time/features/memos/services/memo_private_payload.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 const _password = 'unit-test-passphrase';
@@ -40,6 +43,17 @@ void main() {
     decoded['c'] = '${cipher[0] == 'A' ? 'B' : 'A'}${cipher.substring(1)}';
     return const JsonEncoder().convert(decoded);
   }
+
+  test('私密负载新格式往返并兼容旧版额外换行', () {
+    final encoded = encodeMemoPrivatePayload(title: '标题', bodyMd: '# 正文');
+    final decoded = decodeMemoPrivatePayload(encoded);
+    expect(decoded.title, '标题');
+    expect(decoded.bodyMd, '# 正文');
+
+    final legacy = decodeMemoPrivatePayload('旧标题\n\u0000旧正文');
+    expect(legacy.title, '旧标题');
+    expect(legacy.bodyMd, '旧正文');
+  });
 
   test('恢复密钥 Base32 编码解码往返且拒绝无效输入', () {
     final key = Uint8List.fromList(
@@ -277,6 +291,97 @@ void main() {
     expect(tags.map((t) => t['name']), ['Work-$runSuffix']);
     await MemoDatabase.setMemoTags(memo['id'] as String, []);
     expect(await MemoDatabase.getMemoTags(memo['id'] as String), isEmpty);
+  });
+
+  test('加密标题的私密备忘录强制移除文件夹和标签', () async {
+    final folder = await MemoDatabase.createFolder('私密文件夹-$runSuffix');
+    final tag = await MemoDatabase.createTag('私密标签-$runSuffix');
+    final memo = await MemoDatabase.createMemo(
+      title: '私密标题',
+      folderId: folder['id'] as String,
+      isPrivate: true,
+      encryptTitle: true,
+      encryptedPayload: 'ciphertext',
+    );
+    final memoId = memo['id'] as String;
+    expect((await MemoDatabase.getMemo(memoId))!['folderId'], isNull);
+    expect(
+      () => MemoDatabase.setMemoTags(memoId, [tag['id'] as String]),
+      throwsStateError,
+    );
+
+    final normal = await MemoDatabase.createMemo(
+      title: '稍后转为私密',
+      folderId: folder['id'] as String,
+    );
+    final normalId = normal['id'] as String;
+    await MemoDatabase.setMemoTags(normalId, [tag['id'] as String]);
+    await MemoDatabase.updateMemo(normalId, {
+      'isPrivate': true,
+      'encryptTitle': true,
+      'encryptedPayload': 'ciphertext',
+    });
+    expect((await MemoDatabase.getMemo(normalId))!['folderId'], isNull);
+    expect(await MemoDatabase.getMemoTags(normalId), isEmpty);
+
+    final linkRows = await (await AppDatabase.database).query(
+      'memo_tag_links',
+      where: 'memo_id = ?',
+      whereArgs: [normalId],
+    );
+    expect(linkRows.single['deleted'], 1);
+  });
+
+  test('同步入库不得恢复加密标题备忘录的分类元数据', () async {
+    final folder = await MemoDatabase.createFolder('同步文件夹-$runSuffix');
+    final tag = await MemoDatabase.createTag('同步标签-$runSuffix');
+    final memo = await MemoDatabase.createMemo(title: '同步隐私测试');
+    final memoId = memo['id'] as String;
+    await MemoDatabase.setMemoTags(memoId, [tag['id'] as String]);
+    final now = DateTime.now().millisecondsSinceEpoch + 10000;
+
+    await MemoDatabase.applySyncChanges({
+      'memos': [
+        {
+          'id': memoId,
+          'updatedAt': now,
+          'deleted': false,
+          'data': {
+            ...memo,
+            'folderId': folder['id'],
+            'isPrivate': true,
+            'encryptTitle': true,
+            'encryptedPayload': 'remote-ciphertext',
+            'updatedAt': now,
+          },
+        },
+      ],
+      'memo_tag_links': [
+        {
+          'id': 'remote-link-$runSuffix',
+          'updatedAt': now + 1,
+          'deleted': false,
+          'data': {
+            'id': 'remote-link-$runSuffix',
+            'memoId': memoId,
+            'tagId': tag['id'],
+            'createdAt': now,
+            'updatedAt': now + 1,
+            'deleted': false,
+          },
+        },
+      ],
+    });
+
+    expect((await MemoDatabase.getMemo(memoId))!['folderId'], isNull);
+    expect(await MemoDatabase.getMemoTags(memoId), isEmpty);
+    final links = await (await AppDatabase.database).query(
+      'memo_tag_links',
+      where: 'memo_id = ?',
+      whereArgs: [memoId],
+    );
+    expect(links, isNotEmpty);
+    expect(links.every((link) => link['deleted'] == 1), isTrue);
   });
 
   test('备忘录列表支持排序、标签筛选和归档视图', () async {
@@ -551,6 +656,57 @@ void main() {
     );
     expect(content!['title'], '隐私AI-$runSuffix');
     expect(content['body'], '隐私正文');
+  });
+
+  test('Provider 解锁后展示私密内容且不泄露分类元数据', () async {
+    final crypto = MemoCryptoService.instance;
+    if (!crypto.isUnlocked) {
+      expect(await crypto.unlockWithPassword(_newPassword), isTrue);
+    }
+    final folder = await MemoDatabase.createFolder('Provider 文件夹-$runSuffix');
+    final tag = await MemoDatabase.createTag('Provider 标签-$runSuffix');
+    final memo = await MemoDatabase.createMemo(
+      title: '不应落库',
+      isPrivate: true,
+      encryptTitle: true,
+      encryptedPayload: crypto.encryptText(
+        encodeMemoPrivatePayload(
+          title: '解锁后标题-$runSuffix',
+          bodyMd: '解锁后正文-$runSuffix',
+        ),
+      ),
+    );
+    final memoId = memo['id'] as String;
+    final db = await AppDatabase.database;
+    await db.update(
+      'memos',
+      {'folder_id': folder['id']},
+      where: 'id = ?',
+      whereArgs: [memoId],
+    );
+    await db.insert('memo_tag_links', {
+      'id': 'provider-link-$runSuffix',
+      'memo_id': memoId,
+      'tag_id': tag['id'],
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+      'deleted': 0,
+    });
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final rows = await container.read(memoProvider.future);
+    final hydrated = rows.singleWhere((row) => row['id'] == memoId);
+    expect(hydrated['title'], '解锁后标题-$runSuffix');
+    expect(hydrated['bodyMd'], '解锁后正文-$runSuffix');
+    expect(hydrated['folderName'], isNull);
+    expect(hydrated['tagNames'], isEmpty);
+
+    await container
+        .read(memoProvider.notifier)
+        .refresh(query: '解锁后正文-$runSuffix');
+    expect(container.read(memoProvider).valueOrNull, hasLength(1));
+    expect(container.read(memoProvider).valueOrNull!.single['id'], memoId);
   });
 
   test('隐私备忘录同步负载包含备忘录和保险库表', () async {
