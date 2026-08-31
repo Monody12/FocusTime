@@ -11,7 +11,7 @@ import 'package:focus_my_time/data/database/memo_database.dart';
 class AppDatabase {
   static Database? _database;
   static const _uuid = Uuid();
-  static const _schemaVersion = 15;
+  static const _schemaVersion = 16;
   static const Map<String, String> _taskSyncFields = {
     'listId': 'list_id',
     'title': 'title',
@@ -496,13 +496,6 @@ class AppDatabase {
     int oldVersion,
     int newVersion,
   ) async {
-    if (oldVersion < 15) {
-      try {
-        await db.execute(
-          "ALTER TABLE memo_versions ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
-        );
-      } catch (_) {}
-    }
     if (oldVersion < 2) {
       // 增加删除标记位以支持同步
       await db.execute(
@@ -642,6 +635,32 @@ class AppDatabase {
 
     if (oldVersion < 14) {
       await _createMemoTables(db);
+    }
+    if (oldVersion < 15) {
+      try {
+        await db.execute(
+          "ALTER TABLE memo_versions ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+        );
+      } catch (_) {}
+    }
+    if (oldVersion < 16) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await db.update(
+        'memos',
+        {'folder_id': null, 'updated_at': now},
+        where: 'is_private = 1 AND encrypt_title = 1 AND folder_id IS NOT NULL',
+      );
+      await db.rawUpdate(
+        '''
+        UPDATE memo_tag_links
+        SET deleted = 1, updated_at = ?
+        WHERE deleted = 0 AND memo_id IN (
+          SELECT id FROM memos
+          WHERE is_private = 1 AND encrypt_title = 1
+        )
+        ''',
+        [now],
+      );
     }
   }
 

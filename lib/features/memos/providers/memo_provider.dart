@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/data/database/memo_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
+import 'package:focus_my_time/features/memos/services/memo_private_payload.dart';
 
 final memoProvider =
     AsyncNotifierProvider<MemoNotifier, List<Map<String, dynamic>>>(
@@ -66,17 +67,14 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
       onlyArchived: _onlyArchived,
       sort: _sort,
     );
-    if (!hasPrivateSearch) return rows;
+    final hydratedRows = _hydratePrivateRows(rows);
+    if (!hasPrivateSearch) return hydratedRows;
     final needle = query.trim().toLowerCase();
-    return rows.where((memo) {
+    return hydratedRows.where((memo) {
       final title = memo['title'] as String? ?? '';
       final body = memo['bodyMd'] as String? ?? '';
       final tags = (memo['tagNames'] as List?)?.join(' ') ?? '';
-      final privateMemo = _decodePrivateMemo(memo);
-      final searchable =
-          '$title $body $tags '
-                  '${privateMemo?.title ?? ''} ${privateMemo?.bodyMd ?? ''}'
-              .toLowerCase();
+      final searchable = '$title $body $tags'.toLowerCase();
       return searchable.contains(needle);
     }).toList();
   }
@@ -93,13 +91,13 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
     if (isPrivate) {
       if (!_crypto.isUnlocked) throw StateError('请先解锁隐私保险库');
       encryptedPayload = _crypto.encryptText(
-        _encodePrivatePayload(title: title, bodyMd: bodyMd),
+        encodeMemoPrivatePayload(title: title, bodyMd: bodyMd),
       );
     }
     final memo = await MemoDatabase.createMemo(
       title: title,
       bodyMd: bodyMd,
-      folderId: folderId,
+      folderId: isPrivate && encryptTitle ? null : folderId,
       isPrivate: isPrivate,
       encryptTitle: encryptTitle,
       encryptedPayload: encryptedPayload,
@@ -149,7 +147,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
           currentPrivatePayload?.bodyMd ??
           (current['bodyMd'] as String? ?? '');
       updates['encryptedPayload'] = _crypto.encryptText(
-        _encodePrivatePayload(title: nextTitle, bodyMd: nextBody),
+        encodeMemoPrivatePayload(title: nextTitle, bodyMd: nextBody),
       );
       updates['title'] = (encryptTitle ?? current['encryptTitle'] == true)
           ? null
@@ -222,26 +220,34 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
   Future<List<Map<String, dynamic>>> loadVersions(String memoId) =>
       MemoDatabase.getVersions(memoId);
 
-  static String _encodePrivatePayload({
-    required String title,
-    required String bodyMd,
-  }) => '$title\n\u0000$bodyMd';
-
   _PrivateMemo? _decodePrivateMemo(Map<String, dynamic> memo) {
     if (memo['isPrivate'] != true || !_crypto.isUnlocked) return null;
     final encrypted = memo['encryptedPayload'] as String?;
     if (encrypted == null || encrypted.isEmpty) return null;
     try {
-      final decoded = _crypto.decryptText(encrypted);
-      final separator = decoded.indexOf('\u0000');
-      if (separator < 0) return _PrivateMemo(decoded, '');
-      return _PrivateMemo(
-        decoded.substring(0, separator),
-        decoded.substring(separator + 1),
-      );
+      final decoded = decodeMemoPrivatePayload(_crypto.decryptText(encrypted));
+      return _PrivateMemo(decoded.title, decoded.bodyMd);
     } catch (_) {
       return null;
     }
+  }
+
+  List<Map<String, dynamic>> _hydratePrivateRows(
+    List<Map<String, dynamic>> rows,
+  ) {
+    if (!_crypto.isUnlocked) return rows;
+    return rows.map((memo) {
+      final privateMemo = _decodePrivateMemo(memo);
+      if (privateMemo == null) return memo;
+      final hydrated = Map<String, dynamic>.from(memo)
+        ..['title'] = privateMemo.title
+        ..['bodyMd'] = privateMemo.bodyMd;
+      if (memo['encryptTitle'] == true) {
+        hydrated['folderName'] = null;
+        hydrated['tagNames'] = const <String>[];
+      }
+      return hydrated;
+    }).toList();
   }
 }
 

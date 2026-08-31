@@ -1,5 +1,6 @@
 import 'package:focus_my_time/data/database/memo_database.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
+import 'package:focus_my_time/features/memos/services/memo_private_payload.dart';
 
 /// AI 助手读取备忘录内容的唯一授权入口。
 ///
@@ -37,14 +38,10 @@ class MemoAiGate {
     if (memo['isPrivate'] == true) {
       final payload = memo['encryptedPayload'] as String?;
       if (payload == null) return {'title': title, 'body': body};
-      final decoded = MemoCryptoService.instance.decryptText(payload);
-      final separator = decoded.indexOf('\u0000');
-      return separator >= 0
-          ? {
-              'title': decoded.substring(0, separator),
-              'body': decoded.substring(separator + 1),
-            }
-          : {'title': title, 'body': decoded};
+      final decoded = decodeMemoPrivatePayload(
+        MemoCryptoService.instance.decryptText(payload),
+      );
+      return {'title': decoded.title, 'body': decoded.bodyMd};
     }
     return {'title': title, 'body': body};
   }

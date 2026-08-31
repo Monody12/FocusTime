@@ -623,7 +623,7 @@ class MemoDatabase {
     final id = _id('memo');
     final row = {
       'id': id,
-      'folder_id': folderId,
+      'folder_id': isPrivate && encryptTitle ? null : folderId,
       'title': isPrivate && encryptTitle ? null : title,
       'body_md': isPrivate ? null : bodyMd,
       'is_private': isPrivate ? 1 : 0,
@@ -679,13 +679,42 @@ class MemoDatabase {
     if (mapped.isEmpty) {
       return;
     }
-    mapped['updated_at'] = _now();
-    await db.update(
-      'memos',
-      mapped,
-      where: 'id = ? AND deleted = 0',
-      whereArgs: [id],
-    );
+    final now = _now();
+    mapped['updated_at'] = now;
+    await db.transaction((txn) async {
+      final currentRows = await txn.query(
+        'memos',
+        columns: ['is_private', 'encrypt_title'],
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (currentRows.isEmpty) return;
+      final current = currentRows.first;
+      final nextPrivate = mapped.containsKey('is_private')
+          ? mapped['is_private'] == 1
+          : current['is_private'] == 1;
+      final nextEncryptTitle = mapped.containsKey('encrypt_title')
+          ? mapped['encrypt_title'] == 1
+          : current['encrypt_title'] == 1;
+      if (nextPrivate && nextEncryptTitle) {
+        mapped['folder_id'] = null;
+      }
+      await txn.update(
+        'memos',
+        mapped,
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id],
+      );
+      if (nextPrivate && nextEncryptTitle) {
+        await txn.update(
+          'memo_tag_links',
+          {'deleted': 1, 'updated_at': now},
+          where: 'memo_id = ? AND deleted = 0',
+          whereArgs: [id],
+        );
+      }
+    });
   }
 
   static Future<void> deleteMemo(String id) async {
@@ -747,6 +776,20 @@ class MemoDatabase {
     final db = await _db;
     final now = _now();
     await db.transaction((txn) async {
+      final memoRows = await txn.query(
+        'memos',
+        columns: ['is_private', 'encrypt_title'],
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [memoId],
+        limit: 1,
+      );
+      if (memoRows.isEmpty) throw StateError('备忘录不存在');
+      final memo = memoRows.first;
+      if (tagIds.isNotEmpty &&
+          memo['is_private'] == 1 &&
+          memo['encrypt_title'] == 1) {
+        throw StateError('加密标题的隐私备忘录不能关联标签');
+      }
       await txn.update(
         'memo_tag_links',
         {'deleted': 1, 'updated_at': now},
@@ -1101,6 +1144,28 @@ class MemoDatabase {
           final row = _unmapRow(table, {...data, 'id': id});
           row['updated_at'] = remoteUpdatedAt;
           row['deleted'] = 0;
+          final hidesMetadata =
+              table == 'memos' &&
+              row['is_private'] == 1 &&
+              row['encrypt_title'] == 1;
+          if (hidesMetadata) row['folder_id'] = null;
+          if (table == 'memo_tag_links') {
+            final memoId = row['memo_id']?.toString();
+            if (memoId != null && memoId.isNotEmpty) {
+              final memoRows = await txn.query(
+                'memos',
+                columns: ['is_private', 'encrypt_title'],
+                where: 'id = ? AND deleted = 0',
+                whereArgs: [memoId],
+                limit: 1,
+              );
+              if (memoRows.isNotEmpty &&
+                  memoRows.first['is_private'] == 1 &&
+                  memoRows.first['encrypt_title'] == 1) {
+                row['deleted'] = 1;
+              }
+            }
+          }
           if (table == 'memos' &&
               localRows.isNotEmpty &&
               _memoContentDiffers(localRows.first, row)) {
@@ -1111,6 +1176,20 @@ class MemoDatabase {
             row,
             conflictAlgorithm: ConflictAlgorithm.replace,
           );
+          if (hidesMetadata) {
+            await txn.rawUpdate(
+              '''
+              UPDATE memo_tag_links
+              SET deleted = 1,
+                  updated_at = CASE
+                    WHEN updated_at > ? THEN updated_at
+                    ELSE ?
+                  END
+              WHERE memo_id = ? AND deleted = 0
+              ''',
+              [remoteUpdatedAt, remoteUpdatedAt, id],
+            );
+          }
         }
       }
     });
