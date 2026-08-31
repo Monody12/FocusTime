@@ -1392,3 +1392,15 @@ Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提�
 **教训**：弹层定位必须绑定真实可点击控件；数据层排序测试与界面菜单测试各自覆盖不同风险，不能互相替代。
 
 *最后更新日期：2026-08-30*
+
+## 45. Stack 混入非定位子项会让整个应用主体塌缩白屏
+
+**问题现象**：v1.7.7 起 Android 安装包一启动就白屏不可操作；Web 端加载层消失后同样白屏。无任何 Dart 异常、无引擎报错，`flutter analyze` 与全部测试通过，问题持续到 v1.8.1。
+
+**根因**：v1.7.7 的提交 fbd294a 在 `app.dart` 的 `body: Stack` 末尾新增了 Web 提醒横幅 `ValueListenableBuilder`，其 builder 在无提醒时返回 `SizedBox.shrink()`。Stack 只要存在非定位（非 `Positioned`）子项，就会按非定位子项的尺寸收缩；零尺寸子项使整个 Stack 塌缩为 0x0，`Positioned.fill` 的主界面随之不可见。该提交同时把 `app.dart` 全文重新格式化，实质改动被格式噪声淹没，代码评审与 diff 审查均未发现。
+
+**方案**：builder 始终返回 `Positioned`，无提醒时其 child 用 `SizedBox.shrink()` 表示空内容，Stack 恢复为"仅定位子项"布局。排查方法：对无法解释的白屏，用 CDP `Page.captureScreenshot`（读合成器像素）与普通截图工具交叉验证，并对二分构建逐一构建验证——同一 SDK 下 v1.7.6 正常、fbd294a 起白屏即可锁定引入点。
+
+**教训**：向只有 `Positioned` 子项的 Stack 添加子项时，必须保持"全部定位"或改用 `StackFit` 语义；大范围格式化不要与功能改动混在同一提交，否则关键改动会被淹没。布局类回归不抛异常也不进测试断言，发布前必须在真实浏览器里做一次 CDP 级别的渲染验证。
+
+*最后更新日期：2026-08-31*
