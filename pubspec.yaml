@@ -1,7 +1,7 @@
 name: focus_my_time
 description: "FocusMyTime - 番茄工作法 + 单核工作法计时器"
 publish_to: 'none'
-version: 1.8.1+39
+version: 1.8.2+40
 
 environment:
   sdk: ^3.12.0
