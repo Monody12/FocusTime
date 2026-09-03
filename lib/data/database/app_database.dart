@@ -1871,19 +1871,19 @@ class AppDatabase {
   static Future<void> reorderTasks(List<String> taskIds) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final batch = db.batch();
-    for (var i = 0; i < taskIds.length; i++) {
-      batch.update(
-        'tasks',
-        {'sort_order': i, 'updated_at': now},
-        where: 'id = ? AND deleted = 0 AND archived = 0',
-        whereArgs: [taskIds[i]],
-      );
-    }
-    await batch.commit(noResult: true);
-    for (final taskId in taskIds) {
-      await _setFieldVersions(db, 'tasks', taskId, ['sortOrder'], now);
-    }
+    await db.transaction((txn) async {
+      for (var i = 0; i < taskIds.length; i++) {
+        await txn.update(
+          'tasks',
+          {'sort_order': i, 'updated_at': now},
+          where: 'id = ? AND deleted = 0 AND archived = 0',
+          whereArgs: [taskIds[i]],
+        );
+        await _setFieldVersions(txn, 'tasks', taskIds[i], const [
+          'sortOrder',
+        ], now);
+      }
+    });
   }
 
   static Future<void> reorderLists(

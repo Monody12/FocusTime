@@ -362,6 +362,18 @@ void main() {
       );
     });
 
+    test('手动重排会同步更新 sortOrder，排序后不会弹回旧位置', () {
+      final reordered = applyManualTaskOrder(tasks, const ['a', 'b', 'c']);
+      expect(
+        sortTaskItems(reordered, TaskSortMode.manual).map((task) => task.id),
+        ['a', 'b', 'c'],
+      );
+      expect(
+        {for (final task in reordered) task.id: task.sortOrder},
+        {'a': 0, 'b': 1, 'c': 2},
+      );
+    });
+
     test('任务名称排序忽略大小写', () {
       expect(
         sortTaskItems(

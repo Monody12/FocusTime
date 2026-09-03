@@ -88,6 +88,24 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
               ),
             ),
             const SizedBox(width: 12),
+            if (widget.index != null) ...[
+              ReorderableDragStartListener(
+                index: widget.index!,
+                child: Tooltip(
+                  message: '拖动排序',
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: AppIcon(
+                      Icons.drag_indicator,
+                      size: AppIconSizes.compact,
+                      color: context.appColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
             // 任务标题
             Expanded(
               child: Text(
@@ -185,7 +203,10 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       ),
     );
 
-    // 长按拖拽：用于将任务移动到其他清单
+    // 桌面端保留长按跨清单拖动；移动端通过操作菜单移动清单，避免与
+    // 排序手柄争抢长按手势。
+    if (isMobile) return content;
+
     final draggable = LongPressDraggable<String>(
       data: widget.task.id,
       delay: const Duration(milliseconds: 300),
@@ -250,22 +271,6 @@ class _TaskItemWidgetState extends ConsumerState<TaskItemWidget> {
       },
       child: content,
     );
-
-    // 当在 ReorderableListView 中时，根据平台选择拖拽监听器。
-    // 移动端 (Android/iOS) 使用长按触发 (Delayed)，防止与滑动翻页冲突；桌面端使用立即触发。
-    if (widget.index != null) {
-      if (isMobile) {
-        return ReorderableDelayedDragStartListener(
-          index: widget.index!,
-          child: draggable,
-        );
-      }
-
-      return ReorderableDragStartListener(
-        index: widget.index!,
-        child: draggable,
-      );
-    }
 
     return draggable;
   }

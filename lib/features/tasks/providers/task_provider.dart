@@ -216,6 +216,22 @@ List<TaskItem> sortTaskItems(Iterable<TaskItem> tasks, TaskSortMode sortMode) {
   return sorted;
 }
 
+List<TaskItem> applyManualTaskOrder(
+  Iterable<TaskItem> tasks,
+  List<String> taskIds,
+) {
+  final orderById = {
+    for (var index = 0; index < taskIds.length; index++) taskIds[index]: index,
+  };
+  return tasks
+      .map(
+        (task) => orderById.containsKey(task.id)
+            ? task.copyWith(sortOrder: orderById[task.id])
+            : task,
+      )
+      .toList();
+}
+
 int _compareDueDates(TaskItem a, TaskItem b, {required bool ascending}) {
   final aDate = a.dueDate;
   final bDate = b.dueDate;
@@ -1151,31 +1167,24 @@ class TaskNotifier extends StateNotifier<TaskState> {
   }
 
   Future<void> reorderTasks(List<String> taskIds) async {
-    // 1. 乐观更新：立即在内存中更新任务顺序，避免 UI 抖动
     final previousTasks = state.tasks;
-    final tasks = [...previousTasks];
-    final idToIndex = {for (int i = 0; i < taskIds.length; i++) taskIds[i]: i};
+    final previousSortMode = state.sortMode;
+    state = state.copyWith(
+      tasks: applyManualTaskOrder(previousTasks, taskIds),
+      sortMode: TaskSortMode.manual,
+    );
 
-    // 只重新对传入的任务进行排序，保持其他任务（如已完成）的相对位置
-    tasks.sort((a, b) {
-      final indexA = idToIndex[a.id];
-      final indexB = idToIndex[b.id];
-      if (indexA != null && indexB != null) return indexA.compareTo(indexB);
-      if (indexA != null) return -1; // 排序中的任务靠前
-      if (indexB != null) return 1;
-      return a.sortOrder.compareTo(b.sortOrder); // 保持原有顺序
-    });
-
-    state = state.copyWith(tasks: tasks);
-
-    // 2. 异步更新数据库
     try {
       await AppDatabase.reorderTasks(taskIds);
-      // 3. 静默加载最新状态（不触发 loading 状态）
       await loadTasks(showLoading: false);
       _triggerSync();
     } catch (_) {
-      if (mounted) state = state.copyWith(tasks: previousTasks);
+      if (mounted) {
+        state = state.copyWith(
+          tasks: previousTasks,
+          sortMode: previousSortMode,
+        );
+      }
       rethrow;
     }
   }
