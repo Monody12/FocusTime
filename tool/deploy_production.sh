@@ -95,7 +95,7 @@ verify_online() {
   pm2_status="$(pm2 jlist | jq -r '.[] | select(.name == "focus-timer-sync") | .pm2_env.status')"
   [[ "$pm2_version" == "$app_version" ]] || fail "PM2 version is $pm2_version, expected $app_version"
   [[ "$pm2_status" == "online" ]] || fail "PM2 status is $pm2_status"
-  pm2_interpreter="$(pm2 jlist | jq -r '.[] | select(.name == "focus-timer-sync") | .pm2_env.node_interpreter')"
+  pm2_interpreter="$(pm2 jlist | jq -r '.[] | select(.name == "focus-timer-sync") | .pm2_env.exec_interpreter')"
   [[ "$pm2_interpreter" == "$server_node" ]] ||
     fail "PM2 uses $pm2_interpreter, expected $server_node"
 
