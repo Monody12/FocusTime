@@ -1581,6 +1581,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
   bool _draftWriteErrorShown = false;
   bool _autoSaveEnabled = true;
   bool _draggingImage = false;
+  bool _isPrivateMemo = false;
   int _autoSaveDelayMs = 2500;
   late final MemoNotifier _memoNotifier;
   late final void Function(ClipboardReadEvent) _pasteListener;
@@ -1664,13 +1665,9 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     if (!_loaded || !_isDirty) return;
     late final String encoded;
     try {
-      final memo = _memoNotifier.state.valueOrNull
-          ?.where((item) => item['id'] == widget.memoId)
-          .firstOrNull;
-      final isPrivate = memo?['isPrivate'] == true;
       final title = _titleController.text;
       final body = _bodyController.text;
-      final data = isPrivate
+      final data = _isPrivateMemo
           ? {
               'private': true,
               'savedAt': DateTime.now().millisecondsSinceEpoch,
@@ -2149,6 +2146,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     final memo = _currentMemo;
     if (memo == null) return const SizedBox.shrink();
     final isPrivate = memo['isPrivate'] == true;
+    _isPrivateMemo = isPrivate;
     if (isPrivate && !MemoCryptoService.instance.isUnlocked) {
       return const Center(child: Text('该备忘录已加密，请先解锁隐私内容'));
     }
