@@ -717,6 +717,40 @@ class MemoDatabase {
     });
   }
 
+  static Future<void> moveMemo(String id, String? folderId) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      final memoRows = await txn.query(
+        'memos',
+        columns: ['is_private', 'encrypt_title'],
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (memoRows.isEmpty) throw StateError('备忘录不存在或已删除');
+      final memo = memoRows.first;
+      if (memo['is_private'] == 1 && memo['encrypt_title'] == 1) {
+        throw StateError('加密标题的隐私备忘录不能移动到文件夹');
+      }
+      if (folderId != null) {
+        final folderRows = await txn.query(
+          'memo_folders',
+          columns: ['id'],
+          where: 'id = ? AND deleted = 0 AND archived = 0',
+          whereArgs: [folderId],
+          limit: 1,
+        );
+        if (folderRows.isEmpty) throw StateError('目标文件夹不存在或已归档');
+      }
+      await txn.update(
+        'memos',
+        {'folder_id': folderId, 'updated_at': _now()},
+        where: 'id = ? AND deleted = 0',
+        whereArgs: [id],
+      );
+    });
+  }
+
   static Future<void> deleteMemo(String id) async {
     final db = await _db;
     final now = _now();

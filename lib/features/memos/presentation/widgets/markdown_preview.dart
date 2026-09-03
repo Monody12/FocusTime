@@ -72,9 +72,11 @@ class _MarkdownPreviewState extends State<MarkdownPreview> {
       _parsedNarrowLayout = _narrowLayout;
       _parsedBlocks = _parseBlocks();
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: _parsedBlocks!,
+    return SelectionArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: _parsedBlocks!,
+      ),
     );
   }
 

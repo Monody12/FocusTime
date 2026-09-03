@@ -48,6 +48,12 @@ void main() {
     expect(find.text('引用内容'), findsOneWidget);
   });
 
+  testWidgets('预览内容使用原生选择区域，支持复制菜单和键盘复制', (tester) async {
+    await pumpPreview(tester, '可以自由选择和复制的正文');
+    expect(find.byType(SelectionArea), findsOneWidget);
+    expect(find.text('可以自由选择和复制的正文'), findsOneWidget);
+  });
+
   testWidgets('原始 HTML 按纯文本渲染，不执行标签', (tester) async {
     await pumpPreview(tester, '<script>alert(1)</script>\n\n普通段落');
     expect(find.text('<script>alert(1)</script>'), findsOneWidget);

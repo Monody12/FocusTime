@@ -332,6 +332,31 @@ void main() {
     expect(linkRows.single['deleted'], 1);
   });
 
+  test('备忘录可移动到文件夹或移回无文件夹，私密元数据限制不可绕过', () async {
+    final folder = await MemoDatabase.createFolder('移动目标-$runSuffix');
+    final normal = await MemoDatabase.createMemo(title: '待移动');
+    final normalId = normal['id'] as String;
+
+    await MemoDatabase.moveMemo(normalId, folder['id'] as String);
+    expect((await MemoDatabase.getMemo(normalId))!['folderId'], folder['id']);
+    await MemoDatabase.moveMemo(normalId, null);
+    expect((await MemoDatabase.getMemo(normalId))!['folderId'], isNull);
+
+    final private = await MemoDatabase.createMemo(
+      title: '私密标题',
+      isPrivate: true,
+      encryptTitle: true,
+      encryptedPayload: 'ciphertext',
+    );
+    expect(
+      () => MemoDatabase.moveMemo(
+        private['id'] as String,
+        folder['id'] as String,
+      ),
+      throwsStateError,
+    );
+  });
+
   test('同步入库不得恢复加密标题备忘录的分类元数据', () async {
     final folder = await MemoDatabase.createFolder('同步文件夹-$runSuffix');
     final tag = await MemoDatabase.createTag('同步标签-$runSuffix');

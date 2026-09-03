@@ -167,6 +167,42 @@ class MemoImageService {
     }
   }
 
+  Future<Uint8List> readAttachmentBytes(Map<String, dynamic> attachment) async {
+    final id = attachment['id'] as String;
+    final mimeType =
+        attachment['mimeType'] as String? ?? 'application/octet-stream';
+    if (attachment['isPrivate'] == true &&
+        !MemoCryptoService.instance.isUnlocked) {
+      throw StateError('请先解锁隐私保险库');
+    }
+    final file = await localFile(id, mimeType);
+    if (file.existsSync()) return file.readAsBytes();
+
+    final storageKey = attachment['storageKey'] as String?;
+    if (storageKey == null || storageKey.isEmpty) {
+      throw StateError('附件 ${attachmentFilename(attachment)} 的本地文件不存在');
+    }
+    var bytes = await MemoAttachmentService.instance.download(storageKey);
+    if (attachment['isPrivate'] == true) bytes = _unwrapPrivateBytes(bytes);
+    await file.writeAsBytes(bytes, flush: true);
+    return bytes;
+  }
+
+  String attachmentFilename(Map<String, dynamic> attachment) {
+    final filename = attachment['filename'] as String?;
+    if (filename != null && filename.isNotEmpty) return filename;
+    if (attachment['isPrivate'] == true) {
+      final encrypted = attachment['encryptedPayload'] as String?;
+      if (encrypted != null && encrypted.isNotEmpty) {
+        if (!MemoCryptoService.instance.isUnlocked) {
+          throw StateError('请先解锁隐私保险库');
+        }
+        return utf8.decode(MemoCryptoService.instance.decryptBytes(encrypted));
+      }
+    }
+    return 'attachment.${extForMime(attachment['mimeType'] as String? ?? '')}';
+  }
+
   Uint8List _unwrapPrivateBytes(Uint8List stored) {
     final decoded = jsonDecode(utf8.decode(stored));
     if (decoded is! Map || decoded['encrypted'] != true) {

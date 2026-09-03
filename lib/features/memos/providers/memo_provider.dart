@@ -171,6 +171,16 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
     await reloadCurrentView();
   }
 
+  Future<void> moveMemo(String id, String? folderId) async {
+    final current = await MemoDatabase.getMemo(id);
+    if (current == null) throw StateError('备忘录不存在或已删除');
+    if (current['isPrivate'] == true && current['encryptTitle'] == true) {
+      throw StateError('加密标题的隐私备忘录不能移动到文件夹');
+    }
+    await MemoDatabase.moveMemo(id, folderId);
+    await reloadCurrentView();
+  }
+
   Future<List<Map<String, dynamic>>> loadTrash() => MemoDatabase.getMemos(
     includeDeleted: true,
     includeArchived: true,

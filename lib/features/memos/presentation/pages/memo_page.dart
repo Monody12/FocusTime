@@ -20,6 +20,7 @@ import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_draft_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_diff.dart';
 import 'package:focus_my_time/features/memos/services/memo_image_service.dart';
+import 'package:focus_my_time/features/memos/services/memo_markdown_transfer_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_private_payload.dart';
 import 'package:focus_my_time/features/memos/presentation/widgets/markdown_preview.dart';
 
@@ -38,6 +39,7 @@ class MemoPage extends ConsumerStatefulWidget {
 
 class _MemoPageState extends ConsumerState<MemoPage> {
   final _searchController = TextEditingController();
+  late final FocusNode _searchFocusNode;
   final _folderFilterKey = GlobalKey();
   final _tagFilterKey = GlobalKey();
   final _sortFilterKey = GlobalKey();
@@ -58,6 +60,8 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   @override
   void initState() {
     super.initState();
+    _searchFocusNode = FocusNode();
+    HardwareKeyboard.instance.addHandler(_handlePageKeyEvent);
     _loadFolders();
     _loadTags();
     _loadListPreferences();
@@ -67,6 +71,8 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   void dispose() {
     _searchDebounce?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
+    HardwareKeyboard.instance.removeHandler(_handlePageKeyEvent);
     super.dispose();
   }
 
@@ -102,7 +108,6 @@ class _MemoPageState extends ConsumerState<MemoPage> {
       if (!mounted) return;
       setState(() {
         _sort = MemoSortOption.fromStorage(prefs.getString('memo_sort'));
-        _viewMode = _memoViewModeFromStorage(prefs.getString('memo_view_mode'));
       });
       _applyMemoFilter();
     } catch (error) {
@@ -113,24 +118,22 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     }
   }
 
-  _MemoViewMode _memoViewModeFromStorage(String? value) {
-    return _MemoViewMode.values.firstWhere(
-      (mode) => mode.name == value,
-      orElse: () => _MemoViewMode.read,
-    );
+  void _setViewMode(_MemoViewMode mode) {
+    setState(() => _viewMode = mode);
   }
 
-  Future<void> _setViewMode(_MemoViewMode mode) async {
-    setState(() => _viewMode = mode);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('memo_view_mode', mode.name);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('保存阅读模式设置失败：$error')));
+  void _openSearch() {
+    if (_listMode == _MemoListMode.trash) {
+      _setListMode(_MemoListMode.active);
     }
+    if (!_searchVisible) setState(() => _searchVisible = true);
+  }
+
+  void _createMemoFromShortcut() {
+    if (_listMode != _MemoListMode.active) {
+      _setListMode(_MemoListMode.active);
+    }
+    unawaited(_createQuickMemo());
   }
 
   void _applyMemoFilter() {
@@ -194,276 +197,328 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     final memos = ref.watch(memoProvider);
     final crypto = MemoCryptoService.instance;
     final isMobile = MediaQuery.sizeOf(context).width < 800;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: Row(
-            children: [
-              Text(switch (_listMode) {
-                _MemoListMode.active => '备忘录',
-                _MemoListMode.archived => '已归档',
-                _MemoListMode.trash => '回收站',
-              }, style: Theme.of(context).textTheme.headlineSmall),
-              const Spacer(),
-              IconButton(
-                tooltip: _searchVisible ? '收起搜索' : '搜索备忘录',
-                onPressed: () {
-                  setState(() {
-                    _searchVisible = !_searchVisible;
-                    if (!_searchVisible) {
-                      _searchController.clear();
-                      _applyMemoFilter();
-                    }
-                  });
-                },
-                icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
-              ),
-              if (!isMobile) ...[
+    return Focus(
+      autofocus: true,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: Row(
+              children: [
+                Text(switch (_listMode) {
+                  _MemoListMode.active => '备忘录',
+                  _MemoListMode.archived => '已归档',
+                  _MemoListMode.trash => '回收站',
+                }, style: Theme.of(context).textTheme.headlineSmall),
+                const Spacer(),
                 IconButton(
-                  tooltip: _listMode == _MemoListMode.archived
-                      ? '返回备忘录列表'
-                      : '已归档备忘录',
-                  onPressed: () => _setListMode(
-                    _listMode == _MemoListMode.archived
-                        ? _MemoListMode.active
-                        : _MemoListMode.archived,
-                  ),
-                  icon: Icon(
-                    _listMode == _MemoListMode.archived
-                        ? Icons.arrow_back
-                        : Icons.archive_outlined,
-                  ),
+                  tooltip: _searchVisible ? '收起搜索' : '搜索备忘录',
+                  onPressed: () {
+                    setState(() {
+                      _searchVisible = !_searchVisible;
+                      if (!_searchVisible) {
+                        _searchController.clear();
+                        _applyMemoFilter();
+                      }
+                    });
+                  },
+                  icon: Icon(_searchVisible ? Icons.search_off : Icons.search),
                 ),
-                IconButton(
-                  tooltip: crypto.isUnlocked ? '锁定隐私内容' : '解锁隐私内容',
-                  onPressed: _toggleVault,
-                  icon: Icon(
-                    crypto.isUnlocked ? AppIcons.unlock : AppIcons.lock,
+                if (!isMobile) ...[
+                  IconButton(
+                    tooltip: _listMode == _MemoListMode.archived
+                        ? '返回备忘录列表'
+                        : '已归档备忘录',
+                    onPressed: () => _setListMode(
+                      _listMode == _MemoListMode.archived
+                          ? _MemoListMode.active
+                          : _MemoListMode.archived,
+                    ),
+                    icon: Icon(
+                      _listMode == _MemoListMode.archived
+                          ? Icons.arrow_back
+                          : Icons.archive_outlined,
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: _listMode == _MemoListMode.trash ? '返回备忘录列表' : '回收站',
-                  onPressed: () => _setListMode(
-                    _listMode == _MemoListMode.trash
-                        ? _MemoListMode.active
-                        : _MemoListMode.trash,
+                  IconButton(
+                    tooltip: crypto.isUnlocked ? '锁定隐私内容' : '解锁隐私内容',
+                    onPressed: _toggleVault,
+                    icon: Icon(
+                      crypto.isUnlocked ? AppIcons.unlock : AppIcons.lock,
+                    ),
                   ),
-                  icon: Icon(
-                    _listMode == _MemoListMode.trash
-                        ? Icons.arrow_back
-                        : Icons.delete_outline,
+                  IconButton(
+                    tooltip: _listMode == _MemoListMode.trash
+                        ? '返回备忘录列表'
+                        : '回收站',
+                    onPressed: () => _setListMode(
+                      _listMode == _MemoListMode.trash
+                          ? _MemoListMode.active
+                          : _MemoListMode.trash,
+                    ),
+                    icon: Icon(
+                      _listMode == _MemoListMode.trash
+                          ? Icons.arrow_back
+                          : Icons.delete_outline,
+                    ),
                   ),
-                ),
+                ],
+                if (_listMode == _MemoListMode.active)
+                  IconButton(
+                    tooltip: '快速新建备忘录',
+                    onPressed: _createQuickMemo,
+                    icon: const Icon(AppIcons.add),
+                  ),
+                if (_listMode == _MemoListMode.active && !isMobile)
+                  PopupMenuButton<String>(
+                    tooltip: '新建与导入',
+                    icon: const Icon(Icons.arrow_drop_down),
+                    onSelected: (action) {
+                      if (action == 'import_markdown') {
+                        _importMarkdown();
+                      } else {
+                        _createMemoWithOptions(context);
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'advanced',
+                        child: Row(
+                          children: [
+                            Icon(Icons.tune, size: 18),
+                            SizedBox(width: 8),
+                            Text('新建并设置文件夹、隐私或 AI'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'import_markdown',
+                        child: Row(
+                          children: [
+                            Icon(Icons.file_upload_outlined, size: 18),
+                            SizedBox(width: 8),
+                            Text('导入 Markdown'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                if (isMobile)
+                  PopupMenuButton<String>(
+                    tooltip: '更多备忘录操作',
+                    onSelected: _handleHeaderMenu,
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'archive',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            _listMode == _MemoListMode.archived
+                                ? Icons.notes
+                                : Icons.archive_outlined,
+                          ),
+                          title: Text(
+                            _listMode == _MemoListMode.archived
+                                ? '全部备忘录'
+                                : '已归档',
+                          ),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'vault',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            crypto.isUnlocked ? AppIcons.lock : AppIcons.unlock,
+                          ),
+                          title: Text(crypto.isUnlocked ? '锁定隐私内容' : '解锁隐私内容'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'trash',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            _listMode == _MemoListMode.trash
+                                ? Icons.notes
+                                : Icons.delete_outline,
+                          ),
+                          title: Text(
+                            _listMode == _MemoListMode.trash ? '全部备忘录' : '回收站',
+                          ),
+                        ),
+                      ),
+                      if (_listMode == _MemoListMode.active)
+                        const PopupMenuItem(
+                          value: 'advanced_create',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.tune),
+                            title: Text('新建选项'),
+                          ),
+                        ),
+                      if (_listMode == _MemoListMode.active)
+                        const PopupMenuItem(
+                          value: 'import_markdown',
+                          child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.file_upload_outlined),
+                            title: Text('导入 Markdown'),
+                          ),
+                        ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'close',
+                        child: ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.close),
+                          title: Text('返回任务界面'),
+                        ),
+                      ),
+                    ],
+                    icon: const Icon(Icons.more_vert),
+                  )
+                else
+                  IconButton(
+                    tooltip: '返回任务界面',
+                    onPressed: widget.onClose,
+                    icon: const Icon(Icons.close),
+                  ),
               ],
-              if (_listMode == _MemoListMode.active)
-                IconButton(
-                  tooltip: '快速新建备忘录',
-                  onPressed: _createQuickMemo,
-                  icon: const Icon(AppIcons.add),
-                ),
-              if (_listMode == _MemoListMode.active && !isMobile)
-                PopupMenuButton<String>(
-                  tooltip: '新建选项',
-                  icon: const Icon(Icons.arrow_drop_down),
-                  onSelected: (_) => _createMemoWithOptions(context),
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: 'advanced',
+            ),
+          ),
+          if (_listMode != _MemoListMode.trash) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          Icon(Icons.tune, size: 18),
-                          SizedBox(width: 8),
-                          Text('新建并设置文件夹、隐私或 AI'),
+                          _buildFolderSelector(),
+                          const SizedBox(width: 8),
+                          _buildTagSelector(),
+                          const SizedBox(width: 8),
+                          _buildSortSelector(),
                         ],
                       ),
                     ),
-                  ],
-                ),
-              if (isMobile)
-                PopupMenuButton<String>(
-                  tooltip: '更多备忘录操作',
-                  onSelected: _handleHeaderMenu,
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      value: 'archive',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          _listMode == _MemoListMode.archived
-                              ? Icons.notes
-                              : Icons.archive_outlined,
-                        ),
-                        title: Text(
-                          _listMode == _MemoListMode.archived ? '全部备忘录' : '已归档',
-                        ),
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'vault',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          crypto.isUnlocked ? AppIcons.lock : AppIcons.unlock,
-                        ),
-                        title: Text(crypto.isUnlocked ? '锁定隐私内容' : '解锁隐私内容'),
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'trash',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          _listMode == _MemoListMode.trash
-                              ? Icons.notes
-                              : Icons.delete_outline,
-                        ),
-                        title: Text(
-                          _listMode == _MemoListMode.trash ? '全部备忘录' : '回收站',
-                        ),
-                      ),
-                    ),
-                    if (_listMode == _MemoListMode.active)
-                      const PopupMenuItem(
-                        value: 'advanced_create',
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(Icons.tune),
-                          title: Text('新建选项'),
-                        ),
-                      ),
-                    const PopupMenuDivider(),
-                    const PopupMenuItem(
-                      value: 'close',
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.close),
-                        title: Text('返回任务界面'),
-                      ),
-                    ),
-                  ],
-                  icon: const Icon(Icons.more_vert),
-                )
-              else
-                IconButton(
-                  tooltip: '返回任务界面',
-                  onPressed: widget.onClose,
-                  icon: const Icon(Icons.close),
-                ),
-            ],
-          ),
-        ),
-        if (_listMode != _MemoListMode.trash) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _buildFolderSelector(),
-                        const SizedBox(width: 8),
-                        _buildTagSelector(),
-                        const SizedBox(width: 8),
-                        _buildSortSelector(),
-                      ],
-                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  tooltip: '新建文件夹',
-                  onPressed: () => _showCreateFolderDialog(),
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                ),
-              ],
-            ),
-          ),
-          if (_searchVisible)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: TextField(
-                controller: _searchController,
-                autofocus: true,
-                onChanged: (value) => _scheduleMemoFilter(),
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.search),
-                  hintText: '搜索备忘录（解锁后可搜索隐私内容）',
-                  isDense: true,
-                  suffixIcon: IconButton(
-                    tooltip: '收起搜索',
-                    icon: const Icon(Icons.close),
-                    onPressed: () {
-                      setState(() {
-                        _searchVisible = false;
-                        _searchController.clear();
-                      });
-                      _applyMemoFilter();
-                    },
-                  ),
-                ),
-              ),
-            ),
-        ],
-        const SizedBox(height: 8),
-        Expanded(
-          child: memos.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('备忘录加载失败'),
-                  const SizedBox(height: 8),
-                  FilledButton.icon(
-                    onPressed: _applyMemoFilter,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('重试'),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: '新建文件夹',
+                    onPressed: () => _showCreateFolderDialog(),
+                    icon: const Icon(Icons.create_new_folder_outlined),
                   ),
                 ],
               ),
             ),
-            data: (items) => _listMode == _MemoListMode.trash
-                ? _buildTrashList(_trashItems ?? const [])
-                : isMobile
-                ? _buildMobileMemoPane(items)
-                : Row(
-                    children: [
-                      SizedBox(
-                        width: 320,
-                        child: items.isEmpty
-                            ? _buildEmptyState()
-                            : ListView.builder(
-                                itemCount: items.length,
-                                itemBuilder: (context, index) =>
-                                    _buildMemoTile(items[index]),
-                              ),
-                      ),
-                      const VerticalDivider(width: 1),
-                      Expanded(
-                        child: _selectedId == null
-                            ? const Center(child: Text('选择一篇备忘录开始编辑'))
-                            : _MemoEditor(
-                                key: ValueKey(_selectedId),
-                                memoId: _selectedId!,
-                                viewMode: _viewMode,
-                                onViewModeChanged: _setViewMode,
-                                onTrash: () {
-                                  setState(() => _selectedId = null);
-                                  ref
-                                      .read(memoProvider.notifier)
-                                      .reloadCurrentView();
-                                },
-                              ),
-                      ),
-                    ],
+            if (_searchVisible)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  autofocus: true,
+                  onChanged: (value) => _scheduleMemoFilter(),
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.search),
+                    hintText: '搜索备忘录（解锁后可搜索隐私内容）',
+                    isDense: true,
+                    suffixIcon: IconButton(
+                      tooltip: '收起搜索',
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        setState(() {
+                          _searchVisible = false;
+                          _searchController.clear();
+                        });
+                        _applyMemoFilter();
+                      },
+                    ),
                   ),
+                ),
+              ),
+          ],
+          const SizedBox(height: 8),
+          Expanded(
+            child: memos.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('备忘录加载失败'),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: _applyMemoFilter,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('重试'),
+                    ),
+                  ],
+                ),
+              ),
+              data: (items) => _listMode == _MemoListMode.trash
+                  ? _buildTrashList(_trashItems ?? const [])
+                  : isMobile
+                  ? _buildMobileMemoPane(items)
+                  : Row(
+                      children: [
+                        SizedBox(
+                          width: 320,
+                          child: items.isEmpty
+                              ? _buildEmptyState()
+                              : ListView.builder(
+                                  itemCount: items.length,
+                                  itemBuilder: (context, index) =>
+                                      _buildMemoTile(items[index]),
+                                ),
+                        ),
+                        const VerticalDivider(width: 1),
+                        Expanded(
+                          child: _selectedId == null
+                              ? const Center(child: Text('选择一篇备忘录开始编辑'))
+                              : _MemoEditor(
+                                  key: ValueKey(_selectedId),
+                                  memoId: _selectedId!,
+                                  viewMode: _viewMode,
+                                  onBack: () =>
+                                      setState(() => _selectedId = null),
+                                  onViewModeChanged: _setViewMode,
+                                  onTrash: () {
+                                    setState(() => _selectedId = null);
+                                    ref
+                                        .read(memoProvider.notifier)
+                                        .reloadCurrentView();
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  bool _handlePageKeyEvent(KeyEvent event) {
+    if (!mounted || ModalRoute.of(context)?.isCurrent == false) return false;
+    if (event is! KeyDownEvent) return false;
+    final modified =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (modified && event.logicalKey == LogicalKeyboardKey.keyF) {
+      _openSearch();
+      return true;
+    }
+    if (modified && event.logicalKey == LogicalKeyboardKey.keyN) {
+      _createMemoFromShortcut();
+      return true;
+    }
+    return false;
   }
 
   void _handleHeaderMenu(String action) {
@@ -484,6 +539,8 @@ class _MemoPageState extends ConsumerState<MemoPage> {
         );
       case 'advanced_create':
         _createMemoWithOptions(context);
+      case 'import_markdown':
+        _importMarkdown();
       case 'close':
         widget.onClose();
     }
@@ -1016,7 +1073,10 @@ class _MemoPageState extends ConsumerState<MemoPage> {
               },
             )
           : null,
-      onTap: () => setState(() => _selectedId = id),
+      onTap: () => setState(() {
+        _selectedId = id;
+        _viewMode = _MemoViewMode.read;
+      }),
     );
   }
 
@@ -1159,9 +1219,18 @@ class _MemoPageState extends ConsumerState<MemoPage> {
 
   Future<void> _createQuickMemo() async {
     try {
-      final memo = await ref
-          .read(memoProvider.notifier)
-          .create(folderId: _selectedFolderId);
+      final notifier = ref.read(memoProvider.notifier);
+      if (_searchVisible || _searchController.text.isNotEmpty) {
+        setState(() => _searchVisible = false);
+        _searchController.clear();
+        await notifier.refresh(
+          query: '',
+          folderId: _selectedFolderId,
+          tagId: _selectedTagId,
+          sort: _sort,
+        );
+      }
+      final memo = await notifier.create(folderId: _selectedFolderId);
       if (!mounted) return;
       setState(() {
         _selectedId = memo['id'] as String;
@@ -1172,6 +1241,52 @@ class _MemoPageState extends ConsumerState<MemoPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('新建备忘录失败：$error')));
+    }
+  }
+
+  Future<void> _importMarkdown() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        dialogTitle: '导入 Markdown 备忘录',
+        type: FileType.custom,
+        allowedExtensions: const ['md', 'markdown'],
+        allowMultiple: false,
+        withData: kIsWeb,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      if (file.size > MemoMarkdownTransferService.maxImportBytes) {
+        throw const FormatException('Markdown 文件超过 5 MB');
+      }
+      final bytes =
+          file.bytes ??
+          (file.path == null
+              ? throw const FormatException('无法读取 Markdown 文件内容')
+              : await File(file.path!).readAsBytes());
+      final imported = MemoMarkdownTransferService.decodeImport(
+        file.name,
+        bytes,
+      );
+      final memo = await ref
+          .read(memoProvider.notifier)
+          .create(
+            title: imported.title,
+            bodyMd: imported.body,
+            folderId: _selectedFolderId,
+          );
+      if (!mounted) return;
+      setState(() {
+        _selectedId = memo['id'] as String;
+        _viewMode = _MemoViewMode.read;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Markdown 已导入')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('导入 Markdown 失败：$error')));
     }
   }
 
@@ -1443,7 +1558,8 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     with WidgetsBindingObserver {
   final _titleController = TextEditingController();
   final _bodyController = TextEditingController();
-  final _bodyFocusNode = FocusNode();
+  late final FocusNode _titleFocusNode;
+  late final FocusNode _bodyFocusNode;
   final _editorScrollController = ScrollController();
   final _previewScrollController = ScrollController();
   final _previewText = ValueNotifier<String>('');
@@ -1466,11 +1582,16 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
   bool _autoSaveEnabled = true;
   bool _draggingImage = false;
   int _autoSaveDelayMs = 2500;
+  late final MemoNotifier _memoNotifier;
   late final void Function(ClipboardReadEvent) _pasteListener;
 
   @override
   void initState() {
     super.initState();
+    _titleFocusNode = FocusNode();
+    _bodyFocusNode = FocusNode();
+    _memoNotifier = ref.read(memoProvider.notifier);
+    HardwareKeyboard.instance.addHandler(_handleEditorKeyEvent);
     WidgetsBinding.instance.addObserver(this);
     _bodyController.addListener(_onContentChanged);
     _titleController.addListener(_onTitleChanged);
@@ -1543,9 +1664,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     if (!_loaded || !_isDirty) return;
     late final String encoded;
     try {
-      final memo = ref
-          .read(memoProvider)
-          .valueOrNull
+      final memo = _memoNotifier.state.valueOrNull
           ?.where((item) => item['id'] == widget.memoId)
           .firstOrNull;
       final isPrivate = memo?['isPrivate'] == true;
@@ -1993,8 +2112,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     unawaited(_writeDraftNow(reportError: false));
     // 离开编辑器时冲刷未保存内容，并留下一个自动恢复版本。
     if (_isDirty && _autoSaveEnabled && !_saving) {
-      final notifier = ref.read(memoProvider.notifier);
-      notifier
+      _memoNotifier
           .updateMemo(
             widget.memoId,
             title: _titleController.text,
@@ -2010,11 +2128,13 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     _titleController.removeListener(_onTitleChanged);
     _titleController.dispose();
     _bodyController.dispose();
+    _titleFocusNode.dispose();
     _bodyFocusNode.dispose();
     ClipboardEvents.instance?.unregisterPasteEventListener(_pasteListener);
     _editorScrollController.dispose();
     _previewScrollController.dispose();
     _previewText.dispose();
+    HardwareKeyboard.instance.removeHandler(_handleEditorKeyEvent);
     super.dispose();
   }
 
@@ -2062,124 +2182,113 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     } else {
       _detectExternalChange(memo, isPrivate);
     }
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              if (widget.isMobile)
-                IconButton(
-                  tooltip: '返回备忘录列表',
-                  onPressed: () async {
-                    _draftTimer?.cancel();
-                    await _writeDraftNow();
-                    if (mounted) widget.onBack?.call();
-                  },
-                  icon: const Icon(Icons.arrow_back),
-                ),
-              Expanded(
-                child: TextField(
-                  controller: _titleController,
-                  readOnly: widget.viewMode == _MemoViewMode.read,
-                  decoration: const InputDecoration(
-                    hintText: '标题',
-                    border: InputBorder.none,
+    return Focus(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                if (widget.isMobile)
+                  IconButton(
+                    tooltip: '返回备忘录列表',
+                    onPressed: _returnToList,
+                    icon: const Icon(Icons.arrow_back),
                   ),
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-              if (!widget.isMobile) ...[
-                _buildSaveStatus(memo),
-                const SizedBox(width: 4),
-              ],
-              if (!widget.isMobile)
-                IconButton(
-                  tooltip: '插入图片',
-                  onPressed: _insertImage,
-                  icon: const Icon(Icons.image_outlined),
-                ),
-              if (!widget.isMobile)
-                IconButton(
-                  tooltip: '附件管理',
-                  onPressed: _showAttachmentsDialog,
-                  icon: const Icon(Icons.attach_file),
-                ),
-              IconButton(
-                tooltip: '更多操作',
-                onPressed: () => _showMoreMenu(memo),
-                icon: const Icon(Icons.more_vert),
-              ),
-              SegmentedButton<_MemoViewMode>(
-                segments: [
-                  const ButtonSegment(
-                    value: _MemoViewMode.read,
-                    icon: Icon(Icons.menu_book_outlined, size: 18),
-                    tooltip: '阅读',
-                  ),
-                  const ButtonSegment(
-                    value: _MemoViewMode.edit,
-                    icon: Icon(Icons.edit_outlined, size: 18),
-                    tooltip: '编辑 Markdown',
-                  ),
-                  if (!widget.isMobile)
-                    const ButtonSegment(
-                      value: _MemoViewMode.split,
-                      icon: Icon(Icons.vertical_split_outlined, size: 18),
-                      tooltip: '分屏编辑与预览',
+                Expanded(
+                  child: TextField(
+                    controller: _titleController,
+                    focusNode: _titleFocusNode,
+                    readOnly: widget.viewMode == _MemoViewMode.read,
+                    decoration: const InputDecoration(
+                      hintText: '标题',
+                      border: InputBorder.none,
                     ),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                if (!widget.isMobile) ...[
+                  _buildSaveStatus(memo),
+                  const SizedBox(width: 4),
                 ],
-                selected: {widget.viewMode},
-                showSelectedIcon: false,
-                onSelectionChanged: (selection) =>
-                    widget.onViewModeChanged(selection.first),
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
-              ),
-              IconButton(
-                tooltip: '保存',
-                onPressed: _saving ? null : _save,
-                icon: const Icon(Icons.save_outlined),
-              ),
-            ],
-          ),
-          if (widget.isMobile)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 4, bottom: 4),
-                child: _buildSaveStatus(memo),
-              ),
+                if (!widget.isMobile)
+                  IconButton(
+                    tooltip: '插入图片',
+                    onPressed: _insertImage,
+                    icon: const Icon(Icons.image_outlined),
+                  ),
+                if (!widget.isMobile)
+                  IconButton(
+                    tooltip: '附件管理',
+                    onPressed: _showAttachmentsDialog,
+                    icon: const Icon(Icons.attach_file),
+                  ),
+                IconButton(
+                  tooltip: '更多操作',
+                  onPressed: () => _showMoreMenu(memo),
+                  icon: const Icon(Icons.more_vert),
+                ),
+                SegmentedButton<_MemoViewMode>(
+                  segments: [
+                    const ButtonSegment(
+                      value: _MemoViewMode.read,
+                      icon: Icon(Icons.menu_book_outlined, size: 18),
+                      tooltip: '阅读',
+                    ),
+                    const ButtonSegment(
+                      value: _MemoViewMode.edit,
+                      icon: Icon(Icons.edit_outlined, size: 18),
+                      tooltip: '编辑 Markdown',
+                    ),
+                    if (!widget.isMobile)
+                      const ButtonSegment(
+                        value: _MemoViewMode.split,
+                        icon: Icon(Icons.vertical_split_outlined, size: 18),
+                        tooltip: '分屏编辑与预览',
+                      ),
+                  ],
+                  selected: {widget.viewMode},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      widget.onViewModeChanged(selection.first),
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+                IconButton(
+                  tooltip: '保存',
+                  onPressed: _saving ? null : _save,
+                  icon: const Icon(Icons.save_outlined),
+                ),
+              ],
             ),
-          const Divider(height: 1),
-          if (_externalChange != null) _buildExternalChangeBanner(),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                const wideBreakpoint = 1000.0;
-                final wide = constraints.maxWidth >= wideBreakpoint;
-                final editorPane = DropTarget(
-                  enable: widget.viewMode != _MemoViewMode.read,
-                  onDragEntered: (_) => setState(() => _draggingImage = true),
-                  onDragExited: (_) => setState(() => _draggingImage = false),
-                  onDragDone: (details) {
-                    setState(() => _draggingImage = false);
-                    unawaited(_insertDroppedImages(details.files));
-                  },
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      CallbackShortcuts(
-                        bindings: {
-                          const SingleActivator(
-                            LogicalKeyboardKey.keyV,
-                            control: true,
-                          ): _pasteFromSystemClipboard,
-                          const SingleActivator(
-                            LogicalKeyboardKey.keyV,
-                            meta: true,
-                          ): _pasteFromSystemClipboard,
-                        },
-                        child: TextField(
+            if (widget.isMobile)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 4, bottom: 4),
+                  child: _buildSaveStatus(memo),
+                ),
+              ),
+            const Divider(height: 1),
+            if (_externalChange != null) _buildExternalChangeBanner(),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  const wideBreakpoint = 1000.0;
+                  final wide = constraints.maxWidth >= wideBreakpoint;
+                  final editorPane = DropTarget(
+                    enable: widget.viewMode != _MemoViewMode.read,
+                    onDragEntered: (_) => setState(() => _draggingImage = true),
+                    onDragExited: (_) => setState(() => _draggingImage = false),
+                    onDragDone: (details) {
+                      setState(() => _draggingImage = false);
+                      unawaited(_insertDroppedImages(details.files));
+                    },
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        TextField(
                           focusNode: _bodyFocusNode,
                           controller: _bodyController,
                           scrollController: _editorScrollController,
@@ -2193,56 +2302,86 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
                             contentPadding: EdgeInsets.all(16),
                           ),
                         ),
-                      ),
-                      if (_draggingImage)
-                        IgnorePointer(
-                          child: ColoredBox(
-                            color: context.appColors.accent.withValues(
-                              alpha: 0.12,
-                            ),
-                            child: Center(
-                              child: Text(
-                                '松开以插入图片',
-                                style: TextStyle(
-                                  color: context.appColors.accent,
-                                  fontWeight: FontWeight.w600,
+                        if (_draggingImage)
+                          IgnorePointer(
+                            child: ColoredBox(
+                              color: context.appColors.accent.withValues(
+                                alpha: 0.12,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '松开以插入图片',
+                                  style: TextStyle(
+                                    color: context.appColors.accent,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                );
-                final previewPane = ValueListenableBuilder<String>(
-                  valueListenable: _previewText,
-                  builder: (context, text, _) => SingleChildScrollView(
-                    controller: _previewScrollController,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 16,
-                      horizontal: 16,
+                      ],
                     ),
-                    child: MarkdownPreview(data: text),
-                  ),
-                );
-                if (widget.viewMode == _MemoViewMode.edit) return editorPane;
-                if (widget.viewMode == _MemoViewMode.split && wide) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(child: editorPane),
-                      const VerticalDivider(width: 1),
-                      Expanded(child: previewPane),
-                    ],
                   );
-                }
-                return previewPane;
-              },
+                  final previewPane = ValueListenableBuilder<String>(
+                    valueListenable: _previewText,
+                    builder: (context, text, _) => SingleChildScrollView(
+                      controller: _previewScrollController,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 16,
+                        horizontal: 16,
+                      ),
+                      child: MarkdownPreview(data: text),
+                    ),
+                  );
+                  if (widget.viewMode == _MemoViewMode.edit) return editorPane;
+                  if (widget.viewMode == _MemoViewMode.split && wide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: editorPane),
+                        const VerticalDivider(width: 1),
+                        Expanded(child: previewPane),
+                      ],
+                    );
+                  }
+                  return previewPane;
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _returnToList() async {
+    _draftTimer?.cancel();
+    await _writeDraftNow();
+    if (mounted) widget.onBack?.call();
+  }
+
+  bool _handleEditorKeyEvent(KeyEvent event) {
+    if (!mounted || ModalRoute.of(context)?.isCurrent == false) return false;
+    if (event is! KeyDownEvent) return false;
+    final modified =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (modified &&
+        event.logicalKey == LogicalKeyboardKey.keyV &&
+        widget.viewMode != _MemoViewMode.read &&
+        _bodyFocusNode.hasFocus) {
+      _pasteFromSystemClipboard();
+      return true;
+    }
+    if (modified && event.logicalKey == LogicalKeyboardKey.keyS) {
+      unawaited(_save());
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      unawaited(_returnToList());
+      return true;
+    }
+    return false;
   }
 
   void _detectExternalChange(Map<String, dynamic> memo, bool isPrivate) {
@@ -2511,6 +2650,20 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
                 ],
               ),
             ),
+          if (!hidesMetadata)
+            SimpleDialogOption(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _showMoveMemoDialog(memo['folderId'] as String?);
+              },
+              child: const Row(
+                children: [
+                  Icon(Icons.drive_file_move_outline, size: 18),
+                  SizedBox(width: 8),
+                  Text('移动到文件夹'),
+                ],
+              ),
+            ),
           SimpleDialogOption(
             onPressed: () {
               Navigator.pop(dialogContext);
@@ -2521,6 +2674,32 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
                 Icon(Icons.history, size: 18),
                 SizedBox(width: 8),
                 Text('版本历史'),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _exportMarkdown(includeAttachments: false);
+            },
+            child: const Row(
+              children: [
+                Icon(Icons.file_download_outlined, size: 18),
+                SizedBox(width: 8),
+                Text('导出 Markdown'),
+              ],
+            ),
+          ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _exportMarkdown(includeAttachments: true);
+            },
+            child: const Row(
+              children: [
+                Icon(Icons.folder_zip_outlined, size: 18),
+                SizedBox(width: 8),
+                Text('导出 Markdown + 附件 ZIP'),
               ],
             ),
           ),
@@ -2609,6 +2788,113 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
           context,
         ).showSnackBar(SnackBar(content: Text('操作失败：$error')));
       }
+    }
+  }
+
+  Future<void> _showMoveMemoDialog(String? currentFolderId) async {
+    const noFolderTarget = '__no_folder__';
+    late final List<Map<String, dynamic>> folders;
+    try {
+      folders = await ref.read(memoProvider.notifier).loadFolders();
+    } catch (error) {
+      _toast('加载文件夹失败：$error');
+      return;
+    }
+    if (!mounted) return;
+    final selectedTarget = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('移动到文件夹'),
+        children: [
+          RadioGroup<String>(
+            groupValue: currentFolderId ?? noFolderTarget,
+            onChanged: (value) {
+              if (value != null) Navigator.pop(dialogContext, value);
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const RadioListTile<String>(
+                  value: noFolderTarget,
+                  title: Text('无文件夹'),
+                  secondary: Icon(Icons.folder_off_outlined),
+                ),
+                for (final folder in folders)
+                  RadioListTile<String>(
+                    value: folder['id'] as String,
+                    title: Text(folder['name'] as String? ?? '未命名文件夹'),
+                    secondary: const Icon(Icons.folder_outlined),
+                  ),
+              ],
+            ),
+          ),
+          const Divider(),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('取消', textAlign: TextAlign.end),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || selectedTarget == null) return;
+    final targetFolderId = selectedTarget == noFolderTarget
+        ? null
+        : selectedTarget;
+    if (targetFolderId == currentFolderId) return;
+    try {
+      if (_isDirty) await _save(silent: true);
+      await ref
+          .read(memoProvider.notifier)
+          .moveMemo(widget.memoId, targetFolderId);
+      if (!mounted) return;
+      setState(() {});
+      _toast(targetFolderId == null ? '已移回无文件夹' : '备忘录已移动');
+    } catch (error) {
+      _toast('移动备忘录失败：$error');
+    }
+  }
+
+  Future<void> _exportMarkdown({required bool includeAttachments}) async {
+    try {
+      final memo = _currentMemo;
+      if (memo == null) throw StateError('备忘录不存在或已删除');
+      final isPrivate = memo['isPrivate'] == true;
+      if (isPrivate && !MemoCryptoService.instance.isUnlocked) {
+        throw StateError('请先解锁隐私保险库');
+      }
+      if (_isDirty) {
+        final saved = await _performSave(
+          snapshot: true,
+          manual: false,
+          source: 'manual',
+        );
+        if (!saved) return;
+      }
+      final title = _titleController.text.trim().isEmpty
+          ? '未命名备忘录'
+          : _titleController.text.trim();
+      final bytes = includeAttachments
+          ? await MemoMarkdownTransferService.exportTyporaZip(
+              memoId: widget.memoId,
+              title: title,
+              body: _bodyController.text,
+              isPrivate: isPrivate,
+            )
+          : MemoMarkdownTransferService.encodeMarkdown(_bodyController.text);
+      final extension = includeAttachments ? 'zip' : 'md';
+      final outputPath = await FilePicker.saveFile(
+        dialogTitle: includeAttachments ? '导出 Typora ZIP' : '导出 Markdown',
+        fileName:
+            '${MemoMarkdownTransferService.safeBaseName(title)}.$extension',
+        type: FileType.custom,
+        allowedExtensions: [extension],
+        bytes: bytes,
+      );
+      if (!kIsWeb && outputPath == null) return;
+      if (!mounted) return;
+      _toast(includeAttachments ? 'Markdown 和附件已导出' : 'Markdown 已导出');
+    } catch (error) {
+      _toast('导出失败：$error');
     }
   }
 
