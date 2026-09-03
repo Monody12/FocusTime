@@ -58,11 +58,16 @@ server_version="$(node -p "require('./server/package.json').version")"
 installer_version="$(sed -n 's/^AppVersion=//p' windows/packaging/inno_setup.iss)"
 readme_version="$(sed -n 's/^当前版本：v\([^ ]*\).*/\1/p' README.md)"
 release_tag="v$app_version"
+server_node="$(node -p "require('./server/ecosystem.config.js').apps.find((app) => app.name === 'focus-timer-sync').interpreter || ''")"
 
 [[ -n "$app_version" && "$build_number" != "$version_line" ]] || fail "Invalid pubspec version: $version_line"
 [[ "$server_version" == "$app_version" ]] || fail "Server version $server_version does not match $app_version"
 [[ "$installer_version" == "$app_version" ]] || fail "Installer version $installer_version does not match $app_version"
 [[ "$readme_version" == "$app_version" ]] || fail "README version $readme_version does not match $app_version"
+[[ -x "$server_node" ]] || fail "Configured server Node.js is not executable: $server_node"
+server_node_dir="$(dirname "$server_node")"
+server_npm="$server_node_dir/npm"
+[[ -x "$server_npm" ]] || fail "npm is missing beside the configured Node.js: $server_npm"
 
 # origin 可能是 ghfast 之类的下载代理 URL，gh 无法从中推断仓库，显式提取
 gh_repo="${GH_REPO:-$(git remote get-url origin | sed -n -e 's#\.git$##' -e 's#.*/\([A-Za-z0-9_.-]*/[A-Za-z0-9_.-]*\)$#\1#p')}"
@@ -79,7 +84,7 @@ git diff --quiet "$release_tag" -- "${runtime_paths[@]}" ||
 
 verify_online() {
   local online_version online_build pm2_version pm2_status health_status
-  local local_main_hash remote_main_hash wasm_content_type
+  local local_main_hash remote_main_hash wasm_content_type pm2_interpreter
 
   online_version="$(curl -fsS --max-time 15 "$production_url/version.json" | jq -r '.version')"
   online_build="$(curl -fsS --max-time 15 "$production_url/version.json" | jq -r '.build_number')"
@@ -90,6 +95,9 @@ verify_online() {
   pm2_status="$(pm2 jlist | jq -r '.[] | select(.name == "focus-timer-sync") | .pm2_env.status')"
   [[ "$pm2_version" == "$app_version" ]] || fail "PM2 version is $pm2_version, expected $app_version"
   [[ "$pm2_status" == "online" ]] || fail "PM2 status is $pm2_status"
+  pm2_interpreter="$(pm2 jlist | jq -r '.[] | select(.name == "focus-timer-sync") | .pm2_env.node_interpreter')"
+  [[ "$pm2_interpreter" == "$server_node" ]] ||
+    fail "PM2 uses $pm2_interpreter, expected $server_node"
 
   health_status="$(curl -fsS --max-time 15 "$production_url/api/health" | jq -r '.status')"
   [[ "$health_status" == "ok" ]] || fail "Production API health check failed"
@@ -116,14 +124,15 @@ git fetch origin master --quiet
 [[ "$(git rev-parse HEAD)" == "$(git rev-parse origin/master)" ]] ||
   fail "HEAD is not the pushed origin/master commit"
 
-export PATH="$(dirname "$flutter_bin"):$PATH"
+export PATH="$server_node_dir:$(dirname "$flutter_bin"):$PATH"
 flutter pub get
+"$server_npm" --prefix server ci
 if ! $skip_tests; then
   flutter analyze
   flutter test
-  npm --prefix server test
+  "$server_npm" --prefix server test
 else
-  npm --prefix server run build
+  "$server_npm" --prefix server run build
 fi
 
 rm -rf build/web
@@ -164,7 +173,7 @@ if [[ -f "$server_db" ]]; then
   # 的 node 可能是旧大版本（ABI 不符，DLOPEN 失败），按实测加载结果选择 node
   backup_node=""
   for candidate in \
-    "$(pm2 jlist 2>/dev/null | jq -r '.[] | select(.name == "focus-timer-sync") | .pm2_env.node_interpreter' | head -1)" \
+    "$server_node" \
     /root/.nvm/versions/node/*/bin/node \
     "$(command -v node)"; do
     [[ -x "$candidate" ]] || continue
@@ -198,7 +207,8 @@ install -m 644 server/package.json "$server_root/package.json"
 install -m 644 server/package-lock.json "$server_root/package-lock.json"
 install -m 644 server/tsconfig.json "$server_root/tsconfig.json"
 install -m 644 server/ecosystem.config.js "$server_root/ecosystem.config.js"
-npm --prefix "$server_root" run build
+"$server_npm" --prefix "$server_root" ci
+"$server_npm" --prefix "$server_root" run build
 pm2 restart "$server_root/ecosystem.config.js" --only focus-timer-sync --update-env
 pm2 save
 

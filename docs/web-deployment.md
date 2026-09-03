@@ -13,6 +13,8 @@ tool/deploy_production.sh
 Web，使用 SQLite 在线备份 API 保存一致的数据快照，备份并更新 `/root/focus-timer-sync`，重启 PM2，然后把静态产物复制到
 `/www/wwwroot/focus.dluserver.cn/releases/<timestamp>` 并原子切换 `current`。
 部署结束时会再次检查线上版本、PM2、同域 API、Wasm MIME 和 `main.dart.js` 哈希。
+脚本从 `server/ecosystem.config.js` 读取生产 Node 解释器，在本地测试和生产目录更新前
+都执行 `npm ci`，确保 TypeScript 构建工具存在且 `better-sqlite3` 的 ABI 与 PM2 一致。
 
 只检查当前线上部署是否与仓库版本一致，不执行部署：
 
