@@ -195,6 +195,13 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                           _showTopListActionsSheet(context, list),
                       onSecondaryTapDown: (position) =>
                           _showTopListContextMenu(context, position, list),
+                      isHovering: _dragHoverListId == list.id,
+                      onHover: (hovering) {
+                        setState(() {
+                          _dragHoverListId = hovering ? list.id : null;
+                        });
+                      },
+                      onAccept: (taskId) => _handleTaskDrop(taskId, list),
                       isDark: isDark,
                       isMobile: isMobile,
                     );
@@ -268,16 +275,7 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
                           _dragHoverListId = hovering ? list.id : null;
                         });
                       },
-                      onAccept: (taskId) async {
-                        try {
-                          await taskNotifier.updateTask(taskId, {
-                            'listId': list.id,
-                          });
-                          widget.onListChanged?.call();
-                        } catch (_) {
-                          _showErrorSnackBar('移动任务失败，请重试');
-                        }
-                      },
+                      onAccept: (taskId) => _handleTaskDrop(taskId, list),
                       isDark: isDark,
                       isMobile: isMobile,
                     );
@@ -335,7 +333,7 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
     );
   }
 
-  // 系统清单项（不可作为拖拽目标）
+  // 顶部清单项（系统清单与置顶清单，同样作为任务拖拽目标）
   Widget _buildListItem(
     BuildContext context, {
     required IconData icon,
@@ -344,59 +342,128 @@ class _SidebarState extends ConsumerState<Sidebar> with WidgetsBindingObserver {
     required VoidCallback onTap,
     VoidCallback? onLongPress,
     ValueChanged<Offset>? onSecondaryTapDown,
+    required bool isHovering,
+    required Function(bool) onHover,
+    required Function(String) onAccept,
     required bool isDark,
     required bool isMobile,
   }) {
-    return GestureDetector(
-      onLongPress: onLongPress,
-      onSecondaryTapDown: isMobile || onSecondaryTapDown == null
-          ? null
-          : (details) => onSecondaryTapDown(details.globalPosition),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-            decoration: isSelected
-                ? BoxDecoration(
-                    color: context.appColors.surfaceElevated,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: context.appColors.border),
-                  )
-                : null,
-            child: Row(
-              children: [
-                AppIcon(
-                  icon,
-                  size: AppIconSizes.nav,
-                  color: isSelected
-                      ? context.appColors.text
-                      : context.appColors.textSecondary,
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) {
+        onHover(true);
+        return true;
+      },
+      onLeave: (_) {
+        onHover(false);
+      },
+      onAcceptWithDetails: (details) {
+        onHover(false);
+        onAccept(details.data);
+      },
+      builder: (context, candidateData, rejectedData) {
+        return GestureDetector(
+          onLongPress: onLongPress,
+          onSecondaryTapDown: isMobile || onSecondaryTapDown == null
+              ? null
+              : (details) => onSecondaryTapDown(details.globalPosition),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 11,
                 ),
-                const SizedBox(width: AppIconSpacing.labelGap),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: isSelected
-                          ? (context.appColors.text)
-                          : (context.appColors.textSecondary),
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.normal,
+                decoration: isSelected || isHovering
+                    ? BoxDecoration(
+                        color: context.appColors.surfaceElevated,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: context.appColors.border),
+                      )
+                    : null,
+                child: Row(
+                  children: [
+                    AppIcon(
+                      icon,
+                      size: AppIconSizes.nav,
+                      color: isSelected || isHovering
+                          ? context.appColors.text
+                          : context.appColors.textSecondary,
                     ),
-                  ),
+                    const SizedBox(width: AppIconSpacing.labelGap),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          color: isSelected || isHovering
+                              ? (context.appColors.text)
+                              : (context.appColors.textSecondary),
+                          fontWeight: isSelected || isHovering
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                    if (isHovering)
+                      Icon(
+                        AppIcons.listReceive,
+                        size: AppIconSizes.nav,
+                        color: context.appColors.accent,
+                      ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
+  }
+
+  /// 统一处理任务拖拽到侧边栏清单的落点。
+  /// 系统清单是标志位视图：「我的一天」「重要」只设置对应标志，任务不换清单；
+  /// 重复移动视为无效移动并给出警告。
+  Future<void> _handleTaskDrop(String taskId, TaskList list) async {
+    final taskNotifier = ref.read(taskProvider.notifier);
+    final task = ref
+        .read(taskProvider)
+        .tasks
+        .where((t) => t.id == taskId)
+        .firstOrNull;
+    try {
+      switch (list.id) {
+        case 'system-my-day':
+          if (task?.isMyDay == true) {
+            _showErrorSnackBar('任务已在“我的一天”中');
+            return;
+          }
+          await taskNotifier.addToMyDay(taskId);
+          return;
+        case 'system-important':
+          if (task?.isImportant == true) {
+            _showErrorSnackBar('任务已在“重要”清单中');
+            return;
+          }
+          await taskNotifier.updateTask(taskId, {'isImportant': true});
+          return;
+        case 'system-all-tasks':
+          _showErrorSnackBar('“任务”是全部任务视图，无需移动');
+          return;
+        default:
+          if (task?.listId == list.id) {
+            _showErrorSnackBar('任务已在该清单中');
+            return;
+          }
+          await taskNotifier.updateTask(taskId, {'listId': list.id});
+          widget.onListChanged?.call();
+      }
+    } catch (_) {
+      _showErrorSnackBar('移动任务失败，请重试');
+    }
   }
 
   String _viewTypeForList(TaskList list) {
