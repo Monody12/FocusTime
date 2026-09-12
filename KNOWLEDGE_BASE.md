@@ -1504,3 +1504,33 @@ Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提�
 *最后更新日期：2026-09-06*
 
 ---
+
+## 50. 备忘录粘贴：Web 拦截 keydown 会杀死 paste 事件，桌面放行连发会叠加内置粘贴
+
+### 50.1 问题现象
+
+两个症状同源于 `_MemoEditor` 的全局按键拦截 `_handleEditorKeyEvent`：
+
+1. Web 端（macOS Chrome 实测确认）备忘录正文聚焦时按 Cmd/Ctrl+V 完全无响应，右键菜单粘贴正常；
+2. Windows 桌面客户端粘贴大段文本时偶尔被粘贴两次。
+
+### 50.2 根因
+
+1. **Web 端粘贴死锁**：handler 在正文聚焦时拦截 Cmd/Ctrl+V 并 `return true`，Flutter web 引擎随即对该 keydown 调用 `preventDefault`（engine `keyboard_binding.dart` 无文本输入例外）；paste 事件是 Ctrl/Cmd+V 的默认动作，被取消后不再派发，于是 super_clipboard 注册在 window 上的 paste 监听（`_handleWebPaste` 的唯一触发源）永远收不到事件。而 handler 调用的 `_pasteFromSystemClipboard` 在 Web 上因 `super_clipboard` 的 `ClipboardEvents.instance` 恒非 null（web 实现 `supported => true`）直接 return——两条路径同时失活。右键/菜单粘贴不经过 keydown，因此仍可用。
+2. **桌面端双份粘贴**：`KeyRepeatEvent` 直接继承 `KeyEvent` 而非 `KeyDownEvent`（Flutter 3.24+ 事件去规范化），`event is! KeyDownEvent` 过滤不掉连发。首按 Ctrl+V 被 handler 拦截走 `_pasteFromSystemClipboard` 自定义粘贴（第 1 份）；长按产生的 `KeyRepeatEvent` 被 `return false` 放行进入焦点树，框架内置 `DefaultTextEditingShortcuts` 将 Ctrl+V 映射为 `PasteTextIntent`，触发第二次粘贴。
+
+### 50.3 方案
+
+1. handler 同时接受 `KeyDownEvent` 与 `KeyRepeatEvent`；粘贴、Ctrl+S、Escape 三个分支对连发一律 `return true` 吞掉。
+2. Web 端粘贴首按 `return false` 放行：浏览器默认动作触发 paste 事件，由 `_handleWebPaste` 统一插入文本与图片；`_PasteEvent.getReader()` 的一次性 `preventDefault` 锁保证原生插入被抑制、正文未聚焦时原生粘贴不受影响；框架在 Web 端已将粘贴快捷键映射为 `DoNothingAndStopPropagationTextIntent`（`_webDisablingTextShortcuts`），不会二次插入。
+3. 桌面端保留 `_pasteFromSystemClipboard()`（`SystemClipboard.read`）路径，仅补充连发吞噬。
+
+### 50.4 教训
+
+- Web 端在 keydown 层拦截编辑类快捷键（`return true`）等于同时杀死"浏览器默认动作 + paste 事件"与"Flutter 内置快捷键"两条路径；Web 上接管粘贴的正确位置是 paste 事件（`getReader()` 提供取消原生插入的语义），keydown 层应放行。
+- 按键分支必须显式处理 `KeyRepeatEvent`——它不是 `KeyDownEvent` 的子类；放行的连发会落入框架内置快捷键，形成"自定义 + 内置"双动作，且表现为偶发（取决于按住时长）。
+- 验证此类修复不能只看"能不能粘贴"：修复后的放行路径与 handler 完全失效在表象上相同（都靠浏览器默认粘贴成功），必须确认走了预期分支；另外自动化合成按键只带 modifier flag、不派发独立 meta keydown，Flutter 侧 `isMetaPressed` 为 false，合成快捷键无法验证带修饰键的分支。
+
+*最后更新日期：2026-09-12*
+
+---
