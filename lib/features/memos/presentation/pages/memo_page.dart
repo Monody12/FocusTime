@@ -2360,7 +2360,8 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
 
   bool _handleEditorKeyEvent(KeyEvent event) {
     if (!mounted || ModalRoute.of(context)?.isCurrent == false) return false;
-    if (event is! KeyDownEvent) return false;
+    final isRepeat = event is KeyRepeatEvent;
+    if (event is! KeyDownEvent && !isRepeat) return false;
     final modified =
         HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
@@ -2368,14 +2369,26 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
         event.logicalKey == LogicalKeyboardKey.keyV &&
         widget.viewMode != _MemoViewMode.read &&
         _bodyFocusNode.hasFocus) {
+      // 长按产生的连发必须吞掉：放行会落入框架内置粘贴快捷键（桌面端），
+      // 或触发浏览器重复默认粘贴（Web 端），表现为内容被粘贴两次。
+      if (isRepeat) return true;
+      if (kIsWeb) {
+        // Web 端放行首按：引擎不再对 keydown 调 preventDefault，浏览器会派发
+        // paste 事件，由 _handleWebPaste 统一插入文本/图片；框架在 Web 上已把
+        // 粘贴快捷键映射为 DoNothing（_webDisablingTextShortcuts），不会二次插入。
+        // 若在此拦截并 return true，paste 事件将不会触发，粘贴完全失效。
+        return false;
+      }
       _pasteFromSystemClipboard();
       return true;
     }
     if (modified && event.logicalKey == LogicalKeyboardKey.keyS) {
+      if (isRepeat) return true;
       unawaited(_save());
       return true;
     }
     if (event.logicalKey == LogicalKeyboardKey.escape) {
+      if (isRepeat) return true;
       unawaited(_returnToList());
       return true;
     }
