@@ -8,6 +8,16 @@
 - 软删除：所有 delete 操作转为 update 设置 `deleted = 1`
 - 语言要求：与用户的沟通及对话的最终结果必须始终使用简体中文。
 
+## 低版本 macOS 的远程构建约定
+
+本机 macOS（Ventura）无法运行项目要求的 Dart 3.12 / Flutter 3.44，本地只能做静态检查。下次再遇到 macOS 版本过低、无法本机构建或运行时，**直接使用远程 Linux 服务器开发构建，不要在本地反复尝试**：
+
+- 服务器：`ssh root@1.12.46.222`（key 认证），`/opt/flutter` 为 Flutter 3.44.7，满足 `pubspec.yaml` 的 SDK 约束。
+- 代码传输：`git archive <branch> | ssh root@1.12.46.222 'mkdir -p <dir> && tar -x -C <dir>'`，无需服务器 git 凭证。
+- 构建测试必须用隔离目录（如 `/root/focustime-paste-test`）；`/root/FocusTime` 是生产部署目录，除执行 `tool/deploy_production.sh` 外不得改动。
+- 本地实测 Web 产物：服务器 `build/web` 起静态服务（需正确 `application/wasm` MIME），本地 `ssh -N -L <port>:127.0.0.1:<port>` 穿透后用浏览器访问。
+- 远程命令中避免 `pkill -f <脚本名>`：模式会匹配携带同名参数的远程 shell 自身导致连接中断。
+
 ## Android 日历同步
 
 **核心原则：用 UPDATE 替代 DELETE+INSERT。**
