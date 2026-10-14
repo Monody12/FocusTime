@@ -63,6 +63,7 @@ PORT=6677
 HOST=127.0.0.1
 JWT_SECRET=<a-long-random-secret>
 CORS_ORIGINS=https://focus.dluserver.cn
+# MCP_ALLOWED_HOSTS=your.example.com
 ```
 
 重启 PM2 前先构建服务端：
@@ -93,6 +94,26 @@ Web 应用需要以下规则：
 - 缓存静态资源，并以 `application/wasm` 返回 `.wasm` 文件。
 - 将 `Host`、`X-Real-IP`、`X-Forwarded-For` 与
   `X-Forwarded-Proto` 转发给 API。
+- 将 `/mcp` 反代到 Node。该路径不能落入 Flutter 的 `try_files ... /index.html`，
+  否则 MCP 客户端会收到 HTML 而不是 JSON-RPC。建议放在站点 `location /` 之前：
+
+```
+location ^~ /mcp {
+    proxy_pass http://127.0.0.1:6677;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;
+}
+```
+
+生产机使用 aaPanel 的 Nginx（`/www/server/nginx/sbin/nginx`），改配置后执行该二进制的 `-t` 与 `-s reload`，不要用系统 `/usr/bin/nginx`。
+
+未带令牌的 `POST /mcp` 应返回 HTTP 401 和 JSON。若返回 `text/html`，说明仍被静态站点接管。
+MCP 用法见 [mcp.md](mcp.md)。
 
 ## 浏览器行为
 

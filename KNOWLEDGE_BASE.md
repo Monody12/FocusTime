@@ -1534,3 +1534,32 @@ Flutter 3.44 使用的新版 Android SDK 为 `BigPictureStyle.bigLargeIcon` 提�
 *最后更新日期：2026-09-12*
 
 ---
+
+## 51. MCP 不能挂在 Flutter Web 上，必须走同步服务的 `/mcp`
+
+### 51.1 问题现象
+
+公共站点 `https://focus.dluserver.cn` 是 Flutter Web（WASM SQLite + LWW REST），不能直接当作 MCP 服务器。未单独反代时，`POST /mcp` 会被 Nginx `try_files` 落到 `index.html`，MCP 客户端收到 HTML。
+
+### 51.2 根因
+
+MCP 需要账号级已同步数据、鉴权和稳定的 JSON-RPC 传输。浏览器里的 SQLite 只属于当前标签页，没有多用户鉴权，也无法被 Claude/Cursor 用 stdio 或远程 HTTP 调用。数据的服务端真相在 Node 同步服务的 `sync_records`。
+
+### 51.3 方案
+
+1. 在同步服务内实现 MCP：`POST /mcp`（Streamable HTTP / 无状态 JSON-RPC）+ `server/src/mcp/stdio.ts` 本地代理。
+2. 领域层通过现有 `applyClientTables` 写入，沿用 LWW、字段版本和软删除，写操作会同步到用户所有设备。
+3. 个人访问令牌 `fmcp_` 以 SHA-256 存储，默认 `tasks:read` + `sessions:read`；`tasks:write` 需显式勾选。登录 JWT 可调用全部工具，仅建议调试。
+4. Nginx 增加 `location ^~ /mcp` 反代到 `127.0.0.1:6677`，必须写在站点 `location /` 之前。
+5. 测试必须设置 `FOCUSMYTIME_DATA_DIR` 指向临时目录，禁止打开 `/root/focus-timer-sync/data/sync-server.db`。
+
+### 51.4 教训
+
+- 「Web 端有同步接口」不等于「Web 端是 MCP」。MCP 挂在同步服务，Web 只负责生成令牌。
+- 开源自建用户复制 `server/` 即可，不必使用公共站点。
+- 隐私备忘录明文不在服务端，不能也不应进入 MCP。
+- 发版时除 GitHub Release 外，必须更新 Nginx `/mcp` 与生产 Node；`/api/health` 的 `"mcp": true` 和未授权 `POST /mcp` 返回 401 JSON 是上线验收项。
+
+*最后更新日期：2026-10-14*
+
+---

@@ -99,8 +99,21 @@ verify_online() {
   [[ "$pm2_interpreter" == "$server_node" ]] ||
     fail "PM2 uses $pm2_interpreter, expected $server_node"
 
-  health_status="$(curl -fsS --max-time 15 "$production_url/api/health" | jq -r '.status')"
+  health_json="$(curl -fsS --max-time 15 "$production_url/api/health")"
+  health_status="$(jq -r '.status' <<<"$health_json")"
   [[ "$health_status" == "ok" ]] || fail "Production API health check failed"
+  mcp_flag="$(jq -r '.mcp' <<<"$health_json")"
+  [[ "$mcp_flag" == "true" ]] || fail "Production health is missing mcp capability"
+
+  mcp_probe="$(mktemp)"
+  mcp_code="$(curl -sS -o "$mcp_probe" -w '%{http_code}' --max-time 15 \
+    -X POST "$production_url/mcp" \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}')"
+  [[ "$mcp_code" == "401" ]] || fail "POST /mcp should be 401 without a token, got $mcp_code"
+  jq -e '.error' "$mcp_probe" >/dev/null || fail "POST /mcp did not return JSON-RPC; Nginx may still serve index.html"
+  rm -f "$mcp_probe"
 
   [[ -s build/web/main.dart.js ]] || fail "Local Web build is missing"
   local_main_hash="$(sha256sum build/web/main.dart.js | awk '{print $1}')"

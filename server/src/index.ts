@@ -8,6 +8,8 @@ import {
   repairAllMisappliedTaskArchives
 } from './sync/algorithm'
 import storageRoutes, { publicStorageRouter } from './storage/routes'
+import mcpRouter, { mcpCors, mcpHostGuard, mcpToolInvokeRouter } from './mcp/http'
+import mcpTokenRoutes from './mcp/token_routes'
 
 const PORT = Number.parseInt(process.env.PORT || '6677', 10)
 const HOST = process.env.HOST?.trim() || '127.0.0.1'
@@ -82,6 +84,8 @@ const app = express()
 // Middleware
 app.disable('x-powered-by')
 app.set('trust proxy', 1)
+app.use(express.json({ limit: '10mb' }))
+app.use('/mcp', mcpCors, mcpHostGuard, mcpRouter)
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.has(origin)) {
@@ -96,7 +100,6 @@ app.use(cors({
   allowedHeaders: ['Authorization', 'Content-Type'],
   maxAge: 86400,
 }))
-app.use(express.json({ limit: '10mb' }))
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -105,6 +108,8 @@ app.get('/api/health', (_req, res) => {
     timestamp: Date.now(),
     // 能力标志：旧版服务器没有该字段，客户端据此降级为不同步备忘录表
     memoSync: true,
+    mcp: true,
+    mcpPath: '/mcp',
   })
 })
 
@@ -114,6 +119,8 @@ app.use('/api/auth', authRateLimit, authRoutes)
 // Sync routes
 app.use('/api/sync', syncRoutes)
 app.use('/api/storage', storageRoutes)
+app.use('/api/mcp', mcpTokenRoutes)
+app.use('/api/mcp', mcpToolInvokeRouter())
 app.use('/share', publicStorageRouter)
 
 // 404 handler

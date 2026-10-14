@@ -25,6 +25,7 @@
 - **软删除支持**：确保删除操作在所有设备间正确传播
 - **自动触发**：任务变动及专注会话结束后自动同步至云端
 - **反馈机制**：UI 实时显示同步状态及错误提示
+- **MCP 服务器**：同步服务同时提供 Model Context Protocol 端点（`/mcp`），可用个人访问令牌让 Claude、Cursor 等客户端读写已同步的任务、清单和专注记录。默认令牌只读。详见 [docs/mcp.md](docs/mcp.md)。
 
 ### 备忘录（需求基线，实施中）
 
@@ -73,7 +74,12 @@
 | 音频 | audioplayers |
 | 同步服务 | LWW 增量同步协议 |
 
-### 🚀 最近更新 (v1.9.2)
+### 🚀 最近更新 (v1.10.0)
+- **MCP 服务器**：同步服务新增 Streamable HTTP 端点 `POST /mcp` 与 stdio 代理（`npm run mcp`）。支持任务/清单/专注记录的只读与写入工具、资源与提示词；个人访问令牌 `fmcp_` 默认只读，明文只显示一次，可随时撤销。
+- **设置页令牌管理**：登录同步账号后可在设置中创建、复制和撤销 MCP 令牌。健康检查增加 `"mcp": true`。
+- **自建与公共站点**：Nginx 需把 `/mcp` 反代到 Node，不能落到 Flutter `index.html`。公共站点用法与自建说明见 [docs/mcp.md](docs/mcp.md)。
+
+### 🚀 历史更新 (v1.9.2)
 - **Web 端粘贴修复**：备忘录正文 `Cmd/Ctrl+V` 恢复可用；此前快捷键被按键拦截层吞掉导致 paste 事件不派发、粘贴完全失效（右键粘贴不受影响），现统一由 paste 事件接管文本与图片粘贴。
 - **桌面端重复粘贴修复**：长按 `Ctrl/Cmd+V` 的按键连发不再落入框架内置粘贴快捷键，Windows/macOS 客户端粘贴大段文本时不会出现内容被粘贴两次。
 - **开发环境约定**：AGENTS.md 记录低版本 macOS 使用远程 Linux 服务器构建开发的完整流程；KNOWLEDGE_BASE 新增粘贴问题复盘（§50）。
@@ -391,7 +397,7 @@ FocusTimer (根目录)
 │   ├── app.dart                # 主框架
 │   └── features/               # 功能模块 (timer, tasks, calendar, etc.)
 ├── server/                     # 同步服务器源码 (Node.js/TypeScript)
-│   ├── src/                    # 服务端核心逻辑 (auth, sync, db)
+│   ├── src/                    # 服务端核心逻辑 (auth, sync, db, mcp)
 │   ├── package.json            # 服务端依赖配置
 │   └── ecosystem.config.js     # PM2 部署配置
 ├── data/                       # 数据层相关
@@ -418,6 +424,7 @@ flutter build windows
 - [KNOWLEDGE_BASE.md](KNOWLEDGE_BASE.md) — **开发者知识库**：记录了从 Electron 到 Flutter 的迁移经验、同步算法细节及解决方案。
 - [功能模块索引](docs/project-index.md) — 代码文件快速定位
 - [Web 构建与部署](docs/web-deployment.md) — 浏览器 SQLite、HTTPS 和反向代理说明
+- [MCP 服务器](docs/mcp.md) — Claude / Cursor 连接公共站点或自建同步服务
 
 ## 服务端部署
 
@@ -443,6 +450,8 @@ cp .env.example .env
 - `HOST`: 服务监听地址（生产环境默认 `127.0.0.1`，仅由本机反向代理访问）
 - `JWT_SECRET`: 用于签发 Token 的密钥，请在生产环境务必修改为一个随机的长字符串。
 - `CORS_ORIGINS`: 允许访问同步 API 的 Web 来源，多个来源使用逗号分隔。
+- `MCP_ALLOWED_HOSTS`: MCP 端点额外允许的 Host，逗号分隔。默认已包含 `focus.dluserver.cn`、`localhost`、`127.0.0.1`。
+- `FOCUSMYTIME_DATA_DIR`: SQLite 数据目录。测试必须使用隔离目录，不要指向生产数据库。
 
 ### 3. 运行服务
 
@@ -459,4 +468,4 @@ pm2 start ecosystem.config.js
 
 ## 版本
 
-当前版本：v1.9.2 (Memo Paste Fix)
+当前版本：v1.10.0 (MCP Server)

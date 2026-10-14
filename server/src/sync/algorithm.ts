@@ -566,6 +566,7 @@ export function logSync(
 export function resetUserData(userId: string): void {
   const deleteSyncRecords = db.prepare('DELETE FROM sync_records WHERE user_id = ?')
   deleteSyncRecords.run(userId)
+  db.prepare('DELETE FROM mcp_tokens WHERE user_id = ?').run(userId)
 }
 
 /**

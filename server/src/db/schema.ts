@@ -2,7 +2,7 @@ import Database, { type Database as DatabaseType } from 'better-sqlite3'
 import { join } from 'path'
 import { existsSync, mkdirSync } from 'fs'
 
-const DATA_DIR = join(__dirname, '../../data')
+const DATA_DIR = process.env.FOCUSMYTIME_DATA_DIR?.trim() || join(__dirname, '../../data')
 if (!existsSync(DATA_DIR)) {
   mkdirSync(DATA_DIR, { recursive: true })
 }
@@ -66,6 +66,23 @@ export function initDatabase(): void {
 
     CREATE INDEX IF NOT EXISTS idx_object_shares_token ON object_shares(token_hash, revoked);
     CREATE INDEX IF NOT EXISTS idx_object_shares_user ON object_shares(user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS mcp_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      token_prefix TEXT NOT NULL,
+      name TEXT NOT NULL,
+      scopes TEXT NOT NULL,
+      expires_at INTEGER,
+      revoked INTEGER NOT NULL DEFAULT 0,
+      last_used_at INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mcp_tokens_user ON mcp_tokens(user_id, revoked, created_at);
+    CREATE INDEX IF NOT EXISTS idx_mcp_tokens_hash ON mcp_tokens(token_hash);
   `)
 
   const columns = db.prepare('PRAGMA table_info(sync_records)').all() as Array<{ name: string }>

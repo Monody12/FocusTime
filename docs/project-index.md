@@ -52,6 +52,8 @@
 | 功能 | 文件路径 |
 |------|----------|
 | 设置页面 | `lib/features/settings/presentation/pages/settings_page.dart` |
+| MCP 令牌设置 | `lib/features/settings/presentation/widgets/mcp_token_settings.dart` |
+| MCP 令牌 API | `lib/data/sync/mcp_api.dart` |
 
 ---
 
@@ -72,12 +74,24 @@
 
 ---
 
-## 八、文档
+## 八、MCP 服务器
+
+| 功能 | 文件路径 |
+|------|----------|
+| HTTP / JSON-RPC | `server/src/mcp/http.ts`, `server/src/mcp/protocol.ts` |
+| 工具 / 资源 / 提示词 | `server/src/mcp/tools.ts`, `resources.ts`, `prompts.ts` |
+| 个人访问令牌 | `server/src/mcp/tokens.ts`, `server/src/mcp/token_routes.ts` |
+| 任务领域层 | `server/src/domain/tasks.ts` |
+| stdio 代理 | `server/src/mcp/stdio.ts` |
+| 用法说明 | `docs/mcp.md` |
+
+## 九、文档
 
 | 文件 | 说明 |
 |------|------|
 | `docs/flutter-lessons.md` | Flutter 开发经验总结（含 Bug 解决方案） |
 | `docs/project-index.md` | 本文件，功能模块索引 |
+| `docs/mcp.md` | MCP 服务器接入与自建 |
 
 ---
 

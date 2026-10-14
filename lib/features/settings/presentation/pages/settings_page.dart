@@ -22,6 +22,7 @@ import 'package:focus_my_time/features/update/presentation/widgets/update_dialog
 import 'package:focus_my_time/features/update/services/update_service.dart';
 import 'package:focus_my_time/features/settings/presentation/widgets/archived_items_dialog.dart';
 import 'package:focus_my_time/features/settings/services/web_backup_service.dart';
+import 'package:focus_my_time/features/settings/presentation/widgets/mcp_token_settings.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -954,6 +955,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       color: context.appColors.textSecondary,
                     ),
                   ),
+                  if (_isLoggedIn) const McpTokenSettings(),
                   const SizedBox(height: 12),
                   _buildButtonRow([
                     _SettingButton(
