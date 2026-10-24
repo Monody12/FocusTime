@@ -17,7 +17,7 @@ dependencies:
   # 数据库
   sqflite: ^2.3.0
   sqflite_common_ffi: ^2.3.0
-  sqflite_common_ffi_web: ^1.1.2
+  sqflite_common_ffi_web: ^1.2.0
   path: ^1.8.0
 
   # 导航

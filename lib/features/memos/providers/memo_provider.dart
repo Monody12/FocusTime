@@ -90,6 +90,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
   Future<bool> hasDefaultLock() => _crypto.hasDefaultLock;
 
   Future<List<Map<String, dynamic>>> _loadCurrentView() async {
+    debugLog('memos', 'query start');
     final query = _query;
     final rows = await MemoDatabase.getMemos(
       query: null,
@@ -98,6 +99,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
       onlyArchived: _onlyArchived,
       sort: _sort,
     );
+    debugLog('memos', 'query done: ${rows.length} rows');
     final hydratedRows = _hydrateRows(rows);
     final lockedCount = hydratedRows.where((m) => m['locked'] == true).length;
     debugLog('memos', 'view loaded: rows=${rows.length} locked=$lockedCount');
