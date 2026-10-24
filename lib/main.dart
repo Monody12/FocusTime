@@ -55,6 +55,7 @@ void main() {
         );
       } catch (e, stackTrace) {
         debugPrint('App initialization failed: $e\n$stackTrace');
+        reportDebugError('App init failed: $e');
         SyncService.stopAutoSync();
         runApp(
           _InitializationErrorApp(
@@ -67,6 +68,7 @@ void main() {
     },
     (error, stackTrace) {
       debugPrint('Unhandled global error: $error\n$stackTrace');
+      reportDebugError('Unhandled: $error');
     },
   );
 }
