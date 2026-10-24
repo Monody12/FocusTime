@@ -468,4 +468,4 @@ pm2 start ecosystem.config.js
 
 ## 版本
 
-当前版本：v1.10.0 (MCP Server)
+当前版本：v1.11.0 (文件夹锁)
