@@ -9,6 +9,7 @@ import {
 } from './sync/algorithm'
 import storageRoutes, { publicStorageRouter } from './storage/routes'
 import escrowRoutes from './escrow/routes'
+import debugRoutes from './debug/routes'
 import mcpRouter, { mcpCors, mcpHostGuard, mcpToolInvokeRouter } from './mcp/http'
 import mcpTokenRoutes from './mcp/token_routes'
 
@@ -123,6 +124,7 @@ app.use('/api/auth', authRateLimit, authRoutes)
 // Sync routes
 app.use('/api/sync', syncRoutes)
 app.use('/api/escrow', escrowRoutes)
+app.use('/api/debug', debugRoutes)
 app.use('/api/storage', storageRoutes)
 app.use('/api/mcp', mcpTokenRoutes)
 app.use('/api/mcp', mcpToolInvokeRouter())
