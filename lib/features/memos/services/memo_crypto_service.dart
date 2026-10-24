@@ -119,6 +119,7 @@ class MemoCryptoService {
   /// 使用锁密码解锁文件夹。
   Future<bool> unlockFolderWithPassword(String folderId, String password) async {
     final lock = await MemoDatabase.getLockForFolder(folderId);
+    debugLog('unlock', 'lookup folder=$folderId found=${lock != null}');
     if (lock == null) return false;
     try {
       _validatePassword(password);
@@ -131,8 +132,10 @@ class MemoCryptoService {
       );
       _zero(passwordKey);
       _setSessionKey(folderId, contentKey);
+      debugLog('unlock', 'password ok folder=$folderId');
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugLog('unlock', 'password FAILED folder=$folderId: $e');
       return false;
     }
   }

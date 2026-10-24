@@ -908,6 +908,9 @@ class SyncService {
 
       final data = jsonDecode(response.body);
       if (data['tables'] != null) {
+        final received = (data['tables'] as Map)
+            .map((k, v) => MapEntry(k.toString(), v is List ? v.length : -1));
+        debugLog('sync', 'download ok: $received');
         await AppDatabase.applySyncChanges(data['tables']);
       } else {
         _setLastSyncError('下载同步失败: 服务器响应缺少 tables');

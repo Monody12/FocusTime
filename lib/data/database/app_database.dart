@@ -157,12 +157,14 @@ class AppDatabase {
         ? 'focus_my_time.db'
         : join(await getDatabasesPath(), 'focus_my_time.db');
 
-    return await openDatabase(
+    final db = await openDatabase(
       path,
       version: _schemaVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
+    debugLog('db', 'opened v$_schemaVersion');
+    return db;
   }
 
   static Future<void> _onCreate(Database db, int version) async {
@@ -2425,6 +2427,12 @@ class AppDatabase {
     // 避免在 sqflite 事务中嵌套另一个 Database.transaction。
         try {
           await MemoDatabase.applySyncChanges(tables);
+          final counts = <String>[];
+          for (final entry in tables.entries) {
+            final v = entry.value;
+            counts.add('${entry.key}=${v is List ? v.length : '?'}');
+          }
+          debugLog('sync', 'memo tables applied: ${counts.join(',')}');
         } catch (e, st) {
           reportDebugError('applyMemoSync failed: $e\n$st');
           rethrow;

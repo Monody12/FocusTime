@@ -54,6 +54,7 @@ void main() {
           ),
         );
       } catch (e, stackTrace) {
+        debugLog('init', 'FAILED: $e');
         debugPrint('App initialization failed: $e\n$stackTrace');
         reportDebugError('App init failed: $e');
         SyncService.stopAutoSync();
@@ -75,6 +76,7 @@ void main() {
 
 Future<void> _initializeServices() async {
   debugPrint('Init starting');
+  debugLog('init', 'start');
   await initializeDatabasePlatform();
 
   debugPrint('AppTime.configure() starting');
@@ -85,6 +87,7 @@ Future<void> _initializeServices() async {
   debugPrint('SyncService.init() starting');
   await SyncService.init();
   debugPrint('SyncService.init() finished');
+  debugLog('init', 'sync-service done, loggedIn=${SyncService.isLoggedIn}');
   if (SyncService.isLoggedIn) {
     SyncService.startAutoSync();
   }

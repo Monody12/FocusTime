@@ -99,6 +99,8 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
       sort: _sort,
     );
     final hydratedRows = _hydrateRows(rows);
+    final lockedCount = hydratedRows.where((m) => m['locked'] == true).length;
+    debugLog('memos', 'view loaded: rows=${rows.length} locked=$lockedCount');
     final needle = query?.trim().toLowerCase();
     if (needle == null || needle.isEmpty) return hydratedRows;
     // 有搜索词时在内存中过滤：已解锁的隐私内容参与匹配（标题/正文/标签），
