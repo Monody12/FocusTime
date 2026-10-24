@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:focus_my_time/data/database/database_file_operations.dart'
     as file_operations;
 import 'package:focus_my_time/data/database/memo_database.dart';
+import 'package:focus_my_time/core/utils/debug_error_reporter.dart';
 
 class AppDatabase {
   static Database? _database;
@@ -2422,7 +2423,12 @@ class AppDatabase {
 
     // 备忘录表使用自己的字段映射和墓碑策略。放在主事务完成后应用，
     // 避免在 sqflite 事务中嵌套另一个 Database.transaction。
-    await MemoDatabase.applySyncChanges(tables);
+        try {
+          await MemoDatabase.applySyncChanges(tables);
+        } catch (e, st) {
+          reportDebugError('applyMemoSync failed: $e\n$st');
+          rethrow;
+        }
   }
 
   static Future<void> _applyTableChanges(

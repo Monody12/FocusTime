@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/core/utils/debug_error_reporter.dart';
 
 enum SyncActivity { idle, syncing, success, error }
 
@@ -919,6 +920,7 @@ class SyncService {
         serverLastSync: data['serverLastSync'] as int?,
       );
     } catch (e) {
+      reportDebugError('download sync failed: $e');
       _setLastSyncError(_friendlyRequestError(e, '下载同步'));
       return (success: false, tokenExpired: null, serverLastSync: null);
     }
