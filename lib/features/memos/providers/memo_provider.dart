@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:focus_my_time/data/database/memo_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
+import 'package:focus_my_time/core/utils/debug_error_reporter.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_escrow_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_private_payload.dart';
@@ -51,6 +52,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
       final rows = await _loadCurrentView();
       if (revision == _requestRevision) state = AsyncData(rows);
     } catch (error, stackTrace) {
+      reportDebugError('memo reload failed: $error\n$stackTrace');
       if (revision == _requestRevision) {
         state = AsyncError(error, stackTrace);
       }

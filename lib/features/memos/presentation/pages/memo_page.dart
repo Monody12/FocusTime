@@ -17,6 +17,7 @@ import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/memos/providers/memo_provider.dart';
 import 'package:focus_my_time/features/memos/services/memo_attachment_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
+import 'package:focus_my_time/core/utils/debug_error_reporter.dart';
 import 'package:focus_my_time/features/memos/services/memo_escrow_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_draft_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_diff.dart';
@@ -215,6 +216,9 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   @override
   Widget build(BuildContext context) {
     final memos = ref.watch(memoProvider);
+  if (memos.hasError) {
+    reportDebugError('memoProvider error: ${memos.error}');
+  }
     final crypto = MemoCryptoService.instance;
     final isMobile = MediaQuery.sizeOf(context).width < 800;
     return Focus(
