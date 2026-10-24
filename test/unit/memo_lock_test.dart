@@ -332,6 +332,42 @@ void main() {
     });
   });
 
+  group('解锁后列表即时水合（web 端回归）', () {
+    test('unlockFolderWithPassword 后 provider state 应显示解锁内容', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(memoProvider.notifier);
+      await container.read(memoProvider.future);
+
+      final folder = await MemoDatabase.createFolder('解锁刷新');
+      await MemoDatabase.createMemo(
+        title: '待水合',
+        bodyMd: '解锁后可见',
+        folderId: folder['id'] as String,
+        isPrivate: false,
+      );
+      await notifier.setupFolderLock(folder['id'] as String, 'refresh-pass-1');
+      await notifier.lockFolder(folder['id'] as String);
+
+      // 锁定态：行应为 locked 占位
+      final lockedRows = container.read(memoProvider).value!;
+      final lockedRow = lockedRows.firstWhere((m) => m['title'] == null || m['locked'] == true,
+          orElse: () => throw StateError('没有锁定行: ${lockedRows.map((r) => r['title']).toList()}'));
+      expect(lockedRow['locked'], true);
+
+      // 解锁后：行应立即水合为明文
+      final ok = await notifier.unlockFolderWithPassword(
+        folder['id'] as String,
+        'refresh-pass-1',
+      );
+      expect(ok, true);
+      final rows = container.read(memoProvider).value!;
+      final row = rows.firstWhere((m) => m['isPrivate'] == true);
+      expect(row['locked'], false);
+      expect(row['bodyMd'], '解锁后可见');
+    });
+  });
+
   group('账号托管派生', () {
     test('deriveEscrowKey 输出确定且为 32 字节', () {
       final a = MemoEscrowService.deriveEscrowKey('monody12', 'cGVwcGVy');
@@ -343,3 +379,6 @@ void main() {
     });
   });
 }
+
+// 临时回归测试：解锁后 provider 列表应立即水合（web 端发现的 bug）
+void runUnlockRefreshRegression() {}
