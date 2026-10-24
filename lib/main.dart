@@ -58,6 +58,7 @@ void main() {
         runApp(
           _InitializationErrorApp(
             timedOut: e is TimeoutException,
+            error: '$e',
             onRetry: () => retryApplication(main),
           ),
         );
@@ -113,10 +114,12 @@ class _BootstrapApp extends StatelessWidget {
 class _InitializationErrorApp extends StatelessWidget {
   const _InitializationErrorApp({
     required this.timedOut,
+    required this.error,
     required this.onRetry,
   });
 
   final bool timedOut;
+  final String error;
   final VoidCallback onRetry;
 
   @override
@@ -149,6 +152,17 @@ class _InitializationErrorApp extends StatelessWidget {
                           ? '本地数据加载时间过长，请检查网络或浏览器存储权限后重试。'
                           : '本地数据初始化失败。你的现有数据不会因此被清除，请重试。',
                       textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: SelectableText(
+                        '错误详情：$error',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(context).colorScheme.outline,
+                            ),
+                      ),
                     ),
                     const SizedBox(height: 22),
                     FilledButton.icon(
