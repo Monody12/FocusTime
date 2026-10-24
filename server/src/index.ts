@@ -8,6 +8,7 @@ import {
   repairAllMisappliedTaskArchives
 } from './sync/algorithm'
 import storageRoutes, { publicStorageRouter } from './storage/routes'
+import escrowRoutes from './escrow/routes'
 import mcpRouter, { mcpCors, mcpHostGuard, mcpToolInvokeRouter } from './mcp/http'
 import mcpTokenRoutes from './mcp/token_routes'
 
@@ -108,6 +109,9 @@ app.get('/api/health', (_req, res) => {
     timestamp: Date.now(),
     // 能力标志：旧版服务器没有该字段，客户端据此降级为不同步备忘录表
     memoSync: true,
+    // 文件夹锁表与账号托管 pepper（v18 客户端探测；旧客户端忽略）
+    lockSync: true,
+    escrow: true,
     mcp: true,
     mcpPath: '/mcp',
   })
@@ -118,6 +122,7 @@ app.use('/api/auth', authRateLimit, authRoutes)
 
 // Sync routes
 app.use('/api/sync', syncRoutes)
+app.use('/api/escrow', escrowRoutes)
 app.use('/api/storage', storageRoutes)
 app.use('/api/mcp', mcpTokenRoutes)
 app.use('/api/mcp', mcpToolInvokeRouter())

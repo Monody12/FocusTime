@@ -11,7 +11,7 @@ import 'package:focus_my_time/data/database/memo_database.dart';
 class AppDatabase {
   static Database? _database;
   static const _uuid = Uuid();
-  static const _schemaVersion = 16;
+  static const _schemaVersion = 17;
   static const Map<String, String> _taskSyncFields = {
     'listId': 'list_id',
     'title': 'title',
@@ -489,6 +489,32 @@ class AppDatabase {
         deleted INTEGER NOT NULL DEFAULT 0
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS memo_locks (
+        id TEXT PRIMARY KEY,
+        folder_id TEXT NOT NULL,
+        kdf_name TEXT NOT NULL,
+        kdf_params TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        wrapped_content_key TEXT NOT NULL,
+        wrap_nonce TEXT NOT NULL,
+        recovery_wrapped_content_key TEXT NOT NULL,
+        recovery_nonce TEXT NOT NULL,
+        escrow_wrapped_content_key TEXT,
+        escrow_nonce TEXT,
+        escrow_params TEXT,
+        crypto_version INTEGER NOT NULL DEFAULT 1,
+        config_revision INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_memo_locks_folder '
+      'ON memo_locks(folder_id, deleted)',
+    );
   }
 
   static Future<void> _onUpgrade(
@@ -662,6 +688,110 @@ class AppDatabase {
         [now],
       );
     }
+    if (oldVersion < 17) {
+      await _createMemoTables(db);
+      await migrateLegacyVaultToLocks(db);
+    }
+  }
+
+  /// 把旧的全局 privacy_vault 迁移成 OneNote 式文件夹锁（v17）。
+  ///
+  /// 关键设计：默认锁的内容密钥就是旧保险库的主密钥——直接复制保险库的
+  /// 包装字段（盐/KDF 参数/包装密文），全程无需解密，因此旧隐私密码与恢复
+  /// 密钥对默认锁继续有效（用户无需重设）。文件夹/锁/备忘录移动全部使用
+  /// 固定 ID，多台设备各自迁移后按记录 ID 收敛，不会产生重复的默认文件夹。
+  /// 供 v17 升级与单元测试复用；幂等。
+  static Future<void> migrateLegacyVaultToLocks(Database db) async {
+    final vaultRows = await db.query(
+      'privacy_vault',
+      where: 'id = ? AND deleted = 0',
+      whereArgs: [MemoDatabase.vaultId],
+      limit: 1,
+    );
+    if (vaultRows.isEmpty) return;
+    final vault = vaultRows.first;
+    final existingLock = await db.query(
+      'memo_locks',
+      where: 'id = ?',
+      whereArgs: [MemoDatabase.defaultLockId],
+      limit: 1,
+    );
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (existingLock.isEmpty) {
+      await db.insert(
+        'memo_locks',
+        {
+          'id': MemoDatabase.defaultLockId,
+          'folder_id': MemoDatabase.defaultPrivacyFolderId,
+          'kdf_name': vault['kdf_name'],
+          'kdf_params': vault['kdf_params'],
+          'salt': vault['salt'],
+          'wrapped_content_key': vault['wrapped_master_key'],
+          'wrap_nonce': vault['wrap_nonce'],
+          'recovery_wrapped_content_key': vault['recovery_wrapped_master_key'],
+          'recovery_nonce': vault['recovery_nonce'],
+          'crypto_version': vault['crypto_version'] ?? 1,
+          'config_revision': vault['config_revision'] ?? 1,
+          'created_at': vault['created_at'] ?? now,
+          'updated_at': now,
+          'deleted': 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    final existingFolder = await db.query(
+      'memo_folders',
+      where: 'id = ?',
+      whereArgs: [MemoDatabase.defaultPrivacyFolderId],
+      limit: 1,
+    );
+    if (existingFolder.isEmpty) {
+      await db.insert(
+        'memo_folders',
+        {
+          'id': MemoDatabase.defaultPrivacyFolderId,
+          'parent_id': null,
+          'name': MemoDatabase.defaultPrivacyFolderName,
+          'sort_order': -100,
+          'archived': 0,
+          'created_at': now,
+          'updated_at': now,
+          'deleted': 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    } else if (existingFolder.first['deleted'] == 1) {
+      await db.update(
+        'memo_folders',
+        {'deleted': 0, 'updated_at': now},
+        where: 'id = ?',
+        whereArgs: [MemoDatabase.defaultPrivacyFolderId],
+      );
+    }
+    // 私有备忘录统一归入默认文件夹并切换到"整篇加密"形态：
+    // 标题并入密文、title 置空、encrypt_title 归零（脱离旧的无文件夹不变式，
+    // 避免老客户端把 folder_id 剥离回去），标签元数据一并隐藏。
+    await db.rawUpdate(
+      '''
+      UPDATE memos
+      SET folder_id = ?, encrypt_title = 0, title = NULL, updated_at = ?
+      WHERE is_private = 1 AND deleted = 0
+        AND (folder_id IS NULL OR folder_id != ?)
+      ''',
+      [MemoDatabase.defaultPrivacyFolderId, now, MemoDatabase.defaultPrivacyFolderId],
+    );
+    await db.rawUpdate(
+      '''
+      UPDATE memo_tag_links
+      SET deleted = 1, updated_at = ?
+      WHERE deleted = 0 AND memo_id IN (
+        SELECT id FROM memos
+        WHERE is_private = 1 AND deleted = 0
+          AND folder_id = ?
+      )
+      ''',
+      [now, MemoDatabase.defaultPrivacyFolderId],
+    );
   }
 
   static Future<void> _addListCustomizationColumns(DatabaseExecutor db) async {
@@ -2630,6 +2760,7 @@ class AppDatabase {
     'memo_tag_links',
     'memos',
     'memo_tags',
+    'memo_locks',
     'memo_folders',
     'privacy_vault',
     'ai_operations',

@@ -499,7 +499,7 @@ void main() {
     await AppDatabase.close();
 
     final upgradedDb = await AppDatabase.database;
-    expect(await upgradedDb.getVersion(), 16);
+    expect(await upgradedDb.getVersion(), 17);
     final repairedTask = await AppDatabase.getTaskById(taskId);
     expect(repairedTask, isNotNull);
     expect(repairedTask!['listId'], newListId);

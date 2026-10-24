@@ -17,6 +17,7 @@ import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/memos/providers/memo_provider.dart';
 import 'package:focus_my_time/features/memos/services/memo_attachment_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
+import 'package:focus_my_time/features/memos/services/memo_escrow_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_draft_service.dart';
 import 'package:focus_my_time/features/memos/services/memo_diff.dart';
 import 'package:focus_my_time/features/memos/services/memo_image_service.dart';
@@ -52,6 +53,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   String? _selectedTagId;
   MemoSortOption _sort = MemoSortOption.updatedDesc;
   List<Map<String, dynamic>> _folders = const [];
+  Map<String, Map<String, dynamic>> _locksByFolder = const {};
   List<Map<String, dynamic>> _tags = const [];
   List<Map<String, dynamic>>? _trashItems;
 
@@ -78,9 +80,14 @@ class _MemoPageState extends ConsumerState<MemoPage> {
 
   Future<void> _loadFolders() async {
     try {
-      final folders = await ref.read(memoProvider.notifier).loadFolders();
+      final notifier = ref.read(memoProvider.notifier);
+      final folders = await notifier.loadFolders();
+      final locks = await notifier.loadLocksByFolder();
       if (!mounted) return;
-      setState(() => _folders = folders);
+      setState(() {
+        _folders = folders;
+        _locksByFolder = locks;
+      });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -88,6 +95,19 @@ class _MemoPageState extends ConsumerState<MemoPage> {
       ).showSnackBar(SnackBar(content: Text('加载文件夹失败：$error')));
     }
   }
+
+  bool _folderHasLock(String? folderId) =>
+      folderId != null && _locksByFolder.containsKey(folderId);
+
+  bool _folderUnlocked(String? folderId) {
+    if (folderId == null) return true;
+    if (!_folderHasLock(folderId)) return true;
+    return MemoCryptoService.instance.isFolderUnlocked(folderId);
+  }
+
+  bool _anyFolderUnlocked() => MemoCryptoService.instance.isUnlocked;
+
+  bool _hasLockedFolders() => _locksByFolder.isNotEmpty;
 
   Future<void> _loadTags() async {
     try {
@@ -241,10 +261,10 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                     ),
                   ),
                   IconButton(
-                    tooltip: crypto.isUnlocked ? '锁定隐私内容' : '解锁隐私内容',
-                    onPressed: _toggleVault,
+                    tooltip: _anyFolderUnlocked() ? '全部锁定' : '解锁加密文件夹',
+                    onPressed: _hasLockedFolders() ? _toggleVault : null,
                     icon: Icon(
-                      crypto.isUnlocked ? AppIcons.unlock : AppIcons.lock,
+                      _anyFolderUnlocked() ? AppIcons.unlock : AppIcons.lock,
                     ),
                   ),
                   IconButton(
@@ -326,12 +346,13 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                       ),
                       PopupMenuItem(
                         value: 'vault',
+                        enabled: _hasLockedFolders(),
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: Icon(
-                            crypto.isUnlocked ? AppIcons.lock : AppIcons.unlock,
+                            _anyFolderUnlocked() ? AppIcons.lock : AppIcons.unlock,
                           ),
-                          title: Text(crypto.isUnlocked ? '锁定隐私内容' : '解锁隐私内容'),
+                          title: Text(_anyFolderUnlocked() ? '全部锁定' : '解锁加密文件夹'),
                         ),
                       ),
                       PopupMenuItem(
@@ -481,6 +502,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                           child: _selectedId == null
                               ? const Center(child: Text('选择一篇备忘录开始编辑'))
                               : _MemoEditor(
+                                  onUnlockFolder: _showUnlockFolderDialog,
                                   key: ValueKey(_selectedId),
                                   memoId: _selectedId!,
                                   viewMode: _viewMode,
@@ -601,10 +623,25 @@ class _MemoPageState extends ConsumerState<MemoPage> {
             for (final folder in _folders)
               PopupMenuItem(
                 value: folder['id'] as String,
-                child: Text(
-                  '${'　' * _folderDepth(folder['parentId'] as String?)}${folder['name'] ?? ''}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  children: [
+                    if (_folderHasLock(folder['id'] as String)) ...[
+                      Icon(
+                        _folderUnlocked(folder['id'] as String)
+                            ? AppIcons.unlock
+                            : AppIcons.lock,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Expanded(
+                      child: Text(
+                        '${'　' * _folderDepth(folder['parentId'] as String?)}${folder['name'] ?? ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             const PopupMenuDivider(),
@@ -910,6 +947,65 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                                 }
                                 return;
                               }
+                            } else if (action == 'lock_setup') {
+                              final recoveryKey = await _showSetupFolderLockDialog(
+                                dialogContext,
+                                id,
+                                name,
+                              );
+                              if (recoveryKey != null && mounted) {
+                                setState(() {});
+                                await _showRecoveryKeyDisplayDialog(
+                                  dialogContext,
+                                  recoveryKey,
+                                );
+                              }
+                            } else if (action == 'lock_unlock') {
+                              final ok = await _showUnlockFolderDialog(
+                                dialogContext,
+                                id,
+                                name,
+                              );
+                              if (ok && mounted) setState(() {});
+                            } else if (action == 'lock_lock') {
+                              await ref
+                                  .read(memoProvider.notifier)
+                                  .lockFolder(id);
+                              if (mounted) setState(() {});
+                            } else if (action == 'lock_change') {
+                              final changed = await _showChangeFolderLockDialog(
+                                dialogContext,
+                                id,
+                                name,
+                              );
+                              if (changed && mounted) setState(() {});
+                            } else if (action == 'lock_rotate') {
+                              try {
+                                final key = await ref
+                                    .read(memoProvider.notifier)
+                                    .rotateRecoveryKey(id);
+                                if (mounted) {
+                                  await _showRecoveryKeyDisplayDialog(
+                                    dialogContext,
+                                    key,
+                                  );
+                                }
+                              } catch (error) {
+                                if (dialogContext.mounted) {
+                                  ScaffoldMessenger.of(dialogContext)
+                                      .showSnackBar(
+                                    SnackBar(content: Text('$error')),
+                                  );
+                                }
+                              }
+                            } else if (action == 'lock_remove') {
+                              await _showRemoveFolderLockDialog(
+                                dialogContext,
+                                id,
+                                name,
+                              );
+                            } else if (action == 'lock_escrow') {
+                              await _showEscrowDialog(dialogContext, id, name);
                             } else if (action == 'delete') {
                               final confirmed = await showDialog<bool>(
                                 context: dialogContext,
@@ -941,16 +1037,69 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                                 _applyMemoFilter();
                               }
                             }
-                            final folders = await ref
-                                .read(memoProvider.notifier)
-                                .loadFolders();
+                            final notifier = ref.read(memoProvider.notifier);
+                            final folders = await notifier.loadFolders();
+                            final locks = await notifier.loadLocksByFolder();
                             setDialogState(() => _folders = folders);
-                            if (mounted) setState(() => _folders = folders);
+                            if (mounted) {
+                              setState(() {
+                                _folders = folders;
+                                _locksByFolder = locks;
+                              });
+                            }
                           },
-                          itemBuilder: (context) => const [
-                            PopupMenuItem(value: 'rename', child: Text('重命名')),
-                            PopupMenuItem(value: 'delete', child: Text('删除')),
-                          ],
+                          itemBuilder: (context) {
+                            final hasLock = _folderHasLock(folder['id'] as String);
+                            final unlocked = _folderUnlocked(folder['id'] as String);
+                            return [
+                              const PopupMenuItem(
+                                value: 'rename',
+                                child: Text('重命名'),
+                              ),
+                              if (!hasLock)
+                                const PopupMenuItem(
+                                  value: 'lock_setup',
+                                  child: Text('设置文件夹密码'),
+                                )
+                              else ...[
+                                if (!unlocked)
+                                  const PopupMenuItem(
+                                    value: 'lock_unlock',
+                                    child: Text('解锁'),
+                                  )
+                                else
+                                  const PopupMenuItem(
+                                    value: 'lock_lock',
+                                    child: Text('锁定'),
+                                  ),
+                                if (unlocked)
+                                  const PopupMenuItem(
+                                    value: 'lock_change',
+                                    child: Text('更改密码'),
+                                  ),
+                                if (unlocked)
+                                  const PopupMenuItem(
+                                    value: 'lock_rotate',
+                                    child: Text('重新生成恢复密钥'),
+                                  ),
+                                if (unlocked)
+                                  const PopupMenuItem(
+                                    value: 'lock_escrow',
+                                    child: Text('账号托管找回…'),
+                                  ),
+                                if (unlocked)
+                                  const PopupMenuItem(
+                                    value: 'lock_remove',
+                                    child: Text('移除密码'),
+                                  ),
+                              ],
+                              const PopupMenuDivider(),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Text('删除'),
+                              ),
+                            ];
+                          },
                         ),
                       );
                     },
@@ -987,6 +1136,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
       );
     }
     return _MemoEditor(
+      onUnlockFolder: _showUnlockFolderDialog,
       key: ValueKey(_selectedId),
       memoId: _selectedId!,
       viewMode: _viewMode == _MemoViewMode.split
@@ -1003,13 +1153,11 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   }
 
   Widget _buildMemoTile(Map<String, dynamic> memo) {
-    final crypto = MemoCryptoService.instance;
     final id = memo['id'] as String;
     final isPrivate = memo['isPrivate'] == true;
-    final encryptedTitle = memo['encryptTitle'] == true;
-    final locked = isPrivate && !crypto.isUnlocked;
-    final title = locked && encryptedTitle
-        ? '隐私备忘录'
+    final locked = memo['locked'] == true;
+    final title = locked
+        ? '已加密备忘录'
         : (memo['title'] as String? ?? '未命名备忘录');
     final pinned = memo['pinned'] == true;
     final folderName = memo['folderName'] as String?;
@@ -1179,24 +1327,17 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     }
   }
 
+  /// 头部锁按钮：有任一解锁会话时执行"全部锁定"；否则打开解锁流程
+  /// （选择要解锁的加密文件夹）。
   Future<void> _toggleVault() async {
-    final crypto = MemoCryptoService.instance;
-    if (crypto.isUnlocked) {
-      crypto.lock();
+    if (_anyFolderUnlocked()) {
+      await ref.read(memoProvider.notifier).lockAll();
+      if (!mounted) return;
       setState(() {});
       return;
     }
-    try {
-      final password = await _askPassword(context, '解锁隐私备忘录');
-      if (password == null) return;
-      final ok = await crypto.unlockWithPassword(password);
-      if (!mounted) return;
-      if (!ok) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('隐私密码不正确')));
-        return;
-      }
+    final unlockedAny = await _showUnlockLockedFolderSheet();
+    if (unlockedAny && mounted) {
       setState(() {});
       ref.invalidate(memoProvider);
       _applyMemoFilter();
@@ -1208,13 +1349,480 @@ class _MemoPageState extends ConsumerState<MemoPage> {
           context,
         ).showSnackBar(SnackBar(content: Text('部分附件上传失败：\n$failure')));
       }
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('隐私内容解锁失败：$error')));
-      }
     }
+  }
+
+  /// 列出全部加密文件夹供选择解锁；全部解锁完成后返回 true。
+  Future<bool> _showUnlockLockedFolderSheet() async {
+    final lockedFolders = _folders
+        .where((folder) => _folderHasLock(folder['id'] as String))
+        .toList();
+    if (lockedFolders.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前没有加密文件夹')));
+      return false;
+    }
+    final pending = lockedFolders
+        .where(
+          (folder) =>
+              !MemoCryptoService.instance.isFolderUnlocked(
+                folder['id'] as String,
+              ),
+        )
+        .toList();
+    if (pending.isEmpty) return true;
+    final folderId = await showDialog<String>(
+      context: context,
+      builder: (sheetContext) => SimpleDialog(
+        title: const Text('解锁加密文件夹'),
+        children: [
+          for (final folder in pending)
+            SimpleDialogOption(
+              onPressed: () =>
+                  Navigator.pop(sheetContext, folder['id'] as String),
+              child: Row(
+                children: [
+                  const Icon(AppIcons.lock, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      folder['name'] as String? ?? '未命名文件夹',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || folderId == null) return false;
+    final folder = lockedFolders.firstWhere((f) => f['id'] == folderId);
+    final ok = await _showUnlockFolderDialog(
+      context,
+      folderId,
+      folder['name'] as String? ?? '未命名文件夹',
+    );
+    if (!ok) return false;
+    // 还有其他锁定中的文件夹则继续引导。
+    final stillLocked = _folders
+        .where((f) => _folderHasLock(f['id'] as String))
+        .where(
+          (f) =>
+              !MemoCryptoService.instance.isFolderUnlocked(f['id'] as String),
+        )
+        .toList();
+    if (stillLocked.isNotEmpty && mounted) {
+      await _showUnlockLockedFolderSheet();
+    }
+    return true;
+  }
+
+  /// 解锁单个文件夹：密码 / 恢复密钥 / 账号托管 三条路径。
+  Future<bool> _showUnlockFolderDialog(
+    BuildContext dialogContext,
+    String folderId,
+    String folderName,
+  ) async {
+    final notifier = ref.read(memoProvider.notifier);
+    final controller = TextEditingController();
+    var useRecoveryKey = false;
+    var obscure = true;
+    final ok = await showDialog<bool>(
+      context: dialogContext,
+      builder: (innerContext) => StatefulBuilder(
+        builder: (innerContext, setDialogState) => AlertDialog(
+          title: Text('解锁"$folderName"'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                obscureText: obscure && !useRecoveryKey,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: useRecoveryKey
+                      ? '恢复密钥（52 位字符）'
+                      : '文件夹密码（至少 8 个字符）',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscure ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () =>
+                        setDialogState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () =>
+                    setDialogState(() => useRecoveryKey = !useRecoveryKey),
+                child: Text(
+                  useRecoveryKey ? '改用文件夹密码' : '忘记密码？使用恢复密钥',
+                ),
+              ),
+              if (!useRecoveryKey)
+                TextButton(
+                  onPressed: () async {
+                    final escrowOk = await notifier.unlockFolderWithEscrow(
+                      folderId,
+                    );
+                    if (!innerContext.mounted) return;
+                    Navigator.pop(innerContext, escrowOk);
+                    if (!escrowOk) {
+                      ScaffoldMessenger.of(innerContext).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            '账号托管解锁失败（未开启托管或账号密码不符）',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('使用账号托管解锁'),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(innerContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(innerContext, true),
+              child: const Text('解锁'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !mounted) return false;
+    bool success;
+    if (useRecoveryKey) {
+      success = await notifier.unlockFolderWithRecoveryKey(
+        folderId,
+        controller.text,
+      );
+    } else {
+      success = await notifier.unlockFolderWithPassword(
+        folderId,
+        controller.text,
+      );
+    }
+    if (!mounted) return success;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? '已解锁"$folderName"' : '解锁失败：密码或密钥不正确'),
+      ),
+    );
+    return success;
+  }
+
+  /// 为文件夹设置锁密码（返回恢复密钥；取消返回 null）。
+  Future<String?> _showSetupFolderLockDialog(
+    BuildContext dialogContext,
+    String folderId,
+    String folderName,
+  ) async {
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    var obscure = true;
+    final confirmed = await showDialog<bool>(
+      context: dialogContext,
+      builder: (innerContext) => StatefulBuilder(
+        builder: (innerContext, setDialogState) => AlertDialog(
+          title: Text('加密"$folderName"'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '设置密码后，文件夹内全部备忘录（含标题）将立即加密，'
+                '并随同步以密文存储。',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: passwordController,
+                obscureText: obscure,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: '文件夹密码（至少 8 个字符）',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscure ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () =>
+                        setDialogState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmController,
+                obscureText: obscure,
+                decoration: const InputDecoration(labelText: '确认密码'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(innerContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(innerContext, true),
+              child: const Text('加密文件夹'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return null;
+    final password = passwordController.text;
+    if (password.length < 8) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码至少需要 8 个字符')));
+      return null;
+    }
+    if (password != confirmController.text) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('两次输入的密码不一致')));
+      return null;
+    }
+    try {
+      return await ref
+          .read(memoProvider.notifier)
+          .setupFolderLock(folderId, password);
+    } catch (error) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('设置文件夹密码失败：$error')));
+      return null;
+    }
+  }
+
+  Future<bool> _showChangeFolderLockDialog(
+    BuildContext dialogContext,
+    String folderId,
+    String folderName,
+  ) async {
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+    var obscure = true;
+    final confirmed = await showDialog<bool>(
+      context: dialogContext,
+      builder: (innerContext) => StatefulBuilder(
+        builder: (innerContext, setDialogState) => AlertDialog(
+          title: Text('更改"$folderName"的密码'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: newController,
+                obscureText: obscure,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: '新密码（至少 8 个字符）',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscure ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () =>
+                        setDialogState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmController,
+                obscureText: obscure,
+                decoration: const InputDecoration(labelText: '确认新密码'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(innerContext, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(innerContext, true),
+              child: const Text('确认修改'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return false;
+    if (newController.text.length < 8) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码至少需要 8 个字符')));
+      return false;
+    }
+    if (newController.text != confirmController.text) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('两次输入的密码不一致')));
+      return false;
+    }
+    try {
+      await ref
+          .read(memoProvider.notifier)
+          .changeFolderLockPassword(folderId, newController.text);
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码已更改（内容密钥不变，密文无需重写）')));
+      return true;
+    } catch (error) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('更改密码失败：$error')));
+      return false;
+    }
+  }
+
+  Future<void> _showRemoveFolderLockDialog(
+    BuildContext dialogContext,
+    String folderId,
+    String folderName,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: dialogContext,
+      builder: (innerContext) => AlertDialog(
+        title: Text('移除"$folderName"的密码'),
+        content: const Text(
+          '移除密码后，文件夹内全部备忘录将解密为普通备忘录。此操作需要文件夹处于解锁状态。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(innerContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(innerContext, true),
+            child: const Text('移除密码'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final converted = await ref
+          .read(memoProvider.notifier)
+          .removeFolderLock(folderId);
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('已移除密码，$converted 条备忘录已解密为普通备忘录')));
+    } catch (error) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('移除密码失败：$error')));
+    }
+  }
+
+  Future<void> _showEscrowDialog(
+    BuildContext dialogContext,
+    String folderId,
+    String folderName,
+  ) async {
+    final notifier = ref.read(memoProvider.notifier);
+    final escrowAvailable = await MemoEscrowService.isAvailable;
+    if (!escrowAvailable) {
+      if (!dialogContext.mounted) return;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '账号托管需要：已登录同步账号，且服务器支持（升级服务端后可用）',
+          ),
+        ),
+      );
+      return;
+    }
+    final locks = await MemoDatabase.getLocks();
+    final lock = locks.where((l) => l['folderId'] == folderId).firstOrNull;
+    final escrowEnabled =
+        lock != null &&
+        (lock['escrowWrappedContentKey'] as String?)?.isNotEmpty == true;
+    if (!dialogContext.mounted) return;
+    final enable = await showDialog<bool>(
+      context: dialogContext,
+      builder: (innerContext) => AlertDialog(
+        title: Text('"$folderName"的账号托管找回'),
+        content: Text(
+          escrowEnabled
+              ? '当前已开启账号托管：忘记文件夹密码和恢复密钥时，可用同步账号密码解锁。是否关闭？'
+              : '开启后，忘记文件夹密码和恢复密钥时，可用同步账号密码解锁。\n\n'
+                  '注意：托管密文会随同步上传到服务器。服务器数据库泄露时，'
+                  '攻击者可尝试离线猜测你的账号密码。建议仅在低敏感文件夹开启。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(innerContext, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(innerContext, true),
+            child: Text(escrowEnabled ? '关闭托管' : '开启托管'),
+          ),
+        ],
+      ),
+    );
+    if (enable != true) return;
+    try {
+      if (escrowEnabled) {
+        await notifier.disableEscrow(folderId);
+        ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('已关闭账号托管')));
+      } else {
+        await notifier.enableEscrow(folderId);
+        ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('已开启账号托管')));
+      }
+    } catch (error) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('账号托管操作失败：$error')));
+    }
+  }
+
+  /// 一次性展示恢复密钥（设置/轮换后调用）。
+  Future<void> _showRecoveryKeyDisplayDialog(
+    BuildContext dialogContext,
+    String recoveryKey,
+  ) async {
+    await showDialog<void>(
+      context: dialogContext,
+      barrierDismissible: false,
+      builder: (innerContext) => AlertDialog(
+        title: const Text('请保存恢复密钥'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '这是唯一一次展示。忘记文件夹密码时，只能用它解锁。请复制并妥善保管：',
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(dialogContext).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                recoveryKey,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: recoveryKey));
+              if (innerContext.mounted) {
+                ScaffoldMessenger.of(
+                  innerContext,
+                ).showSnackBar(const SnackBar(content: Text('恢复密钥已复制')));
+              }
+            },
+            child: const Text('复制'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(innerContext).pop(),
+            child: const Text('我已保存'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _createQuickMemo() async {
@@ -1539,6 +2147,7 @@ class _MemoEditor extends ConsumerStatefulWidget {
     required this.viewMode,
     required this.onViewModeChanged,
     required this.onTrash,
+    required this.onUnlockFolder,
     this.isMobile = false,
     this.onBack,
   });
@@ -1547,6 +2156,11 @@ class _MemoEditor extends ConsumerStatefulWidget {
   final _MemoViewMode viewMode;
   final ValueChanged<_MemoViewMode> onViewModeChanged;
   final VoidCallback onTrash;
+  final Future<bool> Function(
+    BuildContext dialogContext,
+    String folderId,
+    String folderName,
+  ) onUnlockFolder;
   final bool isMobile;
   final VoidCallback? onBack;
 
@@ -1661,18 +2275,36 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     );
   }
 
+  /// 当前备忘录所属锁的会话密钥；未解锁返回 null。
+  Uint8List? _currentMemoKey() {
+    final folderId = _currentMemo?['folderId'] as String?;
+    return MemoCryptoService.instance.keyForMemoFolder(folderId);
+  }
+
+  String _decryptMemoPayload(String envelope) {
+    final key = _currentMemoKey();
+    if (key == null) throw StateError('请先解锁文件夹');
+    return MemoCryptoService.instance.decryptTextWithKey(envelope, key);
+  }
+
   Future<void> _writeDraftNow({bool reportError = true}) async {
     if (!_loaded || !_isDirty) return;
     late final String encoded;
     try {
       final title = _titleController.text;
       final body = _bodyController.text;
+      final draftKey = _currentMemoKey();
+      if (_isPrivateMemo && draftKey == null) {
+        // 锁定状态下不写加密草稿。
+        return;
+      }
       final data = _isPrivateMemo
           ? {
               'private': true,
               'savedAt': DateTime.now().millisecondsSinceEpoch,
-              'payload': MemoCryptoService.instance.encryptText(
+              'payload': MemoCryptoService.instance.encryptTextWithKey(
                 encodeMemoPrivatePayload(title: title, bodyMd: body),
+                draftKey!,
               ),
             }
           : {
@@ -1745,7 +2377,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
           return;
         }
         final decoded = decodeMemoPrivatePayload(
-          MemoCryptoService.instance.decryptText(data['payload'] as String),
+          _decryptMemoPayload(data['payload'] as String),
         );
         title = decoded.title;
         body = decoded.bodyMd;
@@ -2147,8 +2779,30 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     if (memo == null) return const SizedBox.shrink();
     final isPrivate = memo['isPrivate'] == true;
     _isPrivateMemo = isPrivate;
-    if (isPrivate && !MemoCryptoService.instance.isUnlocked) {
-      return const Center(child: Text('该备忘录已加密，请先解锁隐私内容'));
+    final locked = memo['locked'] == true;
+    if (locked) {
+      final folderId = memo['folderId'] as String? ?? '';
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('该备忘录所在文件夹已加密'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () async {
+                final ok = await widget.onUnlockFolder(
+                  context,
+                  folderId,
+                  '加密文件夹',
+                );
+                if (ok && mounted) setState(() {});
+              },
+              icon: const Icon(AppIcons.unlock),
+              label: const Text('解锁文件夹'),
+            ),
+          ],
+        ),
+      );
     }
     if (!_loaded) {
       _loaded = true;
@@ -2159,7 +2813,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
         if (encrypted != null && encrypted.isNotEmpty) {
           try {
             final decoded = decodeMemoPrivatePayload(
-              MemoCryptoService.instance.decryptText(encrypted),
+              _decryptMemoPayload(encrypted),
             );
             title = decoded.title;
             body = decoded.bodyMd;
@@ -2406,7 +3060,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
       if (encrypted == null || encrypted.isEmpty) return;
       try {
         final decoded = decodeMemoPrivatePayload(
-          MemoCryptoService.instance.decryptText(encrypted),
+          _decryptMemoPayload(encrypted),
         );
         title = decoded.title;
         body = decoded.bodyMd;
@@ -2805,8 +3459,17 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
   Future<void> _showMoveMemoDialog(String? currentFolderId) async {
     const noFolderTarget = '__no_folder__';
     late final List<Map<String, dynamic>> folders;
+    final lockedFolderIds = <String>{};
     try {
       folders = await ref.read(memoProvider.notifier).loadFolders();
+      final locks = await MemoDatabase.getLocks();
+      for (final lock in locks) {
+        final folderId = lock['folderId'] as String?;
+        if (folderId != null &&
+            !MemoCryptoService.instance.isFolderUnlocked(folderId)) {
+          lockedFolderIds.add(folderId);
+        }
+      }
     } catch (error) {
       _toast('加载文件夹失败：$error');
       return;
@@ -2831,10 +3494,27 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
                   secondary: Icon(Icons.folder_off_outlined),
                 ),
                 for (final folder in folders)
-                  RadioListTile<String>(
-                    value: folder['id'] as String,
-                    title: Text(folder['name'] as String? ?? '未命名文件夹'),
-                    secondary: const Icon(Icons.folder_outlined),
+                  Builder(
+                    builder: (tileContext) {
+                      final folderId = folder['id'] as String;
+                      final locked = lockedFolderIds.contains(folderId);
+                      return RadioListTile<String>(
+                        value: folderId,
+                        onChanged: locked
+                            ? null
+                            : (value) {
+                                if (value != null) {
+                                  Navigator.pop(dialogContext, value);
+                                }
+                              },
+                        title: Text(
+                          '${locked ? '🔒 ' : ''}${folder['name'] as String? ?? '未命名文件夹'}',
+                        ),
+                        secondary: Icon(
+                          locked ? AppIcons.lock : Icons.folder_outlined,
+                        ),
+                      );
+                    },
                   ),
               ],
             ),
@@ -2870,8 +3550,8 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
       final memo = _currentMemo;
       if (memo == null) throw StateError('备忘录不存在或已删除');
       final isPrivate = memo['isPrivate'] == true;
-      if (isPrivate && !MemoCryptoService.instance.isUnlocked) {
-        throw StateError('请先解锁隐私保险库');
+      if (isPrivate && _currentMemoKey() == null) {
+        throw StateError('请先解锁备忘录所在文件夹');
       }
       if (_isDirty) {
         final saved = await _performSave(
@@ -3102,7 +3782,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     if (payload == null) return '(加密版本)';
     try {
       return decodeMemoPrivatePayload(
-        MemoCryptoService.instance.decryptText(payload),
+        _decryptMemoPayload(payload),
       ).title;
     } catch (_) {
       return '(无法解密)';
@@ -3115,7 +3795,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
     if (payload == null) return '';
     try {
       return decodeMemoPrivatePayload(
-        MemoCryptoService.instance.decryptText(payload),
+        _decryptMemoPayload(payload),
       ).bodyMd;
     } catch (_) {
       return '';
@@ -3188,7 +3868,7 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
         final payload = version['encryptedPayload'] as String?;
         if (payload == null) throw StateError('该版本没有可恢复内容');
         final decoded = decodeMemoPrivatePayload(
-          MemoCryptoService.instance.decryptText(payload),
+          _decryptMemoPayload(payload),
         );
         await ref
             .read(memoProvider.notifier)
@@ -3565,9 +4245,12 @@ class _AttachmentsDialogState extends ConsumerState<_AttachmentsDialog> {
     var body = memo?['bodyMd'] as String? ?? '';
     if (memo?['isPrivate'] == true) {
       final payload = memo?['encryptedPayload'] as String?;
-      if (payload != null && payload.isNotEmpty) {
+      final memoKey = MemoCryptoService.instance.keyForMemoFolder(
+        memo?['folderId'] as String?,
+      );
+      if (payload != null && payload.isNotEmpty && memoKey != null) {
         final decoded = decodeMemoPrivatePayload(
-          MemoCryptoService.instance.decryptText(payload),
+          MemoCryptoService.instance.decryptTextWithKey(payload, memoKey),
         );
         body = decoded.bodyMd;
       }

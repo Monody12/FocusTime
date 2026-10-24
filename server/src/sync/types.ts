@@ -18,6 +18,7 @@ export interface SyncTables {
   memo_versions: SyncRecord[]
   memo_attachments: SyncRecord[]
   memo_shares: SyncRecord[]
+  memo_locks: SyncRecord[]
   privacy_vault: SyncRecord[]
 }
 
@@ -55,6 +56,7 @@ export type TableName =
   | 'memo_versions'
   | 'memo_attachments'
   | 'memo_shares'
+  | 'memo_locks'
   | 'privacy_vault'
 
 export const ALL_TABLES: TableName[] = [
@@ -70,5 +72,6 @@ export const ALL_TABLES: TableName[] = [
   'memo_versions',
   'memo_attachments',
   'memo_shares',
+  'memo_locks',
   'privacy_vault'
 ]

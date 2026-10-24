@@ -84,10 +84,15 @@ class MemoImageService {
       uploadStatus: 'pending',
     );
     if (isPrivate) {
-      // 私密附件的文件名不落明文，用会话密钥加密保存。
+      // 私密附件的文件名不落明文，用备忘录所在锁的密钥加密保存。
+      final key = await _keyForMemo(memoId);
+      if (key == null) {
+        throw StateError('请先解锁备忘录所在文件夹');
+      }
       await MemoDatabase.updateAttachment(attachment['id'] as String, {
-        'encryptedPayload': MemoCryptoService.instance.encryptBytes(
+        'encryptedPayload': MemoCryptoService.instance.encryptBytesWithKey(
           utf8.encode(filename),
+          key,
         ),
       });
     }
@@ -158,7 +163,9 @@ class MemoImageService {
     try {
       var bytes = await MemoAttachmentService.instance.download(storageKey);
       if (attachment['isPrivate'] == true) {
-        bytes = _unwrapPrivateBytes(bytes);
+        final key = await _keyForMemo(attachment['memoId'] as String?);
+        if (key == null) return null;
+        bytes = await _unwrapPrivateBytes(bytes, key);
       }
       await file.writeAsBytes(bytes, flush: true);
       return FileImage(file);
@@ -171,45 +178,70 @@ class MemoImageService {
     final id = attachment['id'] as String;
     final mimeType =
         attachment['mimeType'] as String? ?? 'application/octet-stream';
-    if (attachment['isPrivate'] == true &&
-        !MemoCryptoService.instance.isUnlocked) {
-      throw StateError('请先解锁隐私保险库');
+    if (attachment['isPrivate'] == true) {
+      final key = await _keyForMemo(attachment['memoId'] as String?);
+      if (key == null) {
+        throw StateError('请先解锁备忘录所在文件夹');
+      }
     }
     final file = await localFile(id, mimeType);
     if (file.existsSync()) return file.readAsBytes();
 
     final storageKey = attachment['storageKey'] as String?;
     if (storageKey == null || storageKey.isEmpty) {
-      throw StateError('附件 ${attachmentFilename(attachment)} 的本地文件不存在');
+      final displayName = await attachmentFilename(attachment);
+      throw StateError('附件 $displayName 的本地文件不存在');
     }
     var bytes = await MemoAttachmentService.instance.download(storageKey);
-    if (attachment['isPrivate'] == true) bytes = _unwrapPrivateBytes(bytes);
+    if (attachment['isPrivate'] == true) {
+      final key = await _keyForMemo(attachment['memoId'] as String?);
+      if (key == null) {
+        throw StateError('请先解锁备忘录所在文件夹');
+      }
+      bytes = await _unwrapPrivateBytes(bytes, key);
+    }
     await file.writeAsBytes(bytes, flush: true);
     return bytes;
   }
 
-  String attachmentFilename(Map<String, dynamic> attachment) {
+  Future<String> attachmentFilename(Map<String, dynamic> attachment) async {
     final filename = attachment['filename'] as String?;
     if (filename != null && filename.isNotEmpty) return filename;
     if (attachment['isPrivate'] == true) {
       final encrypted = attachment['encryptedPayload'] as String?;
       if (encrypted != null && encrypted.isNotEmpty) {
-        if (!MemoCryptoService.instance.isUnlocked) {
-          throw StateError('请先解锁隐私保险库');
+        final key = await _keyForMemo(attachment['memoId'] as String?);
+        if (key == null) {
+          throw StateError('请先解锁备忘录所在文件夹');
         }
-        return utf8.decode(MemoCryptoService.instance.decryptBytes(encrypted));
+        return utf8.decode(
+          MemoCryptoService.instance.decryptBytesWithKey(encrypted, key),
+        );
       }
     }
     return 'attachment.${extForMime(attachment['mimeType'] as String? ?? '')}';
   }
 
-  Uint8List _unwrapPrivateBytes(Uint8List stored) {
+  /// 解析附件所属备忘录应使用的锁密钥；未解锁返回 null。
+  Future<Uint8List?> _keyForMemo(String? memoId) async {
+    if (memoId == null || memoId.isEmpty) return null;
+    final memo = await MemoDatabase.getMemo(memoId);
+    return MemoCryptoService.instance.keyForMemoFolder(
+      memo?['folderId'] as String?,
+    );
+  }
+
+  Future<Uint8List> _unwrapPrivateBytes(
+    Uint8List stored,
+    Uint8List key,
+  ) async {
     final decoded = jsonDecode(utf8.decode(stored));
     if (decoded is! Map || decoded['encrypted'] != true) {
       throw const FormatException('私密附件格式无效');
     }
-    return MemoCryptoService.instance.decryptBytes(
+    return MemoCryptoService.instance.decryptBytesWithKey(
       decoded['content'] as String,
+      key,
     );
   }
 
@@ -252,11 +284,18 @@ class MemoImageService {
     final bytes = await file.readAsBytes();
     Uint8List uploadBytes;
     if (isPrivate) {
+      final key = await _keyForMemo(attachment['memoId'] as String?);
+      if (key == null) {
+        throw StateError('请先解锁备忘录所在文件夹');
+      }
       uploadBytes = Uint8List.fromList(
         utf8.encode(
           jsonEncode({
             'encrypted': true,
-            'content': MemoCryptoService.instance.encryptBytes(bytes),
+            'content': MemoCryptoService.instance.encryptBytesWithKey(
+              bytes,
+              key,
+            ),
           }),
         ),
       );

@@ -116,8 +116,14 @@ class MemoMarkdownTransferService {
     required String body,
     required bool isPrivate,
   }) async {
-    if (isPrivate && !MemoCryptoService.instance.isUnlocked) {
-      throw StateError('请先解锁隐私保险库');
+    if (isPrivate) {
+      final memo = await MemoDatabase.getMemo(memoId);
+      final key = MemoCryptoService.instance.keyForMemoFolder(
+        memo?['folderId'] as String?,
+      );
+      if (key == null) {
+        throw StateError('请先解锁备忘录所在文件夹');
+      }
     }
     final rows = await MemoDatabase.getAttachments(memoId: memoId);
     final attachments = <MemoExportAttachment>[];
@@ -125,7 +131,7 @@ class MemoMarkdownTransferService {
       attachments.add(
         MemoExportAttachment(
           id: row['id'] as String,
-          filename: MemoImageService.instance.attachmentFilename(row),
+          filename: await MemoImageService.instance.attachmentFilename(row),
           bytes: await MemoImageService.instance.readAttachmentBytes(row),
         ),
       );

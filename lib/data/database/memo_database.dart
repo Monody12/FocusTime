@@ -38,6 +38,10 @@ enum MemoSortOption {
 class MemoDatabase {
   static const _uuid = Uuid();
   static const vaultId = 'privacy-vault';
+  /// v17 迁移产生的默认锁与其文件夹（固定 ID：多设备各自迁移后按 ID 收敛）。
+  static const defaultLockId = 'memo-lock-default-privacy';
+  static const defaultPrivacyFolderId = 'memo-folder-privacy-default';
+  static const defaultPrivacyFolderName = '隐私备忘录';
   static const maxFolderDepth = 10;
   static const maxHistoryVersions = 20;
 
@@ -49,6 +53,7 @@ class MemoDatabase {
     'memo_versions',
     'memo_attachments',
     'memo_shares',
+    'memo_locks',
     'privacy_vault',
   ];
 
@@ -168,6 +173,26 @@ class MemoDatabase {
           'updatedAt': row['updated_at'],
           'deleted': _asBool(row['deleted']),
         };
+      case 'memo_locks':
+        return {
+          'id': row['id'],
+          'folderId': row['folder_id'],
+          'kdfName': row['kdf_name'],
+          'kdfParams': row['kdf_params'],
+          'salt': row['salt'],
+          'wrappedContentKey': row['wrapped_content_key'],
+          'wrapNonce': row['wrap_nonce'],
+          'recoveryWrappedContentKey': row['recovery_wrapped_content_key'],
+          'recoveryNonce': row['recovery_nonce'],
+          'escrowWrappedContentKey': row['escrow_wrapped_content_key'],
+          'escrowNonce': row['escrow_nonce'],
+          'escrowParams': row['escrow_params'],
+          'cryptoVersion': row['crypto_version'],
+          'configRevision': row['config_revision'],
+          'createdAt': row['created_at'],
+          'updatedAt': row['updated_at'],
+          'deleted': _asBool(row['deleted']),
+        };
       case 'privacy_vault':
         return {
           'id': row['id'],
@@ -275,6 +300,24 @@ class MemoDatabase {
           'password_hash': data['passwordHash'],
           'public_storage_key': data['publicStorageKey'],
           'revoked': flag('revoked') ? 1 : 0,
+          'created_at': data['createdAt'] ?? 0,
+        };
+      case 'memo_locks':
+        return {
+          'id': data['id'],
+          'folder_id': data['folderId'] ?? '',
+          'kdf_name': data['kdfName'] ?? 'argon2id',
+          'kdf_params': data['kdfParams'] ?? '{}',
+          'salt': data['salt'] ?? '',
+          'wrapped_content_key': data['wrappedContentKey'] ?? '',
+          'wrap_nonce': data['wrapNonce'] ?? '',
+          'recovery_wrapped_content_key': data['recoveryWrappedContentKey'] ?? '',
+          'recovery_nonce': data['recoveryNonce'] ?? '',
+          'escrow_wrapped_content_key': data['escrowWrappedContentKey'],
+          'escrow_nonce': data['escrowNonce'],
+          'escrow_params': data['escrowParams'],
+          'crypto_version': data['cryptoVersion'] ?? 1,
+          'config_revision': data['configRevision'] ?? 1,
           'created_at': data['createdAt'] ?? 0,
         };
       case 'privacy_vault':
@@ -452,6 +495,11 @@ class MemoDatabase {
       where: 'id = ? AND deleted = 0',
       whereArgs: [id],
     );
+    // 文件夹删除时其锁一并作废（OneNote：删除分区即失去密码保护对象）。
+    final lock = await getLockForFolder(id);
+    if (lock != null) {
+      await deleteLock(lock['id'] as String);
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getTags() async {
@@ -1100,18 +1148,99 @@ class MemoDatabase {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // 文件夹锁（OneNote 式分区锁）
+  // ---------------------------------------------------------------------------
+
+  static Future<List<Map<String, dynamic>>> getLocks({
+    bool includeDeleted = false,
+  }) async {
+    final db = await _db;
+    final rows = await db.query(
+      'memo_locks',
+      where: includeDeleted ? null : 'deleted = 0',
+    );
+    return rows.map((row) => _mapRow('memo_locks', row)).toList();
+  }
+
+  static Future<Map<String, dynamic>?> getLock(String id) async {
+    final db = await _db;
+    final rows = await db.query(
+      'memo_locks',
+      where: 'id = ? AND deleted = 0',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : _mapRow('memo_locks', rows.first);
+  }
+
+  static Future<Map<String, dynamic>?> getLockForFolder(String folderId) async {
+    final db = await _db;
+    final rows = await db.query(
+      'memo_locks',
+      where: 'folder_id = ? AND deleted = 0',
+      whereArgs: [folderId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : _mapRow('memo_locks', rows.first);
+  }
+
+  static Future<void> saveLock(Map<String, dynamic> values) async {
+    final db = await _db;
+    final now = _now();
+    final id = values['id'] as String;
+    final existing = await db.query(
+      'memo_locks',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    final data = _unmapRow('memo_locks', {
+      ...values,
+      'createdAt':
+          values['createdAt'] ??
+          (existing.isEmpty ? now : existing.first['created_at']),
+    });
+    data['updated_at'] = now;
+    data['deleted'] = 0;
+    await db.insert(
+      'memo_locks',
+      data,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// 软删除文件夹锁（移除密码/删除文件夹时调用）。
+  static Future<void> deleteLock(String id) async {
+    final db = await _db;
+    await db.update(
+      'memo_locks',
+      {'deleted': 1, 'updated_at': _now()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Builds client sync records for all memo tables.  Memo data is already
   /// encrypted where required; the server only stores the opaque `data` map.
+  ///
+  /// 隐私保险库与文件夹锁属于"配置型记录"：数量少且是解密的前提，一旦因
+  /// 水位线跳过（例如旧服务器时代创建后被剥离）就永远补传不上。因此这两张
+  /// 表无视水位线全量上传，由服务端按 updated_at LWW 自然去重。
   static Future<Map<String, List<Map<String, dynamic>>>> getSyncPayload(
     int lastSyncTime,
   ) async {
     final db = await _db;
     final payload = <String, List<Map<String, dynamic>>>{};
     for (final table in syncTables) {
+      final isConfigTable =
+          table == 'privacy_vault' || table == 'memo_locks';
       final rows = await db.query(
         table,
-        where: 'updated_at >= ? OR deleted = 1',
-        whereArgs: [lastSyncTime],
+        where: isConfigTable
+            ? null
+            : 'updated_at >= ? OR deleted = 1',
+        whereArgs: isConfigTable ? null : [lastSyncTime],
       );
       payload[table] = rows.map((row) {
         final mapped = _mapRow(table, row);
@@ -1339,6 +1468,20 @@ class MemoDatabase {
           'share_kind': 'encrypted',
           'token_hash': '',
           'revoked': 1,
+        };
+      case 'memo_locks':
+        return {
+          ...base,
+          'folder_id': '',
+          'kdf_name': 'argon2id',
+          'kdf_params': '{}',
+          'salt': '',
+          'wrapped_content_key': '',
+          'wrap_nonce': '',
+          'recovery_wrapped_content_key': '',
+          'recovery_nonce': '',
+          'crypto_version': 1,
+          'config_revision': 1,
         };
       case 'privacy_vault':
         return {

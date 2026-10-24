@@ -10,6 +10,7 @@ import 'package:focus_my_time/core/theme/app_icons.dart';
 import 'package:focus_my_time/core/theme/app_theme.dart';
 import 'package:focus_my_time/core/utils/app_time.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
+import 'package:focus_my_time/data/database/memo_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
 import 'package:focus_my_time/features/timer/providers/timer_provider.dart';
 import 'package:focus_my_time/features/tasks/providers/task_provider.dart';
@@ -68,6 +69,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _privacyConfigured = false;
   bool _privacyUnlocked = false;
   bool _privacyLockOnBackground = true;
+  List<Map<String, dynamic>> _privacyLocks = const [];
 
   // 同步服务器登录表单的 FocusNode，用于精确控制 Tab 跳转顺序
   late FocusNode _syncUrlFocusNode;
@@ -148,12 +150,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _loadPrivacyState() async {
     try {
       final crypto = MemoCryptoService.instance;
-      final configured = await crypto.isConfigured;
+      final locks = await MemoDatabase.getLocks();
+      final configured = locks.isNotEmpty || await crypto.isConfigured;
       if (!mounted) return;
       setState(() {
         _privacyConfigured = configured;
         _privacyUnlocked = crypto.isUnlocked;
         _privacyLockOnBackground = crypto.lockOnBackground;
+        _privacyLocks = locks;
       });
     } catch (e) {
       if (!mounted) return;
@@ -1406,46 +1410,74 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           Padding(
             padding: const EdgeInsets.only(left: 2, bottom: 8),
             child: Text(
-              '为私密备忘录设置独立的隐私密码。内容在本机加密，密码和密钥不会同步到服务器。',
+              'OneNote 式文件夹锁：在"备忘录 → 管理文件夹"中为任意文件夹设置密码，'
+              '文件夹内全部备忘录（含标题）将以密文存储，密码与密钥不会同步到服务器。'
+              '忘记密码时可用设置时保存的恢复密钥解锁。',
               style: TextStyle(
                 fontSize: 11,
                 color: context.appColors.textSecondary,
               ),
             ),
           ),
-          _buildButtonRow([
-            _SettingButton(
-              label: '设置隐私密码',
-              onPressed: _showSetupPrivacyDialog,
-              isPrimary: true,
-              isDark: isDark,
-            ),
-          ]),
         ],
       );
     }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 8),
+          child: Text(
+            '加密文件夹（在"备忘录 → 管理文件夹"中添加或管理）：',
+            style: TextStyle(
+              fontSize: 11,
+              color: context.appColors.textSecondary,
+            ),
+          ),
+        ),
+        for (final lock in _privacyLocks)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Icon(
+                  crypto.isFolderUnlocked(lock['folderId'] as String)
+                      ? Icons.lock_open
+                      : Icons.lock,
+                  size: 16,
+                  color: context.appColors.textSecondary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '文件夹 ${lock['folderId'] == MemoDatabase.defaultPrivacyFolderId ? MemoDatabase.defaultPrivacyFolderName : (lock['folderId'] as String)}'
+                    '（恢复密钥：${(lock['recoveryWrappedContentKey'] as String?)?.isNotEmpty == true ? '已设置' : '无'}'
+                    '${(lock['escrowWrappedContentKey'] as String?)?.isNotEmpty == true ? ' · 账号托管已开启' : ''}）',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.appColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         _buildButtonRow([
           _SettingButton(
-            label: _privacyUnlocked ? '锁定隐私内容' : '解锁隐私内容',
+            label: _privacyUnlocked ? '全部锁定' : '解锁',
             onPressed: () async {
               if (_privacyUnlocked) {
-                crypto.lock();
+                crypto.lockAll();
                 if (!mounted) return;
                 setState(() => _privacyUnlocked = false);
-                _showSnackBar('隐私内容已锁定');
+                _showSnackBar('已全部锁定');
                 return;
               }
-              await _showUnlockPrivacyDialog();
+              _showSnackBar('请在"备忘录 → 管理文件夹"中选择要解锁的文件夹');
             },
             isPrimary: true,
-            isDark: isDark,
-          ),
-          _SettingButton(
-            label: '修改隐私密码',
-            onPressed: _privacyUnlocked ? _showChangePasswordDialog : null,
-            isPrimary: false,
             isDark: isDark,
           ),
         ]),

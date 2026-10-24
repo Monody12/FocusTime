@@ -28,7 +28,8 @@ class MemoAiGate {
     }
     if (memo['isPrivate'] == true) {
       final crypto = MemoCryptoService.instance;
-      if (!crypto.isUnlocked) return null;
+      final key = crypto.keyForMemoFolder(memo['folderId'] as String?);
+      if (key == null) return null;
       if (!userConfirmed) {
         throw StateError('隐私备忘录需要再次确认后才能发送给 AI');
       }
@@ -36,10 +37,13 @@ class MemoAiGate {
     final title = memo['title'] as String? ?? '';
     final body = memo['bodyMd'] as String? ?? '';
     if (memo['isPrivate'] == true) {
+      final crypto = MemoCryptoService.instance;
       final payload = memo['encryptedPayload'] as String?;
       if (payload == null) return {'title': title, 'body': body};
+      final key = crypto.keyForMemoFolder(memo['folderId'] as String?);
+      if (key == null) return null;
       final decoded = decodeMemoPrivatePayload(
-        MemoCryptoService.instance.decryptText(payload),
+        crypto.decryptTextWithKey(payload, key),
       );
       return {'title': decoded.title, 'body': decoded.bodyMd};
     }

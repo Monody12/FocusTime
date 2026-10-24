@@ -5,12 +5,17 @@ import 'dart:typed_data';
 
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/database/memo_database.dart';
+import 'package:focus_my_time/features/memos/services/memo_private_payload.dart';
 import 'package:pointycastle/export.dart';
 
 /// 隐私备忘录的端到端加密服务。
 ///
 /// 服务端和同步数据库只会看到 [MemoDatabase] 中的包装密钥、算法参数和
 /// 密文。密码派生密钥以及主密钥只在当前进程的短暂解锁会话中存在。
+///
+/// v18 起（OneNote 式文件夹锁）：每把锁（文件夹）有独立的内容密钥与解锁
+/// 会话；旧的全局保险库在 v17 迁移后成为"默认锁"（同一把内容密钥），
+/// 未迁移/未挂锁的存量隐私备忘录继续由默认锁的密钥解密。
 class MemoCryptoService {
   MemoCryptoService._();
 
@@ -20,6 +25,7 @@ class MemoCryptoService {
   static const String _kdfName = 'argon2id';
   static const int _kdfIterations = 3;
   static const int _kdfMemoryKiB = 64 * 1024;
+  static const int _escrowIterations = 4;
   static const int _kdfLanes = 2;
   static const int _saltLength = 16;
   static const int _nonceLength = 12;
@@ -28,18 +34,24 @@ class MemoCryptoService {
   static const String _aad = 'focus-my-time/memo-vault/v1';
 
   final Random _random = Random.secure();
-  Uint8List? _masterKey;
+  final Map<String, Uint8List> _sessionKeys = <String, Uint8List>{};
   Timer? _autoLockTimer;
   Duration _autoLockDuration = defaultAutoLock;
   bool _lockOnBackground = true;
   DateTime? _lastActivity;
 
-  bool get isUnlocked => _masterKey != null;
+  /// 是否有任一锁处于解锁状态（旧 UI 的全局开关语义）。
+  bool get isUnlocked => _sessionKeys.isNotEmpty;
 
   bool get lockOnBackground => _lockOnBackground;
 
   Future<bool> get isConfigured async =>
-      (await MemoDatabase.getVault()) != null;
+      (await MemoDatabase.getVault()) != null ||
+      (await MemoDatabase.getLocks()).isNotEmpty;
+
+  /// 默认锁（v17 迁移自旧保险库）当前是否已建立。
+  Future<bool> get hasDefaultLock async =>
+      (await MemoDatabase.getLock(MemoDatabase.defaultLockId)) != null;
 
   Duration get autoLockDuration => _autoLockDuration;
 
@@ -57,6 +69,306 @@ class MemoCryptoService {
     } catch (_) {
       // 偏好读取失败时保持默认值，不影响解锁会话。
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 文件夹锁
+  // ---------------------------------------------------------------------------
+
+  bool isFolderUnlocked(String folderId) =>
+      _sessionKeys.containsKey(folderId);
+
+  /// 为文件夹设置锁密码。返回只显示一次的 Base32 恢复密钥。
+  Future<String> setupFolderLock(String folderId, String password) async {
+    _validatePassword(password);
+    final existing = await MemoDatabase.getLockForFolder(folderId);
+    if (existing != null) {
+      throw StateError('该文件夹已设置锁密码，请使用修改密码或移除密码');
+    }
+    final salt = _randomBytes(_saltLength);
+    final contentKey = _randomBytes(_keyLength);
+    final recoveryKey = _randomBytes(_keyLength);
+    final passwordKey = _deriveKey(password, salt);
+    final wrappedByPassword = _seal(contentKey, passwordKey);
+    final wrappedByRecovery = _seal(contentKey, recoveryKey);
+    _zero(passwordKey);
+
+    await MemoDatabase.saveLock({
+      'id': _lockIdForNew(),
+      'folderId': folderId,
+      'kdfName': _kdfName,
+      'kdfParams': jsonEncode({
+        'iterations': _kdfIterations,
+        'memoryKiB': _kdfMemoryKiB,
+        'lanes': _kdfLanes,
+        'keyLength': _keyLength,
+      }),
+      'salt': base64UrlEncode(salt),
+      'wrappedContentKey': base64UrlEncode(wrappedByPassword.ciphertext),
+      'wrapNonce': base64UrlEncode(wrappedByPassword.nonce),
+      'recoveryWrappedContentKey': base64UrlEncode(wrappedByRecovery.ciphertext),
+      'recoveryNonce': base64UrlEncode(wrappedByRecovery.nonce),
+      'cryptoVersion': _cryptoVersion,
+      'configRevision': 1,
+      'createdAt': DateTime.now().millisecondsSinceEpoch,
+    });
+    _setSessionKey(folderId, contentKey);
+    return encodeRecoveryKey(recoveryKey);
+  }
+
+  /// 使用锁密码解锁文件夹。
+  Future<bool> unlockFolderWithPassword(String folderId, String password) async {
+    final lock = await MemoDatabase.getLockForFolder(folderId);
+    if (lock == null) return false;
+    try {
+      _validatePassword(password);
+      final salt = _decodeBase64(lock['salt']);
+      final passwordKey = _deriveKey(password, salt);
+      final contentKey = _open(
+        ciphertext: _decodeBase64(lock['wrappedContentKey']),
+        nonce: _decodeBase64(lock['wrapNonce']),
+        key: passwordKey,
+      );
+      _zero(passwordKey);
+      _setSessionKey(folderId, contentKey);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 使用 Base32 恢复密钥解锁文件夹。
+  Future<bool> unlockFolderWithRecoveryKey(
+    String folderId,
+    String recoveryKey,
+  ) async {
+    final lock = await MemoDatabase.getLockForFolder(folderId);
+    if (lock == null) return false;
+    try {
+      final key = decodeRecoveryKey(recoveryKey);
+      final contentKey = _open(
+        ciphertext: _decodeBase64(lock['recoveryWrappedContentKey']),
+        nonce: _decodeBase64(lock['recoveryNonce']),
+        key: key,
+      );
+      _zero(key);
+      _setSessionKey(folderId, contentKey);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 使用账号托管密钥解锁文件夹（opt-in 的"忘记一切"找回路径）。
+  Future<bool> unlockFolderWithEscrow(
+    String folderId,
+    Uint8List escrowKey,
+  ) async {
+    final lock = await MemoDatabase.getLockForFolder(folderId);
+    if (lock == null) return false;
+    final wrapped = lock['escrowWrappedContentKey'] as String?;
+    final nonce = lock['escrowNonce'] as String?;
+    if (wrapped == null || wrapped.isEmpty || nonce == null || nonce.isEmpty) {
+      return false;
+    }
+    try {
+      final contentKey = _open(
+        ciphertext: _decodeBase64(wrapped),
+        nonce: _decodeBase64(nonce),
+        key: Uint8List.fromList(escrowKey),
+      );
+      _setSessionKey(folderId, contentKey);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void lockFolder(String folderId) {
+    final key = _sessionKeys.remove(folderId);
+    if (key != null) _zero(key);
+    _rearmAutoLockIfNeeded();
+  }
+
+  /// 锁定全部解锁会话（自动锁定/切后台/手动"全部锁定"共用）。
+  void lockAll() {
+    _autoLockTimer?.cancel();
+    _autoLockTimer = null;
+    for (final key in _sessionKeys.values) {
+      _zero(key);
+    }
+    _sessionKeys.clear();
+    _lastActivity = null;
+  }
+
+  /// 修改锁密码：仅重新包装同一个内容密钥，文件夹内密文无需重写。
+  /// 要求该文件夹当前处于解锁状态（与 OneNote 一致）。
+  Future<void> changeFolderLockPassword(
+    String folderId,
+    String newPassword,
+  ) async {
+    _validatePassword(newPassword);
+    final currentKey = _sessionKeys[folderId];
+    if (currentKey == null) throw StateError('请先解锁该文件夹');
+    final lock = await MemoDatabase.getLockForFolder(folderId);
+    if (lock == null) throw StateError('该文件夹尚未设置锁密码');
+    final salt = _randomBytes(_saltLength);
+    final passwordKey = _deriveKey(newPassword, salt);
+    final wrapped = _seal(currentKey, passwordKey);
+    _zero(passwordKey);
+    final revision =
+        ((lock['configRevision'] as num?)?.toInt() ?? 0) + 1;
+    await MemoDatabase.saveLock({
+      ...lock,
+      'salt': base64UrlEncode(salt),
+      'wrappedContentKey': base64UrlEncode(wrapped.ciphertext),
+      'wrapNonce': base64UrlEncode(wrapped.nonce),
+      'configRevision': revision,
+    });
+    _touch();
+  }
+
+  /// 重新生成恢复密钥（旧的立即作废）。要求该文件夹处于解锁状态。
+  Future<String> rotateRecoveryKey(String folderId) async {
+    final currentKey = _sessionKeys[folderId];
+    if (currentKey == null) throw StateError('请先解锁该文件夹');
+    final lock = await MemoDatabase.getLockForFolder(folderId);
+    if (lock == null) throw StateError('该文件夹尚未设置锁密码');
+    final recoveryKey = _randomBytes(_keyLength);
+    final wrapped = _seal(currentKey, recoveryKey);
+    final revision =
+        ((lock['configRevision'] as num?)?.toInt() ?? 0) + 1;
+    await MemoDatabase.saveLock({
+      ...lock,
+      'recoveryWrappedContentKey': base64UrlEncode(wrapped.ciphertext),
+      'recoveryNonce': base64UrlEncode(wrapped.nonce),
+      'configRevision': revision,
+    });
+    _touch();
+    return encodeRecoveryKey(recoveryKey);
+  }
+
+  /// 开启账号托管：用托管密钥再包一层内容密钥（同步到服务器）。
+  Future<void> enableEscrow(String folderId, Uint8List escrowKey) async {
+    final currentKey = _sessionKeys[folderId];
+    if (currentKey == null) throw StateError('请先解锁该文件夹');
+    final lock = await MemoDatabase.getLockForFolder(folderId);
+    if (lock == null) throw StateError('该文件夹尚未设置锁密码');
+    final nonce = _randomBytes(_nonceLength);
+    final wrapped = _sealWithNonce(currentKey, escrowKey, nonce);
+    final revision =
+        ((lock['configRevision'] as num?)?.toInt() ?? 0) + 1;
+    await MemoDatabase.saveLock({
+      ...lock,
+      'escrowWrappedContentKey': base64UrlEncode(wrapped.ciphertext),
+      'escrowNonce': base64UrlEncode(nonce),
+      'escrowParams': jsonEncode({
+        'kdf': 'argon2id',
+        'iterations': _escrowIterations,
+        'memoryKiB': _kdfMemoryKiB,
+        'lanes': _kdfLanes,
+        'keyLength': _keyLength,
+      }),
+      'configRevision': revision,
+    });
+    _touch();
+  }
+
+  Future<void> disableEscrow(String folderId) async {
+    final lock = await MemoDatabase.getLockForFolder(folderId);
+    if (lock == null) throw StateError('该文件夹尚未设置锁密码');
+    final revision =
+        ((lock['configRevision'] as num?)?.toInt() ?? 0) + 1;
+    await MemoDatabase.saveLock({
+      ...lock,
+      'escrowWrappedContentKey': null,
+      'escrowNonce': null,
+      'escrowParams': null,
+      'configRevision': revision,
+    });
+    _touch();
+  }
+
+  /// 移除文件夹锁（要求已解锁）。文件夹内备忘录全部转为普通明文备忘录。
+  Future<int> removeFolderLock(String folderId) async {
+    final currentKey = _sessionKeys[folderId];
+    if (currentKey == null) throw StateError('请先解锁该文件夹');
+    final lock = await MemoDatabase.getLockForFolder(folderId);
+    if (lock == null) throw StateError('该文件夹尚未设置锁密码');
+    final memos = await MemoDatabase.getMemos(folderId: folderId);
+    var converted = 0;
+    for (final memo in memos) {
+      final id = memo['id'] as String;
+      final encrypted = memo['encryptedPayload'] as String?;
+      if (memo['isPrivate'] == true && encrypted != null && encrypted.isNotEmpty) {
+        try {
+          final payload = decodeMemoPrivatePayload(
+            decryptTextWithKey(encrypted, currentKey),
+          );
+          await MemoDatabase.updateMemo(id, {
+            'title': payload.title,
+            'bodyMd': payload.bodyMd,
+            'isPrivate': false,
+            'encryptTitle': false,
+            'encryptedPayload': null,
+          });
+          converted++;
+        } catch (_) {
+          // 单条解密失败不阻断整体移除；该条保持原样并继续。
+        }
+      }
+    }
+    await MemoDatabase.deleteLock(lock['id'] as String);
+    lockFolder(folderId);
+    return converted;
+  }
+
+  /// 解析某条备忘录应使用的会话密钥：优先其所在文件夹的锁，其次默认锁
+  /// （v17 迁移前/外的存量隐私备忘录与默认锁共用同一把内容密钥）。
+  Uint8List? keyForMemoFolder(String? folderId) {
+    if (folderId != null) {
+      final key = _sessionKeys[folderId];
+      if (key != null) return key;
+    }
+    return _sessionKeys[MemoDatabase.defaultPrivacyFolderId];
+  }
+
+  String encryptTextWithKey(String plaintext, Uint8List key) {
+    final sealed = _seal(
+      Uint8List.fromList(utf8.encode(plaintext)),
+      Uint8List.fromList(key),
+    );
+    _touch();
+    return jsonEncode({
+      'v': _cryptoVersion,
+      'n': base64UrlEncode(sealed.nonce),
+      'c': base64UrlEncode(sealed.ciphertext),
+    });
+  }
+
+  String decryptTextWithKey(String envelope, Uint8List key) {
+    try {
+      final decoded = jsonDecode(envelope);
+      if (decoded is! Map || decoded['v'] != _cryptoVersion) {
+        throw const FormatException('不支持的备忘录密文版本');
+      }
+      final bytes = _open(
+        ciphertext: _decodeBase64(decoded['c']),
+        nonce: _decodeBase64(decoded['n']),
+        key: Uint8List.fromList(key),
+      );
+      _touch();
+      return utf8.decode(bytes);
+    } catch (error) {
+      if (error is FormatException) rethrow;
+      throw const FormatException('隐私内容校验失败或密钥不正确');
+    }
+  }
+
+  String _lockIdForNew() {
+    // 默认锁固定 ID（v17 迁移）；新锁由调用方用文件夹锁服务生成。
+    return 'memo-lock-${DateTime.now().microsecondsSinceEpoch}-'
+        '${_random.nextInt(0x7fffffff)}';
   }
 
   /// 初始化隐私密码。返回只显示一次的 Base32 恢复密钥。
@@ -138,21 +450,23 @@ class MemoCryptoService {
     }
   }
 
-  /// 修改密码时只重新包装同一个主密钥，已有备忘录密文无需重写。
+  /// 修改（旧版全局保险库的）密码：只重新包装同一个主密钥，密文无需重写。
+  /// 保留给迁移前的旧版本流程与测试使用；新 UI 使用 changeFolderLockPassword。
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
     _validatePassword(newPassword);
     final unlocked = isUnlocked || await unlockWithPassword(currentPassword);
-    if (!unlocked || _masterKey == null) {
+    final master = _sessionKeys[MemoDatabase.defaultPrivacyFolderId];
+    if (!unlocked || master == null) {
       throw StateError('当前隐私密码不正确');
     }
     final vault = await MemoDatabase.getVault();
     if (vault == null) throw StateError('隐私保险库尚未设置');
     final salt = _randomBytes(_saltLength);
     final key = _deriveKey(newPassword, salt);
-    final wrapped = _seal(_masterKey!, key);
+    final wrapped = _seal(master, key);
     final revision = ((vault['configRevision'] as num?)?.toInt() ?? 0) + 1;
     await MemoDatabase.saveVault({
       ...vault,
@@ -203,6 +517,35 @@ class MemoCryptoService {
     }
   }
 
+  /// 对二进制内容（附件等）用指定密钥加密，返回 JSON 信封。
+  String encryptBytesWithKey(Uint8List plaintext, Uint8List key) {
+    final sealed = _seal(plaintext, Uint8List.fromList(key));
+    _touch();
+    return jsonEncode({
+      'v': _cryptoVersion,
+      'n': base64UrlEncode(sealed.nonce),
+      'c': base64UrlEncode(sealed.ciphertext),
+    });
+  }
+
+  /// 用指定密钥解密 [encryptBytesWithKey] 产生的信封。
+  Uint8List decryptBytesWithKey(String envelope, Uint8List key) {
+    try {
+      final decoded = jsonDecode(envelope);
+      if (decoded is! Map || decoded['v'] != _cryptoVersion) {
+        throw const FormatException('不支持的附件密文版本');
+      }
+      return _open(
+        ciphertext: _decodeBase64(decoded['c']),
+        nonce: _decodeBase64(decoded['n']),
+        key: Uint8List.fromList(key),
+      );
+    } catch (error) {
+      if (error is FormatException) rethrow;
+      throw const FormatException('附件密文校验失败或密钥不正确');
+    }
+  }
+
   /// 对二进制内容（附件等）进行加密，返回 JSON 信封。
   String encryptBytes(Uint8List plaintext) {
     final key = _requireSession();
@@ -234,13 +577,8 @@ class MemoCryptoService {
     }
   }
 
-  void lock() {
-    _autoLockTimer?.cancel();
-    _autoLockTimer = null;
-    if (_masterKey != null) _zero(_masterKey!);
-    _masterKey = null;
-    _lastActivity = null;
-  }
+  /// 旧的全局锁定入口：等价于"全部锁定"（每个解锁会话独立清零）。
+  void lock() => lockAll();
 
   void setAutoLockDuration(Duration duration) {
     if (duration <= Duration.zero) {
@@ -322,17 +660,35 @@ class MemoCryptoService {
     return Uint8List.fromList(output);
   }
 
+  /// 旧 API 的会话密钥：即默认锁（v17 迁移后的默认文件夹）的密钥。
   Uint8List _requireSession() {
-    final key = _masterKey;
+    final key = _sessionKeys[MemoDatabase.defaultPrivacyFolderId];
     if (key == null) throw StateError('请先解锁隐私备忘录');
     return key;
   }
 
   void _setSession(Uint8List key) {
-    lock();
-    _masterKey = Uint8List.fromList(key);
+    lockAll();
+    _sessionKeys[MemoDatabase.defaultPrivacyFolderId] = Uint8List.fromList(key);
     _zero(key);
     _touch();
+  }
+
+  void _setSessionKey(String folderId, Uint8List key) {
+    final keyCopy = Uint8List.fromList(key);
+    _zero(key);
+    _sessionKeys[folderId] = keyCopy;
+    _touch();
+  }
+
+  void _rearmAutoLockIfNeeded() {
+    if (_sessionKeys.isNotEmpty) {
+      _touch();
+    } else {
+      _autoLockTimer?.cancel();
+      _autoLockTimer = null;
+      _lastActivity = null;
+    }
   }
 
   void _touch() {
@@ -346,7 +702,7 @@ class MemoCryptoService {
       final last = _lastActivity;
       if (last == null ||
           DateTime.now().difference(last) >= _autoLockDuration) {
-        lock();
+        lockAll();
       } else {
         _armAutoLock();
       }
@@ -394,13 +750,22 @@ class MemoCryptoService {
     final nonce = Uint8List.fromList(
       List<int>.generate(_nonceLength, (index) => Random.secure().nextInt(256)),
     );
+    return _sealWithNonce(plaintext, key, nonce, associatedData: associatedData);
+  }
+
+  static _Sealed _sealWithNonce(
+    Uint8List plaintext,
+    Uint8List key,
+    Uint8List nonce, {
+    String? associatedData,
+  }) {
     final cipher = GCMBlockCipher(AESEngine())
       ..init(
         true,
         AEADParameters(
           KeyParameter(Uint8List.fromList(key)),
           128,
-          nonce,
+          Uint8List.fromList(nonce),
           Uint8List.fromList(utf8.encode(associatedData ?? _aad)),
         ),
       );

@@ -22,7 +22,7 @@ void main() {
 
     final upgraded = await AppDatabase.database;
 
-    expect(await upgraded.getVersion(), 16);
+    expect(await upgraded.getVersion(), 17);
     final tables = await upgraded.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memos'",
     );

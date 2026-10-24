@@ -15,11 +15,18 @@ db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
 
 export function initDatabase(): void {
+  // 既有库升级：users 表补 pepper 列（账号托管，v18）
+  try {
+    db.exec('ALTER TABLE users ADD COLUMN pepper TEXT')
+  } catch {
+    // 列已存在则忽略
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      pepper TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );

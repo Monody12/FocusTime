@@ -29,6 +29,12 @@ class SyncService {
   // 服务器是否支持备忘录同步（/api/health 返回 memoSync 标志）。
   // 旧版服务器没有备忘录表，会把备忘录负载当作无效数据表拒绝。
   static bool _serverSupportsMemoSync = true;
+  // 服务器是否支持文件夹锁同步（/api/health 返回 lockSync 标志）。
+  // memoSync 为 true 但 lockSync 缺失的服务器只支持旧的 8 张备忘录表。
+  static bool _serverSupportsLockSync = false;
+  // 能力探测时间戳：升级服务器后最多 6 小时自动重新探测一次。
+  static int _lastCapabilityProbeAt = 0;
+  static const _capabilityProbeTtl = Duration(hours: 6);
   static String? _lastSyncError;
   static bool _syncing = false; // 防止并发同步
   static bool _syncRequested = false; // 同步过程中如有新请求，结束后补跑一次
@@ -43,6 +49,11 @@ class SyncService {
 
   static const String _encryptionKey = 'FocusMyTimeSecretKey!';
   static const String _fakePasswordMask = '••••••••';
+
+  /// 当前已登录账号的密码（仅内存缓存）。
+  /// 供账号托管派生密钥使用；未登录时为空字符串。
+  static String get savedAccountPassword => _realPassword;
+  static bool get isLoggedIn => _token.isNotEmpty;
 
   static String _encrypt(String text) {
     if (text.isEmpty) return '';
@@ -132,6 +143,10 @@ class SyncService {
     if (supportsMemo != null) {
       _serverSupportsMemoSync = supportsMemo == 'true';
     }
+    final supportsLock = await AppDatabase.getSetting('serverSupportsLockSync');
+    if (supportsLock != null) {
+      _serverSupportsLockSync = supportsLock == 'true';
+    }
 
     if (_token.isEmpty && _username.isNotEmpty) {
       _setSyncWarning('同步登录已失效，请在设置中重新登录');
@@ -143,7 +158,9 @@ class SyncService {
 
     // 之前探测到旧服务器而缓存了“不支持备忘录”的结论；
     // 服务器升级后会在启动时重新探测并自动恢复备忘录同步。
-    if (_token.isNotEmpty && !_serverSupportsMemoSync) {
+    // 锁同步能力带 TTL，过期也会在启动时重探。
+    if (_token.isNotEmpty &&
+        (!_serverSupportsMemoSync || _capabilityProbeStale())) {
       unawaited(_probeServerCapabilities());
     }
   }
@@ -412,13 +429,18 @@ class SyncService {
   }
 
   /// 检查当前是否已登录（通过判断是否有 Token）
-  static bool get isLoggedIn => _token.isNotEmpty;
 
-  /// 探测服务器是否支持备忘录同步。探测失败时保持当前结论，
+  /// 探测服务器能力（memoSync/lockSync）。探测失败时保持当前结论，
   /// 后续同步遇 400「无效的数据表」仍会自动降级重试。
   ///
   /// 从 false 恢复为 true 时重置共享下载游标：备忘录被降级跳过的窗口期里，
   /// 共享游标已越过服务器上的备忘录变更，不重置会导致那些变更永远拉不到。
+  /// 探测带 TTL：服务器升级后最多 [_capabilityProbeTtl] 自动重探一次，
+  /// 避免旧结论（锁表被剥离）长期滞留。
+  static bool _capabilityProbeStale() =>
+      DateTime.now().millisecondsSinceEpoch - _lastCapabilityProbeAt >=
+      _capabilityProbeTtl.inMilliseconds;
+
   static Future<void> _probeServerCapabilities() async {
     try {
       final response = await http
@@ -435,6 +457,13 @@ class SyncService {
           'serverSupportsMemoSync',
           _serverSupportsMemoSync ? 'true' : 'false',
         );
+        final supportsLock = supportsMemo && data['lockSync'] == true;
+        _serverSupportsLockSync = supportsLock;
+        await AppDatabase.setSetting(
+          'serverSupportsLockSync',
+          supportsLock ? 'true' : 'false',
+        );
+        _lastCapabilityProbeAt = DateTime.now().millisecondsSinceEpoch;
       }
     } catch (_) {
       // 网络异常时保持已缓存的结论，避免在弱网下反复探测。
@@ -531,7 +560,8 @@ class SyncService {
     try {
       // 缓存为“不支持备忘录”时先探测一次：服务器升级后可自动恢复同步。
       // 探测内部会把 false→true 的恢复转化为游标重置补拉。
-      if (!_serverSupportsMemoSync) {
+      // 探测带 TTL：锁表等新能力在服务器升级后最多 6 小时自动恢复。
+      if (!_serverSupportsMemoSync || _capabilityProbeStale()) {
         await _probeServerCapabilities();
       }
       final localSyncCutoff = DateTime.now().millisecondsSinceEpoch;
@@ -675,9 +705,21 @@ class SyncService {
       'memo_versions',
       'memo_attachments',
       'memo_shares',
+      'memo_locks',
       'privacy_vault',
     ];
     return memoTableNames.any(responseBody.contains) &&
+        (responseBody.contains('无效的数据表') ||
+            responseBody.contains('不支持的') ||
+            responseBody.contains('unknown table') ||
+            responseBody.contains('no such table'));
+  }
+
+  /// 服务器 400 是否只因为不认识文件夹锁表（中间代服务器）。
+  static bool _looksLikeUnsupportedLockTable(String responseBody) {
+    return responseBody.contains('memo_locks') &&
+        !responseBody.contains('memo_folders') &&
+        !responseBody.contains('privacy_vault') &&
         (responseBody.contains('无效的数据表') ||
             responseBody.contains('不支持的') ||
             responseBody.contains('unknown table') ||
@@ -709,6 +751,9 @@ class SyncService {
       if (!_serverSupportsMemoSync) {
         payload.removeWhere((table, _) => table.startsWith('memo_'));
         payload.remove('privacy_vault');
+      } else if (!_serverSupportsLockSync) {
+        // 中间代服务器：支持备忘录但还没有文件夹锁表。
+        payload.remove('memo_locks');
       }
 
       final response = await http
@@ -733,6 +778,18 @@ class SyncService {
           );
         }
         return (success: false, tokenExpired: true, serverLastSync: null);
+      }
+
+      if (response.statusCode == 400 &&
+          retryWithoutMemo &&
+          _looksLikeUnsupportedLockTable(response.body)) {
+        // 中间代服务器：支持备忘录但不认识文件夹锁表，只降级锁同步。
+        _serverSupportsLockSync = false;
+        await AppDatabase.setSetting('serverSupportsLockSync', 'false');
+        return _syncToServer(
+          allowAutoLogin: allowAutoLogin,
+          retryWithoutMemo: false,
+        );
       }
 
       if (response.statusCode == 400 &&
@@ -791,6 +848,7 @@ class SyncService {
           'memo_shares': <String>[],
           'privacy_vault': <String>[],
         },
+        if (_serverSupportsLockSync) 'memo_locks': const <String>[],
       };
 
       final response = await http
@@ -816,6 +874,18 @@ class SyncService {
           );
         }
         return (success: false, tokenExpired: true, serverLastSync: null);
+      }
+
+      if (response.statusCode == 400 &&
+          retryWithoutMemo &&
+          _looksLikeUnsupportedLockTable(response.body)) {
+        _serverSupportsLockSync = false;
+        await AppDatabase.setSetting('serverSupportsLockSync', 'false');
+        return _downloadFromServer(
+          syncTimeForDownload,
+          allowAutoLogin: allowAutoLogin,
+          retryWithoutMemo: false,
+        );
       }
 
       if (response.statusCode == 400 &&
