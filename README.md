@@ -468,4 +468,4 @@ pm2 start ecosystem.config.js
 
 ## 版本
 
-当前版本：v1.11.2 (文件夹锁)
+当前版本：v1.11.3 (文件夹锁)
