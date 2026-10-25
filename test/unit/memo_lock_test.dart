@@ -369,10 +369,13 @@ void main() {
   });
 
   group('账号托管派生', () {
-    test('deriveEscrowKey 输出确定且为 32 字节', () {
-      final a = MemoEscrowService.deriveEscrowKey('monody12', 'cGVwcGVy');
-      final b = MemoEscrowService.deriveEscrowKey('monody12', 'cGVwcGVy');
-      final c = MemoEscrowService.deriveEscrowKey('other-password', 'cGVwcGVy');
+    test('deriveEscrowKey 输出确定且为 32 字节', () async {
+      final a = await MemoEscrowService.deriveEscrowKey('monody12', 'cGVwcGVy');
+      final b = await MemoEscrowService.deriveEscrowKey('monody12', 'cGVwcGVy');
+      final c = await MemoEscrowService.deriveEscrowKey(
+        'other-password',
+        'cGVwcGVy',
+      );
       expect(a.length, 32);
       expect(base64Encode(a), base64Encode(b));
       expect(base64Encode(a), isNot(base64Encode(c)));

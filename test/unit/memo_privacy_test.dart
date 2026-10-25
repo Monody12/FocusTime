@@ -89,7 +89,7 @@ void main() {
       throwsStateError,
     );
     expect(
-      MemoCryptoService.instance.setupPassword('short'),
+      MemoCryptoService.instance.setupPassword('abc'),
       throwsFormatException,
     );
   });
