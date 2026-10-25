@@ -1585,11 +1585,17 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     if (confirmed != true) return null;
     final password = passwordController.text;
     if (password.length < 4) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码至少需要 4 个字符')));
+      if (!dialogContext.mounted) return null;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        const SnackBar(content: Text('密码至少需要 4 个字符')),
+      );
       return null;
     }
     if (password != confirmController.text) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('两次输入的密码不一致')));
+      if (!dialogContext.mounted) return null;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        const SnackBar(content: Text('两次输入的密码不一致')),
+      );
       return null;
     }
     try {
@@ -1597,7 +1603,10 @@ class _MemoPageState extends ConsumerState<MemoPage> {
           .read(memoProvider.notifier)
           .setupFolderLock(folderId, password);
     } catch (error) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('设置文件夹密码失败：$error')));
+      if (!dialogContext.mounted) return null;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        SnackBar(content: Text('设置文件夹密码失败：$error')),
+      );
       return null;
     }
   }
@@ -1656,21 +1665,35 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     );
     if (confirmed != true) return false;
     if (newController.text.length < 4) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码至少需要 4 个字符')));
+      if (!dialogContext.mounted) return false;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        const SnackBar(content: Text('密码至少需要 4 个字符')),
+      );
       return false;
     }
     if (newController.text != confirmController.text) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('两次输入的密码不一致')));
+      if (!dialogContext.mounted) return false;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        const SnackBar(content: Text('两次输入的密码不一致')),
+      );
       return false;
     }
     try {
       await ref
           .read(memoProvider.notifier)
           .changeFolderLockPassword(folderId, newController.text);
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码已更改（内容密钥不变，密文无需重写）')));
+      if (!dialogContext.mounted) return true;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        const SnackBar(
+          content: Text('密码已更改（内容密钥不变，密文无需重写）'),
+        ),
+      );
       return true;
     } catch (error) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('更改密码失败：$error')));
+      if (!dialogContext.mounted) return false;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        SnackBar(content: Text('更改密码失败：$error')),
+      );
       return false;
     }
   }
@@ -1704,11 +1727,16 @@ class _MemoPageState extends ConsumerState<MemoPage> {
       final converted = await ref
           .read(memoProvider.notifier)
           .removeFolderLock(folderId);
-      if (!mounted) return;
-      setState(() {});
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('已移除密码，$converted 条备忘录已解密为普通备忘录')));
+      if (mounted) setState(() {});
+      if (!dialogContext.mounted) return;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        SnackBar(content: Text('已移除密码，$converted 条备忘录已解密为普通备忘录')),
+      );
     } catch (error) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('移除密码失败：$error')));
+      if (!dialogContext.mounted) return;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        SnackBar(content: Text('移除密码失败：$error')),
+      );
     }
   }
 
@@ -1763,13 +1791,22 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     try {
       if (escrowEnabled) {
         await notifier.disableEscrow(folderId);
-        ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('已关闭账号托管')));
+        if (!dialogContext.mounted) return;
+        ScaffoldMessenger.of(dialogContext).showSnackBar(
+          const SnackBar(content: Text('已关闭账号托管')),
+        );
       } else {
         await notifier.enableEscrow(folderId);
-        ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('已开启账号托管')));
+        if (!dialogContext.mounted) return;
+        ScaffoldMessenger.of(dialogContext).showSnackBar(
+          const SnackBar(content: Text('已开启账号托管')),
+        );
       }
     } catch (error) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('账号托管操作失败：$error')));
+      if (!dialogContext.mounted) return;
+      ScaffoldMessenger.of(dialogContext).showSnackBar(
+        SnackBar(content: Text('账号托管操作失败：$error')),
+      );
     }
   }
 
@@ -2098,35 +2135,6 @@ class _MemoPageState extends ConsumerState<MemoPage> {
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text),
             child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    return result;
-  }
-
-  Future<String?> _askPassword(BuildContext context, String title) async {
-    final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          obscureText: true,
-          onSubmitted: (value) => Navigator.pop(dialogContext, value),
-          decoration: const InputDecoration(labelText: '隐私密码'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('确认'),
           ),
         ],
       ),
@@ -3497,28 +3505,32 @@ class _MemoEditorState extends ConsumerState<_MemoEditor>
                   title: Text('无文件夹'),
                   secondary: Icon(Icons.folder_off_outlined),
                 ),
+                // 锁定中的文件夹不进入候选（跨加密区域移动须先解锁，
+                // provider.moveMemo 也会兜底拦截）。
                 for (final folder in folders)
-                  Builder(
-                    builder: (tileContext) {
-                      final folderId = folder['id'] as String;
-                      final locked = lockedFolderIds.contains(folderId);
-                      return RadioListTile<String>(
-                        value: folderId,
-                        onChanged: locked
-                            ? null
-                            : (value) {
-                                if (value != null) {
-                                  Navigator.pop(dialogContext, value);
-                                }
-                              },
-                        title: Text(
-                          '${locked ? '🔒 ' : ''}${folder['name'] as String? ?? '未命名文件夹'}',
+                  if (!lockedFolderIds.contains(folder['id'] as String))
+                    RadioListTile<String>(
+                      value: folder['id'] as String,
+                      title: Text(
+                        folder['name'] as String? ?? '未命名文件夹',
+                      ),
+                      secondary: const Icon(Icons.folder_outlined),
+                    ),
+                if (lockedFolderIds.isNotEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        Icon(Icons.lock_outline, size: 14),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '锁定中的文件夹需先解锁才能移入',
+                            style: TextStyle(fontSize: 12),
+                          ),
                         ),
-                        secondary: Icon(
-                          locked ? AppIcons.lock : Icons.folder_outlined,
-                        ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
               ],
             ),

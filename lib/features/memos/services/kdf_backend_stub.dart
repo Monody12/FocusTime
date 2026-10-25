@@ -1,4 +1,6 @@
 /// 兜底后端（正常情况下 io/web 条件分支总能命中其一）。
+library;
+
 import 'dart:typed_data';
 
 Future<Uint8List> deriveArgon2id({

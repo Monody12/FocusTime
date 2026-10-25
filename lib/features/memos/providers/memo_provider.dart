@@ -142,7 +142,8 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
   }) async {
     final folderKey = await _resolveFolderWriteKey(folderId);
     String? encryptedPayload;
-    String? storedTitle = title;
+    String storedTitle = title;
+    String storedBody = bodyMd;
     if (folderKey != null) {
       // 文件夹锁模式：整篇加密（标题并入密文），与旧 encryptTitle 语义无关。
       encryptedPayload = _crypto.encryptTextWithKey(
@@ -150,6 +151,7 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
         folderKey,
       );
       storedTitle = '';
+      storedBody = '';
       isPrivate = true;
       encryptTitle = false;
     } else if (isPrivate) {
@@ -159,21 +161,14 @@ class MemoNotifier extends AsyncNotifier<List<Map<String, dynamic>>> {
       );
     }
     final memo = await MemoDatabase.createMemo(
-      title: storedTitle ?? '',
-      bodyMd: bodyMd,
+      title: storedTitle,
+      bodyMd: storedBody,
       folderId: isPrivate && encryptTitle ? null : folderId,
       isPrivate: isPrivate,
       encryptTitle: encryptTitle,
       encryptedPayload: encryptedPayload,
       aiAllowed: aiAllowed,
     );
-    if (folderKey != null) {
-      // 锁定文件夹内的备忘录不落任何明文标题。
-      await MemoDatabase.updateMemo(memo['id'] as String, {
-        'title': null,
-        'bodyMd': null,
-      });
-    }
     await reloadCurrentView();
     return memo;
   }

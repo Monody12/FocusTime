@@ -8,7 +8,6 @@ import 'package:focus_my_time/data/database/memo_database.dart';
 import 'package:focus_my_time/features/memos/services/memo_private_payload.dart';
 import 'package:focus_my_time/core/utils/debug_error_reporter.dart';
 import 'package:focus_my_time/features/memos/services/kdf_backend.dart';
-import 'package:hashlib/hashlib.dart' as hl;
 import 'package:pointycastle/export.dart';
 
 /// 隐私备忘录的端到端加密服务。
