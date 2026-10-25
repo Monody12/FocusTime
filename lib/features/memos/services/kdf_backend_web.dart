@@ -6,7 +6,7 @@ import 'dart:typed_data';
 ///
 /// 实测 Firefox 下同样参数从纯 Dart 的 90s+ 降到亚秒级；异步 Promise
 /// 不冻结主线程，派生期间页面保持可交互。
-@JS()
+@JS('hashwasm')
 external JSObject get _hashwasm;
 
 extension type _HashWasmModule._(JSObject o) implements JSObject {
