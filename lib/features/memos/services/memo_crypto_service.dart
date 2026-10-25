@@ -228,14 +228,22 @@ class MemoCryptoService {
   }
 
   /// 锁定全部解锁会话（自动锁定/切后台/手动"全部锁定"共用）。
-  void lockAll() {
+  ///
+  /// [forgetPersistedSessions]：显式锁定与自动超时为 true（彻底忘记）；
+  /// 切后台传 false——浏览器刷新会先触发一次"失活→锁定"，若此时也清掉
+  /// 持久化会话，刷新后的会话恢复（免重输密码）就永远不会生效。后台锁定
+  /// 只清内存密钥，剩余有效期由恢复时的 expiresAt 校验兜底，关闭标签页
+  /// 时 sessionStorage 自然清空。
+  void lockAll({bool forgetPersistedSessions = true}) {
     _autoLockTimer?.cancel();
     _autoLockTimer = null;
     for (final key in _sessionKeys.values) {
       _zero(key);
     }
     _sessionKeys.clear();
-    forgetAllUnlockSessions();
+    if (forgetPersistedSessions) {
+      forgetAllUnlockSessions();
+    }
     _lastActivity = null;
   }
 
@@ -636,7 +644,11 @@ class MemoCryptoService {
 
   void onAppBackground() {
     // 默认进入后台立即锁定，只有用户明确选择延迟时才保留会话。
-    if (isUnlocked && _lockOnBackground) lock();
+    // 注意保留持久化会话：web 刷新卸载页时也会触发本回调，清掉会导致
+    // 刷新后的免重输恢复失效（v1.11.5 修复）。
+    if (isUnlocked && _lockOnBackground) {
+      lockAll(forgetPersistedSessions: false);
+    }
   }
 
   void onAppResumed() {
