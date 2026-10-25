@@ -216,10 +216,9 @@ class _MemoPageState extends ConsumerState<MemoPage> {
   @override
   Widget build(BuildContext context) {
     final memos = ref.watch(memoProvider);
-  if (memos.hasError) {
-    reportDebugError('memoProvider error: ${memos.error}');
-  }
-    final crypto = MemoCryptoService.instance;
+    if (memos.hasError) {
+      reportDebugError('memoProvider error: ${memos.error}');
+    }
     final isMobile = MediaQuery.sizeOf(context).width < 800;
     return Focus(
       autofocus: true,
