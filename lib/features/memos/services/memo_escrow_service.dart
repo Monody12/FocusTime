@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:pointycastle/export.dart';
 import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/sync/sync_service.dart';
+import 'package:focus_my_time/features/memos/services/kdf_backend.dart';
 import 'package:focus_my_time/features/memos/services/memo_crypto_service.dart';
 
 /// 账号托管（opt-in 的"忘记一切"找回路径）。
@@ -57,33 +58,25 @@ class MemoEscrowService {
   }
 
   /// 从账号密码 + pepper 派生托管密钥（与服务器参数无关，客户端固定）。
-  static Uint8List deriveEscrowKey(String accountPassword, String pepper) {
-    final generator = Argon2BytesGenerator();
-    generator.init(
-      Argon2Parameters(
-        Argon2Parameters.ARGON2_id,
-        utf8.encode(pepper),
-        desiredKeyLength: _keyLength,
+  static Future<Uint8List> deriveEscrowKey(
+    String accountPassword,
+    String pepper,
+  ) =>
+      deriveArgon2id(
+        password: accountPassword,
+        salt: Uint8List.fromList(utf8.encode(pepper)),
         iterations: _iterations,
-        memory: _memoryKiB,
+        memoryKiB: _memoryKiB,
         lanes: _lanes,
-        version: Argon2Parameters.ARGON2_VERSION_13,
-      ),
-    );
-    final output = Uint8List(_keyLength);
-    final passwordBytes = Uint8List.fromList(
-      utf8.encode(accountPassword),
-    );
-    generator.deriveKey(passwordBytes, 0, output, 0);
-    return output;
-  }
+        length: _keyLength,
+      );
 
   /// 为文件夹锁开启账号托管（要求该文件夹已解锁）。
   static Future<void> enableForFolder(String folderId) async {
     final password = SyncService.savedAccountPassword;
     if (password.isEmpty) throw StateError('请先登录同步账号');
     final pepper = await fetchPepper();
-    final escrowKey = deriveEscrowKey(password, pepper);
+    final escrowKey = await deriveEscrowKey(password, pepper);
     await MemoCryptoService.instance.enableEscrow(folderId, escrowKey);
   }
 
@@ -93,7 +86,7 @@ class MemoEscrowService {
     if (password.isEmpty) return false;
     try {
       final pepper = await fetchPepper();
-      final escrowKey = deriveEscrowKey(password, pepper);
+      final escrowKey = await deriveEscrowKey(password, pepper);
       return await MemoCryptoService.instance.unlockFolderWithEscrow(
         folderId,
         escrowKey,

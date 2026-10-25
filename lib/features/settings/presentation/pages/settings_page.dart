@@ -1548,7 +1548,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 obscureText: obscure,
                 autofocus: true,
                 decoration: const InputDecoration(
-                  labelText: '隐私密码（至少 8 个字符）',
+                  labelText: '隐私密码（至少 4 个字符）',
                 ),
               ),
               const SizedBox(height: 12),
@@ -1576,8 +1576,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
     if (confirmed != true || !mounted) return;
     final password = passwordController.text;
-    if (password.length < 8) {
-      _showSnackBar('隐私密码至少需要 8 个字符', isError: true);
+    if (password.length < 4) {
+      _showSnackBar('隐私密码至少需要 4 个字符', isError: true);
       return;
     }
     if (password != confirmController.text) {
@@ -1703,7 +1703,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             TextField(
               controller: newController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: '新密码（至少 8 个字符）'),
+              decoration: const InputDecoration(labelText: '新密码（至少 4 个字符）'),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -1727,8 +1727,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    if (newController.text.length < 8) {
-      _showSnackBar('隐私密码至少需要 8 个字符', isError: true);
+    if (newController.text.length < 4) {
+      _showSnackBar('隐私密码至少需要 4 个字符', isError: true);
       return;
     }
     if (newController.text != confirmController.text) {

@@ -199,6 +199,8 @@
       <button id="loading-retry" class="loading-retry" type="button" aria-label="重新加载" title="重新加载">↻</button>
     </div>
   </div>
+  <!-- Argon2id WASM 实现（hash-wasm，29KB，WASM 内嵌）：web 端密钥派生走这里，避免纯 Dart 实现冻结主线程 -->
+  <script src="hash-wasm-argon2.min.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

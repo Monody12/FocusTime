@@ -1449,7 +1449,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                 decoration: InputDecoration(
                   labelText: useRecoveryKey
                       ? '恢复密钥（52 位字符）'
-                      : '文件夹密码（至少 8 个字符）',
+                      : '文件夹密码（至少 4 个字符）',
                   suffixIcon: IconButton(
                     icon: Icon(
                       obscure ? Icons.visibility_off : Icons.visibility,
@@ -1551,7 +1551,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                 obscureText: obscure,
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: '文件夹密码（至少 8 个字符）',
+                  labelText: '文件夹密码（至少 4 个字符）',
                   suffixIcon: IconButton(
                     icon: Icon(
                       obscure ? Icons.visibility_off : Icons.visibility,
@@ -1584,8 +1584,8 @@ class _MemoPageState extends ConsumerState<MemoPage> {
     );
     if (confirmed != true) return null;
     final password = passwordController.text;
-    if (password.length < 8) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码至少需要 8 个字符')));
+    if (password.length < 4) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码至少需要 4 个字符')));
       return null;
     }
     if (password != confirmController.text) {
@@ -1623,7 +1623,7 @@ class _MemoPageState extends ConsumerState<MemoPage> {
                 obscureText: obscure,
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: '新密码（至少 8 个字符）',
+                  labelText: '新密码（至少 4 个字符）',
                   suffixIcon: IconButton(
                     icon: Icon(
                       obscure ? Icons.visibility_off : Icons.visibility,
@@ -1655,8 +1655,8 @@ class _MemoPageState extends ConsumerState<MemoPage> {
       ),
     );
     if (confirmed != true) return false;
-    if (newController.text.length < 8) {
-      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码至少需要 8 个字符')));
+    if (newController.text.length < 4) {
+      ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(content: Text('密码至少需要 4 个字符')));
       return false;
     }
     if (newController.text != confirmController.text) {
@@ -4331,7 +4331,7 @@ class _AttachmentsDialogState extends ConsumerState<_AttachmentsDialog> {
     );
     if (confirmed != true) return;
     final password = passwordController.text;
-    if (password.isNotEmpty && password.length < 8) {
+    if (password.isNotEmpty && password.length < 4) {
       _toast('分享密码至少 8 位');
       return;
     }

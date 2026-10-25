@@ -7,6 +7,7 @@ import 'package:focus_my_time/data/database/app_database.dart';
 import 'package:focus_my_time/data/database/memo_database.dart';
 import 'package:focus_my_time/features/memos/services/memo_private_payload.dart';
 import 'package:focus_my_time/core/utils/debug_error_reporter.dart';
+import 'package:focus_my_time/features/memos/services/kdf_backend.dart';
 import 'package:hashlib/hashlib.dart' as hl;
 import 'package:pointycastle/export.dart';
 
@@ -120,7 +121,7 @@ class MemoCryptoService {
     final salt = _randomBytes(_saltLength);
     final contentKey = _randomBytes(_keyLength);
     final recoveryKey = _randomBytes(_keyLength);
-    final passwordKey = _deriveKey(password, salt);
+    final passwordKey = await _deriveKey(password, salt);
     final wrappedByPassword = _seal(contentKey, passwordKey);
     final wrappedByRecovery = _seal(contentKey, recoveryKey);
     _zero(passwordKey);
@@ -156,7 +157,7 @@ class MemoCryptoService {
     try {
       _validatePassword(password);
       final salt = _decodeBase64(lock['salt']);
-      final passwordKey = _deriveKey(password, salt);
+      final passwordKey = await _deriveKey(password, salt);
       final contentKey = _open(
         ciphertext: _decodeBase64(lock['wrappedContentKey']),
         nonce: _decodeBase64(lock['wrapNonce']),
@@ -250,7 +251,7 @@ class MemoCryptoService {
     final lock = await MemoDatabase.getLockForFolder(folderId);
     if (lock == null) throw StateError('该文件夹尚未设置锁密码');
     final salt = _randomBytes(_saltLength);
-    final passwordKey = _deriveKey(newPassword, salt);
+    final passwordKey = await _deriveKey(newPassword, salt);
     final wrapped = _seal(currentKey, passwordKey);
     _zero(passwordKey);
     final revision =
@@ -419,7 +420,7 @@ class MemoCryptoService {
     final salt = _randomBytes(_saltLength);
     final masterKey = _randomBytes(_keyLength);
     final recoveryKey = _randomBytes(_keyLength);
-    final passwordKey = _deriveKey(password, salt);
+    final passwordKey = await _deriveKey(password, salt);
     final wrappedByPassword = _seal(masterKey, passwordKey);
     final wrappedByRecovery = _seal(masterKey, recoveryKey);
 
@@ -454,7 +455,7 @@ class MemoCryptoService {
     try {
       _validatePassword(password);
       final salt = _decodeBase64(vault['salt']);
-      final passwordKey = _deriveKey(password, salt);
+      final passwordKey = await _deriveKey(password, salt);
       final master = _open(
         ciphertext: _decodeBase64(vault['wrappedMasterKey']),
         nonce: _decodeBase64(vault['wrapNonce']),
@@ -502,7 +503,7 @@ class MemoCryptoService {
     final vault = await MemoDatabase.getVault();
     if (vault == null) throw StateError('隐私保险库尚未设置');
     final salt = _randomBytes(_saltLength);
-    final key = _deriveKey(newPassword, salt);
+    final key = await _deriveKey(newPassword, salt);
     final wrapped = _seal(master, key);
     final revision = ((vault['configRevision'] as num?)?.toInt() ?? 0) + 1;
     await MemoDatabase.saveVault({
@@ -757,8 +758,8 @@ class MemoCryptoService {
   );
 
   static void _validatePassword(String password) {
-    if (password.length < 8) {
-      throw const FormatException('隐私密码至少需要 8 个字符');
+    if (password.length < 4) {
+      throw const FormatException('隐私密码至少需要 4 个字符');
     }
   }
 
@@ -767,20 +768,19 @@ class MemoCryptoService {
   /// 1.11.2 起改用 hashlib 优化实现：与原 pointycastle 输出逐字节一致
   /// （已做 RFC 合规性对比测试），派生耗时约为原来的 1/3（native 1.5s →
   /// 0.55s，web 端改善更明显）。老密文与包装记录无需任何迁移。
-  static Uint8List _deriveKey(String password, Uint8List salt) {
+  static Future<Uint8List> _deriveKey(String password, Uint8List salt) async {
     final sw = Stopwatch()..start();
-    final digest = hl.Argon2(
-      type: hl.Argon2Type.argon2id,
-      version: hl.Argon2Version.v13,
-      parallelism: _kdfLanes,
-      memorySizeKB: _kdfMemoryKiB,
-      iterations: _kdfIterations,
-      hashLength: _keyLength,
+    final key = await deriveArgon2id(
+      password: password,
       salt: salt,
-    ).convert(Uint8List.fromList(utf8.encode(password)));
+      iterations: _kdfIterations,
+      memoryKiB: _kdfMemoryKiB,
+      lanes: _kdfLanes,
+      length: _keyLength,
+    );
     sw.stop();
     debugLog('kdf', 'argon2id derived in ${sw.elapsedMilliseconds}ms');
-    return Uint8List.fromList(digest.bytes);
+    return key;
   }
 
   static _Sealed _seal(
